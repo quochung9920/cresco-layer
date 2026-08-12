@@ -34,7 +34,7 @@ final class AdminPage {
 				<div>
 					<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Elementor intelligence layer', 'cresco-layer' ); ?></p>
 					<h1><?php echo esc_html__( 'Cresco Layer', 'cresco-layer' ); ?></h1>
-					<p><?php echo esc_html__( 'Export an AI-safe Elementor design package, review a validated patch, then apply it through Elementor without giving an AI direct database access.', 'cresco-layer' ); ?></p>
+					<p><?php echo esc_html__( 'Export an AI-safe Elementor design package, inspect the live Elementor capability catalog, review a validated patch, then apply it through Elementor without giving an AI direct database access.', 'cresco-layer' ); ?></p>
 				</div>
 				<span class="cresco-layer-version">v<?php echo esc_html( CRESCO_LAYER_VERSION ); ?></span>
 			</div>
@@ -62,6 +62,31 @@ final class AdminPage {
 					<p class="description"><?php echo esc_html__( 'Applying changes the Elementor document but does not publish it. Review the page in Elementor and use Elementor Update/Publish as normal.', 'cresco-layer' ); ?></p>
 				</section>
 			</div>
+
+			<section class="cresco-layer-card cresco-layer-card--catalog">
+				<div class="cresco-layer-result-head">
+					<div>
+						<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Live runtime inspector', 'cresco-layer' ); ?></p>
+						<h2><?php echo esc_html__( 'Elementor Configuration & Widget Catalog', 'cresco-layer' ); ?></h2>
+					</div>
+					<span id="cresco-layer-catalog-status" aria-live="polite"></span>
+				</div>
+				<p class="description"><?php echo esc_html__( 'Read the active Elementor installation directly: Elementor/Pro versions, active breakpoints, Kit/design-system settings, every registered element type and every registered widget with its controls, defaults, options, responsive flags, units, ranges, conditions and selectors.', 'cresco-layer' ); ?></p>
+				<div class="cresco-layer-catalog-toolbar">
+					<div class="cresco-layer-actions">
+						<button class="button button-primary" id="cresco-layer-catalog-load"><?php echo esc_html__( 'Load Elementor catalog', 'cresco-layer' ); ?></button>
+						<button class="button" id="cresco-layer-catalog-download" disabled><?php echo esc_html__( 'Download full JSON', 'cresco-layer' ); ?></button>
+					</div>
+					<label class="cresco-layer-catalog-search" for="cresco-layer-catalog-query">
+						<span class="screen-reader-text"><?php echo esc_html__( 'Search Elementor widgets and controls', 'cresco-layer' ); ?></span>
+						<input type="search" id="cresco-layer-catalog-query" placeholder="<?php echo esc_attr__( 'Search widget, element or control…', 'cresco-layer' ); ?>" disabled>
+					</label>
+				</div>
+				<div id="cresco-layer-catalog-summary" class="cresco-layer-catalog-summary" hidden></div>
+				<div id="cresco-layer-catalog-result" class="cresco-layer-catalog-result">
+					<p><?php echo esc_html__( 'Catalog not loaded yet. Click “Load Elementor catalog” to inspect the current runtime configuration.', 'cresco-layer' ); ?></p>
+				</div>
+			</section>
 
 			<section class="cresco-layer-card cresco-layer-card--result">
 				<div class="cresco-layer-result-head">
