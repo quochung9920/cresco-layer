@@ -2,7 +2,7 @@
 
 Schema identifier: `cresco-layer-patch/v1`.
 
-Cresco Layer 0.2 keeps the patch schema identifier stable while adding optional **scoped exchange**, lossless element replacement and full-document replacement. Older document-level patches remain valid.
+Cresco Layer 0.3 keeps the patch schema identifier stable while adding **semantic Elementor validation** and post-apply verification on top of scoped exchange, lossless element replacement and full-document replacement. Older document-level patches remain valid.
 
 ## Required envelope
 
@@ -52,6 +52,20 @@ Scoped patches are sandboxed:
 - widget-only scope cannot insert or move children;
 - editor-native import can additionally require the patch root to match the currently selected Elementor element.
 
+## Native Elementor control policy
+
+The current Elementor installation is the source of truth for controls. AI should use control names and metadata from `widgetCatalog`, `elementCatalog`, `relevantCapabilities` and `elementStates`.
+
+For normal layout/style changes:
+
+- prefer a native Elementor setting whenever the target element exposes one;
+- use responsive suffixes only when the base control is responsive, for example `padding_tablet`, `padding_mobile`, `min_height_tablet` or `min_height_mobile`;
+- obey the control's options, units, ranges and device support;
+- do not invent setting keys;
+- use `custom_css` only as a fallback for an effect that cannot be represented by the exposed native controls.
+
+Cresco 0.3 semantically validates these rules before an AI patch can be applied. Existing persisted addon/future settings that are not currently described by the capability catalog can still be preserved and explicitly modified, but Cresco reports that native metadata validation is unavailable for them.
+
 ## Operations
 
 ### `update-setting`
@@ -66,6 +80,24 @@ Scoped patches are sandboxed:
 ```
 
 Prefer targeted updates because settings omitted by the patch remain unchanged, including responsive values, Dynamic Tags and global references.
+
+Responsive example:
+
+```json
+{
+  "operation": "update-setting",
+  "elementId": "abc123",
+  "setting": "padding_tablet",
+  "value": {
+    "unit": "px",
+    "top": "40",
+    "right": "32",
+    "bottom": "40",
+    "left": "32",
+    "isLinked": false
+  }
+}
+```
 
 ### `remove-setting`
 
@@ -88,6 +120,8 @@ Replaces the persisted `settings` object for one existing element. Use sparingly
   "settings": {}
 }
 ```
+
+Cresco's semantic guard rejects a replacement that would silently drop existing global references or unknown persisted settings. Remove such settings explicitly if their removal is intentional.
 
 ### `replace-element`
 
@@ -133,7 +167,7 @@ The replacement ID must equal `elementId`. In `widget` scope, existing children 
 }
 ```
 
-Inserted element IDs must be unique across the working document.
+Inserted element IDs must be unique across the working document. New element settings are checked against the current runtime capability catalog.
 
 ### `remove-element`
 
@@ -201,6 +235,45 @@ Used when an AI is intentionally generating/replacing an entire Elementor page f
 
 Cresco validates the complete tree, rejects duplicate IDs and still writes through Elementor's document persistence layer rather than directly updating `_elementor_data`.
 
+## Effective-change validation
+
+A syntactically valid patch is not necessarily a useful patch. Cresco 0.3 analyzes operations before apply and reports whether they are likely to have an effective Elementor change.
+
+The semantic guard currently detects cases including:
+
+- an `update-setting` that already equals the persisted value;
+- removing a setting that is already absent;
+- a responsive suffix used on a non-responsive control;
+- a value outside a control's supported options, units or numeric range;
+- a newly invented setting that is not in the target capability catalog;
+- destructive replacements that would drop global references or unknown persisted settings;
+- custom CSS that declares synthetic layout variables such as `--padding-top` or `--min-height` but never consumes them with `var(...)`.
+
+That last rule prevents a class of visual no-op AI patches. For example, this is rejected:
+
+```css
+selector {
+  --padding-top: 40px;
+  --min-height: auto;
+}
+```
+
+because those declarations do not change layout by themselves. If Elementor exposes native padding/min-height controls, use those settings instead.
+
+Direct custom CSS that duplicates a related native Elementor control is reported as a fallback warning so the patch can be reviewed and rewritten with native settings where practical.
+
+## Post-apply verification
+
+After Elementor saves a reviewed patch, Cresco 0.3 reads working data back and verifies the requested operations. The apply response contains a `verification` summary with passed/failed operation counts and per-operation details.
+
+This distinguishes:
+
+- **accepted patch** — the request passed validation;
+- **saved patch** — Elementor accepted the document save;
+- **verified patch** — reloaded Elementor working data matches the reviewed operations.
+
+The user still reviews the visual result in Elementor and chooses Update/Publish.
+
 ## Lossless Elementor data
 
 Element objects may contain current and future Elementor fields such as:
@@ -222,16 +295,22 @@ Cresco preserves unknown safe fields. This is deliberate: an export → unchange
 - Unsafe active markup, JavaScript URLs and inline event handlers are rejected.
 - Keys resembling credentials, passwords, API keys, private keys, tokens, authorization data, nonces and secrets are rejected.
 - Scoped patches cannot escape their exported target.
+- Native Elementor control metadata is used for semantic validation where available.
+- Visual no-op and unsafe semantic operations are detected before apply.
+- Reviewed operations are verified against reloaded Elementor working data after save.
 - Published/private documents use Elementor working/autosave data for review; Cresco does not publish the post.
 
 ## AI rules
 
-1. Read `editableScope` and `instructions` from the export package first.
+1. Read `editableScope`, `elementStates`, `relevantCapabilities` and `instructions` from the export package first.
 2. Preserve existing element IDs.
 3. Prefer `update-setting` for small changes.
-4. Use `replace-element` only when a complete element replacement is intentional.
-5. Preserve Dynamic Tags, globals, responsive settings, Atomic/V4 fields, classes, variables and unknown fields unless intentionally changing them.
-6. Use names, options, units, ranges and conditions from `widgetCatalog` / `elementCatalog`; do not invent Elementor control keys.
-7. Prefer existing Elementor Kit/global design values.
-8. Never return credentials, nonces, API keys, authentication data or executable JavaScript.
-9. Return JSON only when the user asks for an importable Cresco patch.
+4. Use native Elementor controls before `custom_css`, including native responsive settings.
+5. Use `custom_css` only for effects the exposed native controls cannot represent; never invent unused CSS variables as a substitute for Elementor settings.
+6. Avoid no-op operations by comparing requested values with `elementStates.rawSettings` and `effectiveWithDefaults`.
+7. Use `replace-element` only when a complete element replacement is intentional.
+8. Preserve Dynamic Tags, globals, responsive settings, Atomic/V4 fields, classes, variables and unknown fields unless intentionally changing them.
+9. Use names, options, units, ranges and conditions from `widgetCatalog` / `elementCatalog`; do not invent Elementor control keys.
+10. Prefer existing Elementor Kit/global design values.
+11. Never return credentials, nonces, API keys, authentication data or executable JavaScript.
+12. Return JSON only when the user asks for an importable Cresco patch.
