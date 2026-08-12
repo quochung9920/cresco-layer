@@ -32,7 +32,9 @@ $required = [
 	'includes/AI/PatchValidator.php' => [ 'cresco-layer-patch/v1', 'replace-element', 'replace-document', 'MAX_OPERATIONS', 'Sensitive settings cannot be modified' ],
 	'includes/AI/SemanticPatchGuard.php' => [ 'inert-css-variable', 'custom-css-native-control', 'unknown-setting', 'verify_data', 'nativeControlOperations' ],
 	'includes/AI/PatchApplier.php' => [ 'assert_scope_operations', 'staleDocumentButScopeUnchanged', 'preserve_children', 'DocumentChecksum::hash', 'get_with_permissions' ],
-	'includes/REST/Controller.php' => [ "current_user_can( 'edit_post'", 'expectedScope', '/preview', '/apply', 'semanticPatchValidation', 'postApplyVerification' ],
+	'includes/Elementor/ConfigurationCatalog.php' => [ 'CapabilityScanner', 'activeKit', 'widgetControls', 'elementControls', "'[REDACTED]'" ],
+	'includes/REST/Controller.php' => [ "current_user_can( 'edit_post'", 'expectedScope', '/preview', '/apply', '/elementor-catalog', 'elementorConfigurationCatalog', 'semanticPatchValidation', 'postApplyVerification' ],
+	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Widget Catalog', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query' ],
 	'includes/Support/Assets.php' => [ 'elementor/editor/after_enqueue_scripts', 'cresco-layer-editor' ],
 	'includes/Audit/Auditor.php' => [ 'missing-alt', 'multiple-h1', 'large-dom' ],
 ];
@@ -46,6 +48,11 @@ foreach ( $required as $relative => $tokens ) {
 $editor_js = $root . '/assets/editor.js';
 if ( ! is_file( $editor_js ) || ! str_contains( file_get_contents( $editor_js ), 'elements/context-menu/groups' ) ) {
 	$errors[] = 'Elementor editor-native scoped AI exchange is missing.';
+}
+
+$admin_js = $root . '/assets/admin.js';
+if ( ! is_file( $admin_js ) || ! str_contains( file_get_contents( $admin_js ), '/elementor-catalog' ) || ! str_contains( file_get_contents( $admin_js ), 'createControlDetails' ) ) {
+	$errors[] = 'Elementor runtime configuration catalog inspector is missing.';
 }
 
 if ( $errors ) {
