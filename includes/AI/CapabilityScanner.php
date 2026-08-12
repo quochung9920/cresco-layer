@@ -40,10 +40,11 @@ final class CapabilityScanner {
 		return [
 			'widgets' => $widgets,
 			'elements' => $elements,
-			'controlMetadataVersion' => 2,
+			'controlMetadataVersion' => 3,
 			'notes' => [
 				'Raw element settings remain authoritative for persisted values.',
 				'Control metadata describes values the current Elementor installation can accept even when a control is still at its default.',
+				'rawMetadata contains every serializable control field exposed by the current Elementor runtime; object/resource/callback values are intentionally omitted.',
 				'Unknown Elementor element fields are preserved by Cresco Layer during lossless replace/import operations.',
 			],
 		];
@@ -95,11 +96,16 @@ final class CapabilityScanner {
 		$entry = [
 			'name' => $name,
 			'title' => $title,
+			'className' => get_class( $instance ),
 			'controls' => $controls,
 			'defaultSettings' => $defaults,
 		];
 		if ( method_exists( $instance, 'get_categories' ) ) { $entry['categories'] = array_values( array_map( 'strval', (array) $instance->get_categories() ) ); }
 		if ( method_exists( $instance, 'get_keywords' ) ) { $entry['keywords'] = array_values( array_map( 'strval', (array) $instance->get_keywords() ) ); }
+		if ( method_exists( $instance, 'get_icon' ) ) { $entry['icon'] = (string) $instance->get_icon(); }
+		if ( method_exists( $instance, 'show_in_panel' ) ) {
+			try { $entry['showInPanel'] = (bool) $instance->show_in_panel(); } catch ( \Throwable $error ) { $entry['showInPanel'] = true; }
+		}
 		return $entry;
 	}
 
@@ -112,6 +118,8 @@ final class CapabilityScanner {
 		}
 		$out['responsive'] = ! empty( $control['responsive'] );
 		$out['dynamic'] = ! empty( $control['dynamic']['active'] );
+		$raw = $this->safe_metadata( $control, 0 );
+		$out['rawMetadata'] = is_array( $raw ) ? $raw : [];
 		return $out;
 	}
 
