@@ -1,0 +1,14 @@
+{
+  "name": "cresco/cresco-layer",
+  "description": "Professional intelligence and AI exchange for Elementor and Elementor Pro.",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.1"
+  },
+  "scripts": {
+    "check": [
+      "@php scripts/check-architecture.php"
+    ]
+  }
+}
