@@ -68,6 +68,7 @@ manifest
 editableScope
 document
 elementContext
+elementStates
 siteContext
 designSystem
 widgetCatalog
@@ -119,9 +120,45 @@ If the footer changes after you export a hero, the hero patch may still be valid
 
 Server-side scope enforcement prevents an AI patch exported for one widget/subtree from modifying unrelated page elements.
 
+## Semantic Elementor safety
+
+Cresco Layer 0.3 adds a semantic guard between JSON validation and Elementor persistence. A patch can now be syntactically valid but still be rejected if it does not make sense for the target Elementor controls.
+
+The guard validates, where runtime metadata is available:
+
+- native control existence;
+- responsive suffix support;
+- select/choose options;
+- units and numeric ranges;
+- no-op operations against current persisted values;
+- lossless handling of global references and unknown persisted settings;
+- custom CSS patterns that are likely visual no-ops.
+
+For example, AI output that only declares variables such as `--padding-top` or `--min-height` without consuming them through `var(...)` is rejected instead of being reported as a successful visual change.
+
+`custom_css` is treated as fallback. When an equivalent native Elementor control exists, Cresco reports that fact so the patch can be rewritten using native responsive settings such as `padding_tablet` or `min_height_mobile`.
+
+## Post-apply verification
+
+After Elementor accepts a reviewed patch save, Cresco reloads working data and verifies each requested operation. The apply API response distinguishes successful save from successful persistence of the reviewed values.
+
+This closes the gap between:
+
+```text
+Patch accepted
+```
+
+and:
+
+```text
+Requested Elementor values are actually present after save
+```
+
+The final visual review and Update/Publish decision still belongs to the user in Elementor.
+
 ## Lossless round trip
 
-Cresco 0.2 introduces `replace-element` and preserves unknown safe Elementor fields.
+Cresco preserves unknown safe Elementor fields during lossless operations.
 
 The design goal is:
 
@@ -221,7 +258,7 @@ These remain secondary to the AI interchange architecture; Cresco does not need 
 
 AI packages redact key names resembling credentials, passwords, API keys, private keys, tokens, authorization data, nonces and secrets.
 
-AI patches are validated before preview and again before apply. Cresco rejects active script/iframe/object/embed markup, JavaScript URLs, inline event handlers, dangerous secret keys, duplicate IDs, cyclic moves and scoped operations outside the exported target.
+AI patches are validated before preview and again before apply. Cresco rejects active script/iframe/object/embed markup, JavaScript URLs, inline event handlers, dangerous secret keys, duplicate IDs, cyclic moves, scoped operations outside the exported target and semantically invalid Elementor settings.
 
 Cresco writes reviewed results through Elementor's Document API rather than direct `_elementor_data` updates. Published/private content is kept in working/autosave data where supported; AI Apply does not mean Publish.
 
@@ -230,6 +267,7 @@ Cresco writes reviewed results through Elementor's Document API rather than dire
 ```bash
 php scripts/check-architecture.php
 php tests/php/patch-validator-test.php
+php tests/php/semantic-patch-guard-test.php
 php tests/php/element-locator-test.php
 find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
 node --check assets/admin.js
@@ -240,16 +278,15 @@ node --check assets/editor.js
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Version 0.2 focus
+## Version 0.3 focus
 
-0.2 turns the initial document-level AI bridge into a **scoped, lossless Elementor AI exchange**:
+0.3 turns the scoped, lossless AI exchange into a more reliable **semantic Elementor editing layer**:
 
-- editor-native widget/subtree export;
-- full runtime capability scanning;
-- parent/sibling read-only context;
-- target-level checksums;
-- server-side scope sandbox;
-- lossless element replacement;
-- full-document replacement for intentional page generation;
-- Dynamic Tag/template/referenced-asset context;
-- strengthened quality gates and scope tests.
+- native-control-aware patch analysis;
+- responsive control validation;
+- options/units/range validation;
+- visual no-op detection;
+- inert custom-CSS-variable rejection;
+- lossless replacement protection;
+- post-apply read-back verification;
+- focused semantic regression tests.
