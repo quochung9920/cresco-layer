@@ -6,6 +6,7 @@ use CrescoLayer\AI\PatchApplier;
 use CrescoLayer\AI\PatchValidator;
 use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
+use CrescoLayer\Elementor\ConfigurationCatalog;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -15,6 +16,7 @@ final class Controller {
 		private PackageBuilder $builder,
 		private PatchValidator $validator,
 		private SemanticPatchGuard $semantic,
+		private ConfigurationCatalog $catalog,
 		private PatchApplier $applier,
 		private Auditor $auditor
 	) {}
@@ -23,6 +25,11 @@ final class Controller {
 		register_rest_route( 'cresco-layer/v1', '/health', [
 			'methods' => 'GET',
 			'callback' => [ $this, 'health' ],
+			'permission_callback' => static fn() => current_user_can( 'edit_posts' ),
+		] );
+		register_rest_route( 'cresco-layer/v1', '/elementor-catalog', [
+			'methods' => 'GET',
+			'callback' => [ $this, 'elementor_catalog' ],
 			'permission_callback' => static fn() => current_user_can( 'edit_posts' ),
 		] );
 		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/export', [
@@ -66,7 +73,12 @@ final class Controller {
 			'scopedExchange' => true,
 			'semanticPatchValidation' => true,
 			'postApplyVerification' => true,
+			'elementorConfigurationCatalog' => true,
 		], 200 );
+	}
+
+	public function elementor_catalog(): WP_REST_Response {
+		return new WP_REST_Response( $this->catalog->get(), 200 );
 	}
 
 	public function export( WP_REST_Request $request ) {
