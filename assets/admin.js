@@ -1,13 +1,23 @@
 (function(){
 	'use strict';
+
 	var config=window.crescoLayerAdmin||{};
 	var select=document.getElementById('cresco-layer-document');
 	if(!select)return;
+
 	var patch=document.getElementById('cresco-layer-patch');
 	var result=document.getElementById('cresco-layer-result');
 	var status=document.getElementById('cresco-layer-status');
 	var applyButton=document.getElementById('cresco-layer-apply');
+	var catalogLoadButton=document.getElementById('cresco-layer-catalog-load');
+	var catalogDownloadButton=document.getElementById('cresco-layer-catalog-download');
+	var catalogQuery=document.getElementById('cresco-layer-catalog-query');
+	var catalogResult=document.getElementById('cresco-layer-catalog-result');
+	var catalogSummary=document.getElementById('cresco-layer-catalog-summary');
+	var catalogStatus=document.getElementById('cresco-layer-catalog-status');
 	var previewedText='';
+	var catalogData=null;
+	var catalogSearchTimer=null;
 
 	(config.documents||[]).forEach(function(doc){
 		var option=document.createElement('option');
@@ -26,6 +36,11 @@
 		status.textContent=text||'';
 		status.className=tone?'is-'+tone:'';
 	}
+	function setCatalogStatus(text,tone){
+		if(!catalogStatus)return;
+		catalogStatus.textContent=text||'';
+		catalogStatus.className=tone?'is-'+tone:'';
+	}
 	function endpoint(path){return String(config.restRoot||'').replace(/\/$/,'')+path;}
 	function request(path,options){
 		options=options||{};
@@ -37,14 +52,36 @@
 			});
 		});
 	}
-	function documentId(){var id=parseInt(select.value||'0',10);if(!id)throw new Error('Choose an Elementor document first.');return id;}
-	function clearResult(){while(result.firstChild)result.removeChild(result.firstChild);}
+	function documentId(){
+		var id=parseInt(select.value||'0',10);
+		if(!id)throw new Error('Choose an Elementor document first.');
+		return id;
+	}
+	function clearNode(node){while(node&&node.firstChild)node.removeChild(node.firstChild);}
+	function clearResult(){clearNode(result);}
 	function line(label,value){
 		var row=document.createElement('div');row.className='cresco-layer-metric';
 		var key=document.createElement('strong');key.textContent=label;
 		var val=document.createElement('span');val.textContent=String(value);
 		row.appendChild(key);row.appendChild(val);return row;
 	}
+	function badge(text,tone){
+		var el=document.createElement('span');
+		el.className='cresco-layer-catalog-badge'+(tone?' is-'+tone:'');
+		el.textContent=text;
+		return el;
+	}
+	function pretty(value){
+		try{return JSON.stringify(value,null,2);}catch(e){return String(value);}
+	}
+	function downloadJson(filename,data){
+		var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+		var url=URL.createObjectURL(blob);
+		var a=document.createElement('a');
+		a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+		setTimeout(function(){URL.revokeObjectURL(url);},1000);
+	}
+
 	function renderAudit(audit){
 		clearResult();
 		var scores=(audit&&audit.scores)||{};var stats=(audit&&audit.stats)||{};
@@ -65,20 +102,183 @@
 		issues.forEach(function(issue){var li=document.createElement('li');li.className='is-'+(issue.severity||'info');li.textContent=(issue.elementId?'#'+issue.elementId+' · ':'')+(issue.message||issue.code||'Issue');list.appendChild(li);});
 		result.appendChild(list);
 	}
+
 	function renderPreview(data){
-		clearResult();var diff=data.diff||{};
+		clearResult();var diff=data.diff||{};var semantic=data.semantic||{};
 		var title=document.createElement('h3');title.textContent='Patch preview · '+(diff.total||0)+' operations';result.appendChild(title);
 		var metrics=document.createElement('div');metrics.className='cresco-layer-metrics';
-		[['Inserted',diff.inserted||0],['Removed',diff.removed||0],['Moved',diff.moved||0],['Updated',diff.updated||0],['Page settings',diff.pageSettings||0]].forEach(function(item){metrics.appendChild(line(item[0],item[1]));});
+		[['Inserted',diff.inserted||0],['Removed',diff.removed||0],['Moved',diff.moved||0],['Updated',diff.updated||0],['Effective',typeof semantic.effectiveOperations==='number'?semantic.effectiveOperations:(diff.total||0)],['No-op',semantic.noOpOperations||0]].forEach(function(item){metrics.appendChild(line(item[0],item[1]));});
 		result.appendChild(metrics);
+		if(semantic.warnings&&semantic.warnings.length){
+			var warningTitle=document.createElement('h3');warningTitle.textContent='Semantic warnings · '+semantic.warnings.length;result.appendChild(warningTitle);
+			var warnings=document.createElement('ul');warnings.className='cresco-layer-issues';
+			semantic.warnings.forEach(function(issue){var li=document.createElement('li');li.className='is-warning';li.textContent=(issue.elementId?'#'+issue.elementId+' · ':'')+(issue.setting?issue.setting+' · ':'')+(issue.message||issue.code||'Warning');warnings.appendChild(li);});
+			result.appendChild(warnings);
+		}
 		var checksum=document.createElement('p');checksum.className='description';checksum.textContent='Candidate checksum: '+(data.candidateChecksum||'');result.appendChild(checksum);
 		var compare=document.createElement('div');compare.className='cresco-layer-audit-compare';
 		var before=document.createElement('div');before.textContent='Accessibility before: '+((data.auditBefore&&data.auditBefore.scores&&data.auditBefore.scores.accessibility)||0);
 		var after=document.createElement('div');after.textContent='Accessibility after: '+((data.auditAfter&&data.auditAfter.scores&&data.auditAfter.scores.accessibility)||0);
 		compare.appendChild(before);compare.appendChild(after);result.appendChild(compare);
 	}
-	function parsePatch(){var text=patch.value.trim();if(!text)throw new Error('Paste a Cresco Layer patch first.');var parsed;try{parsed=JSON.parse(text);}catch(e){throw new Error('Patch is not valid JSON.');}return{parsed:parsed,text:text};}
-	function downloadJson(filename,data){var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},1000);}
+
+	function renderCatalogSummary(data){
+		if(!catalogSummary)return;
+		clearNode(catalogSummary);
+		var counts=data.counts||{};
+		var env=data.environment||{};
+		var grid=document.createElement('div');grid.className='cresco-layer-score-grid cresco-layer-score-grid--catalog';
+		[
+			['Widgets',counts.widgets||0],
+			['Element types',counts.elementTypes||0],
+			['Widget controls',counts.widgetControls||0],
+			['Element controls',counts.elementControls||0]
+		].forEach(function(item){
+			var card=document.createElement('div');card.className='cresco-layer-score';
+			var value=document.createElement('strong');value.textContent=String(item[1]);
+			var label=document.createElement('span');label.textContent=item[0];
+			card.appendChild(value);card.appendChild(label);grid.appendChild(card);
+		});
+		catalogSummary.appendChild(grid);
+		var meta=document.createElement('div');meta.className='cresco-layer-catalog-meta';
+		meta.appendChild(line('Elementor',env.elementorVersion||'—'));
+		meta.appendChild(line('Elementor Pro',env.elementorProVersion||'Not detected'));
+		meta.appendChild(line('WordPress',env.wordpressVersion||'—'));
+		meta.appendChild(line('PHP',env.phpVersion||'—'));
+		catalogSummary.appendChild(meta);
+		catalogSummary.hidden=false;
+	}
+
+	function createJsonDetails(title,value,open){
+		var details=document.createElement('details');details.className='cresco-layer-catalog-config';details.open=!!open;
+		var summary=document.createElement('summary');summary.textContent=title;details.appendChild(summary);
+		var pre=document.createElement('pre');pre.textContent=pretty(value);details.appendChild(pre);
+		return details;
+	}
+
+	function controlSearchText(name,control){
+		var parts=[name,control&&control.type,control&&control.label,control&&control.description];
+		return parts.filter(Boolean).join(' ').toLowerCase();
+	}
+
+	function entryMatches(name,entry,query){
+		if(!query)return true;
+		var q=query.toLowerCase();
+		var base=[name,entry&&entry.name,entry&&entry.title].concat((entry&&entry.categories)||[]).filter(Boolean).join(' ').toLowerCase();
+		if(base.indexOf(q)!==-1)return true;
+		var controls=(entry&&entry.controls)||{};
+		return Object.keys(controls).some(function(controlName){return controlSearchText(controlName,controls[controlName]).indexOf(q)!==-1;});
+	}
+
+	function createControlDetails(name,control){
+		var details=document.createElement('details');details.className='cresco-layer-control-item';
+		var summary=document.createElement('summary');
+		var title=document.createElement('span');title.className='cresco-layer-control-title';title.textContent=name;
+		summary.appendChild(title);
+		if(control&&control.type)summary.appendChild(badge(String(control.type),'neutral'));
+		if(control&&control.responsive)summary.appendChild(badge('responsive','success'));
+		if(control&&control.dynamic)summary.appendChild(badge('dynamic','info'));
+		details.appendChild(summary);
+		var built=false;
+		details.addEventListener('toggle',function(){
+			if(!details.open||built)return;built=true;
+			var pre=document.createElement('pre');pre.textContent=pretty(control||{});details.appendChild(pre);
+		},{once:false});
+		return details;
+	}
+
+	function createCatalogEntry(name,entry,kind,query){
+		var details=document.createElement('details');details.className='cresco-layer-catalog-item';
+		var summary=document.createElement('summary');
+		var heading=document.createElement('span');heading.className='cresco-layer-catalog-item__title';heading.textContent=(entry&&entry.title)||name;
+		var code=document.createElement('code');code.textContent=name;
+		var count=Object.keys((entry&&entry.controls)||{}).length;
+		summary.appendChild(heading);summary.appendChild(code);summary.appendChild(badge(count+' controls','neutral'));
+		if(kind==='widget')summary.appendChild(badge('widget','info'));else summary.appendChild(badge('element','success'));
+		details.appendChild(summary);
+		var built=false;
+		details.addEventListener('toggle',function(){
+			if(!details.open||built)return;built=true;
+			var body=document.createElement('div');body.className='cresco-layer-catalog-item__body';
+			var meta=document.createElement('div');meta.className='cresco-layer-catalog-entry-meta';
+			if(entry&&entry.categories&&entry.categories.length)meta.appendChild(line('Categories',entry.categories.join(', ')));
+			if(entry&&entry.keywords&&entry.keywords.length)meta.appendChild(line('Keywords',entry.keywords.join(', ')));
+			meta.appendChild(line('Controls',count));body.appendChild(meta);
+
+			var controls=(entry&&entry.controls)||{};
+			var controlNames=Object.keys(controls).sort();
+			var q=(query||'').toLowerCase();
+			if(q){
+				var matching=controlNames.filter(function(controlName){return controlSearchText(controlName,controls[controlName]).indexOf(q)!==-1;});
+				if(matching.length)controlNames=matching;
+			}
+			var controlList=document.createElement('div');controlList.className='cresco-layer-control-list';
+			controlNames.forEach(function(controlName){controlList.appendChild(createControlDetails(controlName,controls[controlName]));});
+			if(!controlNames.length){var noControls=document.createElement('p');noControls.className='description';noControls.textContent='No controls match the current search.';controlList.appendChild(noControls);}
+			body.appendChild(controlList);
+			body.appendChild(createJsonDetails('Default settings',entry&&entry.defaultSettings?entry.defaultSettings:{}));
+			body.appendChild(createJsonDetails('Raw capability metadata',entry||{}));
+			details.appendChild(body);
+		},{once:false});
+		return details;
+	}
+
+	function renderCatalogCollection(title,kind,entries,query){
+		var section=document.createElement('section');section.className='cresco-layer-catalog-group';
+		var names=Object.keys(entries||{}).filter(function(name){return entryMatches(name,entries[name],query);});
+		names.sort(function(a,b){
+			var aa=((entries[a]&&entries[a].title)||a).toLowerCase();
+			var bb=((entries[b]&&entries[b].title)||b).toLowerCase();
+			return aa.localeCompare(bb);
+		});
+		var head=document.createElement('div');head.className='cresco-layer-catalog-group__head';
+		var h3=document.createElement('h3');h3.textContent=title+' · '+names.length;
+		head.appendChild(h3);section.appendChild(head);
+		if(!names.length){var empty=document.createElement('p');empty.className='description';empty.textContent='No matching '+title.toLowerCase()+'.';section.appendChild(empty);return section;}
+		var list=document.createElement('div');list.className='cresco-layer-catalog-list';
+		names.forEach(function(name){list.appendChild(createCatalogEntry(name,entries[name],kind,query));});
+		section.appendChild(list);return section;
+	}
+
+	function renderCatalog(data,query){
+		if(!catalogResult)return;
+		clearNode(catalogResult);
+		query=(query||'').trim();
+
+		if(!query){
+			var configGrid=document.createElement('div');configGrid.className='cresco-layer-catalog-config-grid';
+			configGrid.appendChild(createJsonDetails('Active breakpoints',data.breakpoints||{},true));
+			configGrid.appendChild(createJsonDetails('Active Kit / design system',data.activeKit||{},false));
+			configGrid.appendChild(createJsonDetails('Catalog notes',data.notes||[],false));
+			catalogResult.appendChild(configGrid);
+		}
+
+		catalogResult.appendChild(renderCatalogCollection('Element types','element',data.elements||{},query));
+		catalogResult.appendChild(renderCatalogCollection('Widgets','widget',data.widgets||{},query));
+	}
+
+	function loadCatalog(){
+		if(!catalogLoadButton)return;
+		catalogLoadButton.disabled=true;
+		setCatalogStatus('Reading Elementor runtime…','busy');
+		request('/elementor-catalog').then(function(data){
+			catalogData=data;
+			renderCatalogSummary(data);
+			renderCatalog(data,catalogQuery?catalogQuery.value:'');
+			if(catalogDownloadButton)catalogDownloadButton.disabled=false;
+			if(catalogQuery)catalogQuery.disabled=false;
+			catalogLoadButton.textContent='Refresh Elementor catalog';
+			setCatalogStatus('Catalog loaded from the active Elementor runtime.','success');
+		}).catch(function(error){
+			setCatalogStatus(error&&error.message?error.message:String(error),'error');
+		}).finally(function(){catalogLoadButton.disabled=false;});
+	}
+
+	function parsePatch(){
+		var text=patch.value.trim();if(!text)throw new Error('Paste a Cresco Layer patch first.');
+		var parsed;try{parsed=JSON.parse(text);}catch(e){throw new Error('Patch is not valid JSON.');}
+		return{parsed:parsed,text:text};
+	}
 	function busy(text){setStatus(text,'busy');}
 	function failure(error){setStatus(error&&error.message?error.message:String(error),'error');}
 
@@ -92,7 +292,17 @@
 		try{var id=documentId();var item=parsePatch();applyButton.disabled=true;previewedText='';busy('Validating patch…');request('/documents/'+id+'/preview',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderPreview(data);previewedText=item.text;applyButton.disabled=false;setStatus('Patch is valid. Review before applying.','success');}).catch(failure);}catch(e){failure(e);}
 	});
 	applyButton.addEventListener('click',function(){
-		try{var id=documentId();var item=parsePatch();if(!previewedText||item.text!==previewedText){applyButton.disabled=true;throw new Error('Patch changed after preview. Validate it again before applying.');}if(!window.confirm('Apply this reviewed patch to the Elementor document? It will not publish the page.'))return;busy('Applying through Elementor…');applyButton.disabled=true;request('/documents/'+id+'/apply',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderAudit(data.audit||{});previewedText='';setStatus('Patch applied. Open Elementor, review, then Update/Publish when ready.','success');}).catch(function(error){applyButton.disabled=false;failure(error);});}catch(e){failure(e);}
+		try{var id=documentId();var item=parsePatch();if(!previewedText||item.text!==previewedText){applyButton.disabled=true;throw new Error('Patch changed after preview. Validate it again before applying.');}if(!window.confirm('Apply this reviewed patch to the Elementor document? It will not publish the page.'))return;busy('Applying through Elementor…');applyButton.disabled=true;request('/documents/'+id+'/apply',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderAudit(data.audit||{});previewedText='';setStatus(data.verification&&data.verification.verified===false?'Patch saved, but verification found mismatched operations. Review before publishing.':'Patch applied and saved to Elementor working data. Review, then Update/Publish when ready.',data.verification&&data.verification.verified===false?'error':'success');}).catch(function(error){applyButton.disabled=false;failure(error);});}catch(e){failure(e);}
 	});
 	patch.addEventListener('input',function(){if(patch.value.trim()!==previewedText)applyButton.disabled=true;});
+
+	if(catalogLoadButton)catalogLoadButton.addEventListener('click',loadCatalog);
+	if(catalogDownloadButton)catalogDownloadButton.addEventListener('click',function(){
+		if(!catalogData)return;
+		downloadJson('cresco-layer-elementor-catalog.json',catalogData);
+	});
+	if(catalogQuery)catalogQuery.addEventListener('input',function(){
+		clearTimeout(catalogSearchTimer);
+		catalogSearchTimer=setTimeout(function(){if(catalogData)renderCatalog(catalogData,catalogQuery.value);},120);
+	});
 })();
