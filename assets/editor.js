@@ -12,7 +12,7 @@
 	var retries = 0;
 	var timer = null;
 
-	bridge.version = cfg.version || '0.2.1';
+	bridge.version = cfg.version || '0.2.2';
 	bridge.scriptLoaded = true;
 	bridge.state = 'loading';
 
@@ -167,7 +167,7 @@
 		el.textContent = message;
 		el.hidden = false;
 		clearTimeout(el._timer);
-		el._timer = setTimeout(function () { el.hidden = true; }, 5000);
+		el._timer = setTimeout(function () { el.hidden = true; }, 6500);
 	}
 
 	function download(filename, data) {
@@ -194,6 +194,224 @@
 				})
 				.catch(function (error) { toast(error.message, 'error'); });
 		} catch (error) { toast(error.message, 'error'); }
+	}
+
+	function editorApi() {
+		return window.$e && typeof window.$e.run === 'function' ? window.$e : null;
+	}
+
+	function liveEditorReady() {
+		return !!(editorApi() && window.elementor && typeof elementor.getContainer === 'function');
+	}
+
+	function getContainer(id) {
+		if (!validId(id) || !window.elementor) return null;
+		try {
+			var container = elementor.getContainer(String(id));
+			if (container) return container;
+		} catch (e) {}
+		try {
+			var api = editorApi();
+			var documentComponent = api && api.components && typeof api.components.get === 'function' ? api.components.get('document') : null;
+			if (documentComponent && documentComponent.utils && typeof documentComponent.utils.findContainerById === 'function') {
+				return documentComponent.utils.findContainerById(String(id)) || null;
+			}
+		} catch (e2) {}
+		return null;
+	}
+
+	function settingsJson(container) {
+		try {
+			if (container && container.settings && typeof container.settings.toJSON === 'function') return container.settings.toJSON() || {};
+		} catch (e) {}
+		return {};
+	}
+
+	function runElementSettings(container, settings) {
+		var api = editorApi();
+		if (!api || !container) throw new Error('Elementor live settings API is unavailable.');
+		return api.run('document/elements/settings', {
+			container: container,
+			settings: settings,
+			options: { external: true }
+		});
+	}
+
+	function startHistory(label) {
+		var api = editorApi();
+		if (!api || typeof api.internal !== 'function') return null;
+		try {
+			return api.internal('document/history/start-log', {
+				type: 'change',
+				title: label || 'Cresco AI Import'
+			});
+		} catch (e) { return null; }
+	}
+
+	function endHistory(id) {
+		var api = editorApi();
+		if (!api || typeof api.internal !== 'function' || id === null || typeof id === 'undefined') return;
+		try { api.internal('document/history/end-log', { id: id }); } catch (e) {}
+	}
+
+	function replaceSettingsLive(container, nextSettings) {
+		var current = settingsJson(container);
+		var changes = {};
+		Object.keys(current).forEach(function (key) { changes[key] = undefined; });
+		Object.keys(nextSettings || {}).forEach(function (key) { changes[key] = nextSettings[key]; });
+		runElementSettings(container, changes);
+	}
+
+	function containerIndex(container) {
+		if (!container) return 0;
+		if (container.view && Number.isInteger(container.view._index)) return container.view._index;
+		try {
+			var parentModel = container.parent && container.parent.model;
+			var collection = parentModel && typeof parentModel.get === 'function' ? parentModel.get('elements') : null;
+			if (collection && typeof collection.indexOf === 'function') {
+				var index = collection.indexOf(container.model);
+				if (index >= 0) return index;
+			}
+		} catch (e) {}
+		return 0;
+	}
+
+	function replacementNeedsReload(container, replacement) {
+		if (!container || !container.model || !replacement) return false;
+		var current = typeof container.model.toJSON === 'function' ? container.model.toJSON() : {};
+		var ignored = { id: true, settings: true, elements: true };
+		var keys = {};
+		Object.keys(current || {}).forEach(function (key) { keys[key] = true; });
+		Object.keys(replacement || {}).forEach(function (key) { keys[key] = true; });
+		return Object.keys(keys).some(function (key) {
+			if (ignored[key]) return false;
+			return JSON.stringify(current[key]) !== JSON.stringify(replacement[key]);
+		});
+	}
+
+	function applyLiveOperation(op, scopeMode, state) {
+		var api = editorApi();
+		var container;
+		var parent;
+		var replacement;
+		var position;
+
+		switch (op.operation) {
+			case 'update-setting':
+				container = getContainer(op.elementId);
+				if (!container) throw new Error('Elementor element is not available in the live canvas: ' + op.elementId);
+				var settingChange = {};
+				settingChange[op.setting] = op.value;
+				runElementSettings(container, settingChange);
+				return true;
+
+			case 'remove-setting':
+				container = getContainer(op.elementId);
+				if (!container) throw new Error('Elementor element is not available in the live canvas: ' + op.elementId);
+				var removeChange = {};
+				removeChange[op.setting] = undefined;
+				runElementSettings(container, removeChange);
+				return true;
+
+			case 'replace-settings':
+				container = getContainer(op.elementId);
+				if (!container) throw new Error('Elementor element is not available in the live canvas: ' + op.elementId);
+				replaceSettingsLive(container, op.settings || {});
+				return true;
+
+			case 'replace-element':
+				container = getContainer(op.elementId);
+				if (!container) throw new Error('Elementor element is not available in the live canvas: ' + op.elementId);
+				replacement = op.element || {};
+				if ('widget' === scopeMode || op.preserveChildren) {
+					replaceSettingsLive(container, replacement.settings || {});
+					if (replacementNeedsReload(container, replacement)) state.requiresReload = true;
+					return true;
+				}
+				parent = container.parent || (window.elementor && typeof elementor.getPreviewContainer === 'function' ? elementor.getPreviewContainer() : null);
+				if (!parent) { state.requiresReload = true; return false; }
+				position = containerIndex(container);
+				api.run('document/elements/delete', { container: container });
+				api.run('document/elements/create', { container: parent, model: replacement, options: { at: position } });
+				return true;
+
+			case 'insert-element':
+				parent = getContainer(op.parentId);
+				if (!parent) throw new Error('Elementor parent is not available in the live canvas: ' + op.parentId);
+				api.run('document/elements/create', {
+					container: parent,
+					model: op.element || {},
+					options: { at: Math.max(0, parseInt(op.position || 0, 10)) }
+				});
+				return true;
+
+			case 'remove-element':
+				container = getContainer(op.elementId);
+				if (!container) return true;
+				api.run('document/elements/delete', { container: container });
+				return true;
+
+			case 'move-element':
+				container = getContainer(op.elementId);
+				parent = getContainer(op.parentId);
+				if (!container || !parent) throw new Error('Elementor move target is not available in the live canvas.');
+				api.run('document/elements/move', {
+					container: container,
+					target: parent,
+					options: { at: Math.max(0, parseInt(op.position || 0, 10)) }
+				});
+				return true;
+
+			case 'update-page-setting':
+			case 'remove-page-setting':
+			case 'replace-document':
+				state.requiresReload = true;
+				return false;
+		}
+
+		state.requiresReload = true;
+		return false;
+	}
+
+	function applyPatchToEditor(patch) {
+		var result = {
+			live: false,
+			appliedOperations: 0,
+			unsupportedOperations: 0,
+			requiresReload: false,
+			error: ''
+		};
+		if (!patch || !Array.isArray(patch.operations) || !patch.operations.length) return result;
+		if (!liveEditorReady()) {
+			result.requiresReload = true;
+			result.error = 'Elementor command API is not ready.';
+			return result;
+		}
+
+		var scopeMode = patch.scope && patch.scope.mode ? patch.scope.mode : 'document';
+		var historyId = startHistory('Cresco AI · ' + (patch.label || 'Import'));
+		try {
+			patch.operations.forEach(function (op) {
+				if (applyLiveOperation(op, scopeMode, result)) result.appliedOperations += 1;
+				else result.unsupportedOperations += 1;
+			});
+			result.live = result.appliedOperations > 0 && !result.requiresReload;
+		} catch (error) {
+			result.requiresReload = true;
+			result.error = error && error.message ? error.message : String(error);
+		} finally {
+			endHistory(historyId);
+		}
+
+		try {
+			var rootId = patch.scope && patch.scope.rootElementId ? patch.scope.rootElementId : selectedElementId;
+			var root = getContainer(rootId);
+			if (root && root.model) {
+				selectedModel = root.model;
+				rememberId(rootId);
+			}
+		} catch (e) {}
+		return result;
 	}
 
 	function closeModal() {
@@ -293,9 +511,15 @@
 			box.querySelector('#cresco-layer-editor-apply').disabled = true;
 			request('/documents/' + postId() + '/apply', { method: 'POST', body: JSON.stringify({ patch: item.patch, expectedScope: expectedScope() }) })
 				.then(function () {
+					var liveResult = applyPatchToEditor(item.patch);
 					previewedPatch = '';
 					closeModal();
-					toast('AI changes applied. Reload Elementor if the canvas has not refreshed, then review before Publish.', 'success');
+					if (liveResult.requiresReload) {
+						var details = liveResult.error ? ' ' + liveResult.error : '';
+						toast('AI changes were saved. ' + liveResult.appliedOperations + ' operations synced to the open canvas; some changes need an Elementor reopen.' + details, 'success');
+					} else {
+						toast('AI changes applied live in Elementor. Review the canvas, then Update/Publish when ready.', 'success');
+					}
 				})
 				.catch(function (error) { box.querySelector('#cresco-layer-editor-apply').disabled = false; toast(error.message, 'error'); });
 		} catch (error) { toast(error.message, 'error'); }
@@ -384,10 +608,22 @@
 	bridge.exportWidget = function () { exportScope('widget'); };
 	bridge.exportSubtree = function () { exportScope('subtree'); };
 	bridge.openImport = function () { openImport('subtree'); };
+	bridge.applyPatchToEditor = applyPatchToEditor;
 	bridge.getDiagnostics = function () {
 		var id = '';
 		try { id = selectedId(); } catch (e) {}
-		return { version: bridge.version, state: bridge.state, postId: postId(), elementorPresent: !!window.elementor, hooksReady: ready(), hooksInstalled: hooksInstalled, selectedElementId: id, elementorVersion: cfg.elementorVersion || null, elementorProVersion: cfg.elementorProVersion || null };
+		return {
+			version: bridge.version,
+			state: bridge.state,
+			postId: postId(),
+			elementorPresent: !!window.elementor,
+			hooksReady: ready(),
+			hooksInstalled: hooksInstalled,
+			liveEditorReady: liveEditorReady(),
+			selectedElementId: id,
+			elementorVersion: cfg.elementorVersion || null,
+			elementorProVersion: cfg.elementorProVersion || null
+		};
 	};
 
 	start();
