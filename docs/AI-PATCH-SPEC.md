@@ -1,6 +1,8 @@
 # Cresco Layer AI Patch v1
 
-Schema identifier: `cresco-layer-patch/v1`
+Schema identifier: `cresco-layer-patch/v1`.
+
+Cresco Layer 0.2 keeps the patch schema identifier stable while adding optional **scoped exchange**, lossless element replacement and full-document replacement. Older document-level patches remain valid.
 
 ## Required envelope
 
@@ -9,18 +11,50 @@ Schema identifier: `cresco-layer-patch/v1`
   "schema": "cresco-layer-patch/v1",
   "base": {
     "postId": 123,
-    "checksum": "sha256"
+    "checksum": "64-character-sha256"
   },
   "label": "Human-readable change label",
   "operations": []
 }
 ```
 
-`base.checksum` must equal the checksum in the export package. A stale patch is rejected before preview/apply. The checksum represents the current Elementor working document/autosave for the current user when one exists.
+`base.checksum` is the checksum of the Elementor working document/autosave included in the export package.
+
+## Scoped widget / subtree / selection patches
+
+Packages exported with `widget`, `subtree` or `selection` scope contain `editableScope`. Copy the exact scope identity and checksum into the AI patch:
+
+```json
+{
+  "schema": "cresco-layer-patch/v1",
+  "base": {
+    "postId": 123,
+    "checksum": "document-sha256"
+  },
+  "scope": {
+    "mode": "subtree",
+    "rootElementId": "abc123",
+    "elementIds": ["abc123"],
+    "checksum": "scope-sha256"
+  },
+  "label": "Upgrade hero",
+  "operations": []
+}
+```
+
+The scope checksum is calculated only from the exported target. If an unrelated footer changes while an AI is editing a hero subtree, the patch can still be previewed/applied as long as the hero scope itself is unchanged. If the hero changes, the patch is rejected as stale.
+
+Scoped patches are sandboxed:
+
+- element mutations must target an editable ID in the exported scope;
+- new descendants may only be inserted below an editable parent;
+- page-setting and full-document operations are rejected outside `document` scope;
+- widget-only scope cannot insert or move children;
+- editor-native import can additionally require the patch root to match the currently selected Elementor element.
 
 ## Operations
 
-### update-setting
+### `update-setting`
 
 ```json
 {
@@ -31,7 +65,9 @@ Schema identifier: `cresco-layer-patch/v1`
 }
 ```
 
-### remove-setting
+Prefer targeted updates because settings omitted by the patch remain unchanged, including responsive values, Dynamic Tags and global references.
+
+### `remove-setting`
 
 ```json
 {
@@ -41,9 +77,9 @@ Schema identifier: `cresco-layer-patch/v1`
 }
 ```
 
-### replace-settings
+### `replace-settings`
 
-Replaces the settings object on one existing element. Use sparingly; targeted updates are safer.
+Replaces the persisted `settings` object for one existing element. Use sparingly; targeted updates are safer.
 
 ```json
 {
@@ -53,9 +89,32 @@ Replaces the settings object on one existing element. Use sparingly; targeted up
 }
 ```
 
-### insert-element
+### `replace-element`
 
-`parentId` may be an empty string to insert at document root. New IDs must be unique.
+Losslessly replaces a complete Elementor element object. Safe unknown fields are preserved by the validator instead of being reduced to a hard-coded field allowlist.
+
+```json
+{
+  "operation": "replace-element",
+  "elementId": "abc123",
+  "preserveChildren": true,
+  "element": {
+    "id": "abc123",
+    "elType": "container",
+    "settings": {},
+    "styles": {},
+    "interactions": {},
+    "editor_settings": {},
+    "elements": []
+  }
+}
+```
+
+The replacement ID must equal `elementId`. In `widget` scope, existing children are always preserved even if the AI omitted them. Use subtree scope when children are intentionally redesigned.
+
+### `insert-element`
+
+`parentId` may be empty only for document-level patches.
 
 ```json
 {
@@ -74,9 +133,9 @@ Replaces the settings object on one existing element. Use sparingly; targeted up
 }
 ```
 
-Atomic fields such as `version`, `styles`, `interactions` and `editor_settings` are preserved when provided.
+Inserted element IDs must be unique across the working document.
 
-### remove-element
+### `remove-element`
 
 ```json
 {
@@ -85,9 +144,7 @@ Atomic fields such as `version`, `styles`, `interactions` and `editor_settings` 
 }
 ```
 
-### move-element
-
-The applier prevents moving an element inside its own descendant.
+### `move-element`
 
 ```json
 {
@@ -98,7 +155,9 @@ The applier prevents moving an element inside its own descendant.
 }
 ```
 
-### update-page-setting
+Moving into an element's own descendant is rejected. Scoped patches cannot move elements outside their exported editable scope.
+
+### `update-page-setting`
 
 ```json
 {
@@ -108,7 +167,9 @@ The applier prevents moving an element inside its own descendant.
 }
 ```
 
-### remove-page-setting
+Document scope only.
+
+### `remove-page-setting`
 
 ```json
 {
@@ -117,23 +178,60 @@ The applier prevents moving an element inside its own descendant.
 }
 ```
 
+Document scope only.
+
+### `replace-document`
+
+Used when an AI is intentionally generating/replacing an entire Elementor page from a reference design. It is not allowed in widget/subtree/selection scope.
+
+```json
+{
+  "operation": "replace-document",
+  "content": [
+    {
+      "id": "root1234",
+      "elType": "container",
+      "settings": {},
+      "elements": []
+    }
+  ],
+  "pageSettings": {}
+}
+```
+
+Cresco validates the complete tree, rejects duplicate IDs and still writes through Elementor's document persistence layer rather than directly updating `_elementor_data`.
+
+## Lossless Elementor data
+
+Element objects may contain current and future Elementor fields such as:
+
+- `settings`
+- `styles`
+- `interactions`
+- `editor_settings`
+- classes / variables / Atomic data
+- addon-specific element metadata
+
+Cresco preserves unknown safe fields. This is deliberate: an export → unchanged AI round trip must not erase configuration simply because Cresco does not yet understand a newly introduced Elementor field.
+
 ## Validation and safety
 
 - Maximum 1,000 operations per patch.
-- Existing element IDs must use safe identifier syntax.
-- Inserted subtrees may not contain duplicate IDs or IDs already present in the document.
-- Moves into an element's own descendant are rejected.
-- Keys resembling credentials, passwords, API keys, tokens, authorization data or nonces are rejected.
-- Script/iframe/object/embed markup, JavaScript URLs and inline event-handler strings are rejected.
-- Nested Atomic/V4 objects are preserved without forcing their internal keys into the classic Elementor setting-key grammar.
+- Element IDs use safe identifier syntax.
+- Duplicate IDs are rejected.
+- Unsafe active markup, JavaScript URLs and inline event handlers are rejected.
+- Keys resembling credentials, passwords, API keys, private keys, tokens, authorization data, nonces and secrets are rejected.
+- Scoped patches cannot escape their exported target.
+- Published/private documents use Elementor working/autosave data for review; Cresco does not publish the post.
 
 ## AI rules
 
-- Preserve existing element IDs.
-- Generate new unique IDs only for inserted elements.
-- Prefer existing Elementor Kit/global styles when the export makes them available.
-- Respect the active Elementor breakpoints supplied by the export package.
-- Use widget/control names from `widgetCatalog` where possible.
-- Do not return credentials, nonces, API keys, authentication data or executable JavaScript.
-- Keep the patch focused; do not replace the entire document when a small operation is sufficient.
-- Cresco Layer does not publish a WordPress post from an AI patch. Published/private documents use Elementor working autosave data for review first; drafts remain drafts.
+1. Read `editableScope` and `instructions` from the export package first.
+2. Preserve existing element IDs.
+3. Prefer `update-setting` for small changes.
+4. Use `replace-element` only when a complete element replacement is intentional.
+5. Preserve Dynamic Tags, globals, responsive settings, Atomic/V4 fields, classes, variables and unknown fields unless intentionally changing them.
+6. Use names, options, units, ranges and conditions from `widgetCatalog` / `elementCatalog`; do not invent Elementor control keys.
+7. Prefer existing Elementor Kit/global design values.
+8. Never return credentials, nonces, API keys, authentication data or executable JavaScript.
+9. Return JSON only when the user asks for an importable Cresco patch.

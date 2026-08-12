@@ -1,10 +1,10 @@
 {
   "name": "cresco-layer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Professional intelligence and AI exchange for Elementor and Elementor Pro.",
+  "description": "Lossless scoped AI exchange and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
-    "lint:js": "node --check assets/admin.js",
+    "lint:js": "node --check assets/admin.js && node --check assets/editor.js",
     "check": "npm run lint:js"
   },
   "engines": {

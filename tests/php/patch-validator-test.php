@@ -4,9 +4,10 @@ function absint( $value ) { return abs( (int) $value ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 function wp_json_encode( $value, $flags = 0 ) { return json_encode( $value, $flags ); }
 
+require_once dirname( __DIR__, 2 ) . '/includes/Support/DocumentChecksum.php';
+require_once dirname( __DIR__, 2 ) . '/includes/AI/ElementLocator.php';
 require_once dirname( __DIR__, 2 ) . '/includes/AI/PatchValidator.php';
 require_once dirname( __DIR__, 2 ) . '/includes/AI/Diff.php';
-require_once dirname( __DIR__, 2 ) . '/includes/Support/DocumentChecksum.php';
 
 use CrescoLayer\AI\Diff;
 use CrescoLayer\AI\PatchValidator;
@@ -21,10 +22,12 @@ function expect_exception( callable $callback, string $message ): void {
 }
 
 $checksum = str_repeat( 'a', 64 );
+$scope_checksum = str_repeat( 'b', 64 );
 $validator = new PatchValidator();
 $patch = $validator->validate( [
 	'schema' => 'cresco-layer-patch/v1',
 	'base' => [ 'postId' => 42, 'checksum' => $checksum ],
+	'scope' => [ 'mode' => 'subtree', 'rootElementId' => 'container1', 'elementIds' => [ 'container1' ], 'checksum' => $scope_checksum ],
 	'label' => 'Test',
 	'operations' => [
 		[ 'operation' => 'update-setting', 'elementId' => 'abc123', 'setting' => 'title_color', 'value' => '#ffffff' ],
@@ -32,10 +35,44 @@ $patch = $validator->validate( [
 	],
 ], 42 );
 expect_true( 2 === count( $patch['operations'] ), 'Valid patch was not accepted.' );
+expect_true( 'subtree' === $patch['scope']['mode'], 'Scoped patch metadata was lost.' );
 $diff = Diff::summarize( $patch['operations'] );
 expect_true( 1 === $diff['moved'] && 1 === $diff['updated'], 'Diff summary is incorrect.' );
 
+$replacement = $validator->validate( [
+	'schema' => 'cresco-layer-patch/v1',
+	'base' => [ 'postId' => 42, 'checksum' => $checksum ],
+	'operations' => [ [
+		'operation' => 'replace-element',
+		'elementId' => 'abc123',
+		'preserveChildren' => true,
+		'element' => [
+			'id' => 'abc123',
+			'elType' => 'widget',
+			'widgetType' => 'heading',
+			'settings' => [ 'title' => 'Hello' ],
+			'styles' => [ 'atomic-v4' => [ 'value' => 1 ] ],
+			'future_elementor_field' => [ 'enabled' => true ],
+			'elements' => [],
+		],
+	] ],
+], 42 );
+expect_true( true === $replacement['operations'][0]['element']['future_elementor_field']['enabled'], 'Unknown safe Elementor fields were not preserved.' );
+expect_true( 1 === $replacement['operations'][0]['element']['styles']['atomic-v4']['value'], 'Atomic fields were not preserved.' );
+
+$full = $validator->validate( [
+	'schema' => 'cresco-layer-patch/v1',
+	'base' => [ 'postId' => 42, 'checksum' => $checksum ],
+	'operations' => [ [
+		'operation' => 'replace-document',
+		'content' => [ [ 'id' => 'root1', 'elType' => 'container', 'settings' => [], 'elements' => [] ] ],
+		'pageSettings' => [ 'hide_title' => 'yes' ],
+	] ],
+], 42 );
+expect_true( 'root1' === $full['operations'][0]['content'][0]['id'], 'Full document replacement was not validated.' );
+
 expect_exception( fn() => $validator->validate( [ 'schema' => 'wrong', 'base' => [ 'postId' => 42, 'checksum' => $checksum ], 'operations' => [] ], 42 ), 'Invalid schema was accepted.' );
+expect_exception( fn() => $validator->validate( [ 'schema' => 'cresco-layer-patch/v1', 'base' => [ 'postId' => 42, 'checksum' => $checksum ], 'scope' => [ 'mode' => 'widget', 'elementIds' => [ 'a', 'b' ], 'checksum' => $scope_checksum ], 'operations' => [] ], 42 ), 'Invalid widget scope was accepted.' );
 expect_exception( fn() => $validator->validate( [ 'schema' => 'cresco-layer-patch/v1', 'base' => [ 'postId' => 42, 'checksum' => $checksum ], 'operations' => [ [ 'operation' => 'update-setting', 'elementId' => 'abc123', 'setting' => 'api_key', 'value' => 'secret' ] ] ], 42 ), 'Sensitive setting was accepted.' );
 expect_exception( fn() => $validator->validate( [ 'schema' => 'cresco-layer-patch/v1', 'base' => [ 'postId' => 42, 'checksum' => $checksum ], 'operations' => [ [ 'operation' => 'update-setting', 'elementId' => 'abc123', 'setting' => 'content', 'value' => '<img src=x onerror=alert(1)>' ] ] ], 42 ), 'Unsafe event markup was accepted.' );
 expect_exception( fn() => $validator->validate( [ 'schema' => 'cresco-layer-patch/v1', 'base' => [ 'postId' => 42, 'checksum' => $checksum ], 'operations' => [ [ 'operation' => 'update-setting', 'elementId' => 'abc123', 'setting' => 'url', 'value' => 'javascript:alert(1)' ] ] ], 42 ), 'javascript: URL was accepted.' );
@@ -44,4 +81,4 @@ $a = DocumentChecksum::hash( [ [ 'id' => '1', 'settings' => [ 'b' => 2, 'a' => 1
 $b = DocumentChecksum::hash( [ [ 'settings' => [ 'a' => 1, 'b' => 2 ], 'id' => '1' ] ], [ 'a' => 1, 'z' => 2 ] );
 expect_true( hash_equals( $a, $b ), 'Checksum canonicalization is not deterministic.' );
 
-echo "Patch validator, diff and checksum tests passed.\n";
+echo "Patch validator, scope, lossless fields, diff and checksum tests passed.\n";
