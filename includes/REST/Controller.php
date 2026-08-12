@@ -4,6 +4,7 @@ namespace CrescoLayer\REST;
 use CrescoLayer\AI\PackageBuilder;
 use CrescoLayer\AI\PatchApplier;
 use CrescoLayer\AI\PatchValidator;
+use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
 use WP_Error;
 use WP_REST_Request;
@@ -13,6 +14,7 @@ final class Controller {
 	public function __construct(
 		private PackageBuilder $builder,
 		private PatchValidator $validator,
+		private SemanticPatchGuard $semantic,
 		private PatchApplier $applier,
 		private Auditor $auditor
 	) {}
@@ -62,6 +64,8 @@ final class Controller {
 			'packageSchema' => 'cresco-layer-ai-package/v2',
 			'patchSchema' => 'cresco-layer-patch/v1',
 			'scopedExchange' => true,
+			'semanticPatchValidation' => true,
+			'postApplyVerification' => true,
 		], 200 );
 	}
 
@@ -76,11 +80,14 @@ final class Controller {
 
 	public function preview( WP_REST_Request $request ) {
 		try {
+			$post_id = absint( $request['id'] );
 			$body = $this->request_body( $request );
-			return new WP_REST_Response(
-				$this->applier->preview( absint( $request['id'] ), $this->request_patch_from_body( $body ), $this->expected_scope( $body ) ),
-				200
-			);
+			$patch = $this->validator->validate( $this->request_patch_from_body( $body ), $post_id );
+			$semantic = $this->semantic->analyze( $post_id, $patch );
+			$this->semantic->assert_safe( $semantic );
+			$result = $this->applier->preview( $post_id, $patch, $this->expected_scope( $body ) );
+			$result['semantic'] = $semantic;
+			return new WP_REST_Response( $result, 200 );
 		} catch ( \Throwable $error ) {
 			return $this->error( $error );
 		}
@@ -88,11 +95,15 @@ final class Controller {
 
 	public function apply( WP_REST_Request $request ) {
 		try {
+			$post_id = absint( $request['id'] );
 			$body = $this->request_body( $request );
-			return new WP_REST_Response(
-				$this->applier->apply( absint( $request['id'] ), $this->request_patch_from_body( $body ), $this->expected_scope( $body ) ),
-				200
-			);
+			$patch = $this->validator->validate( $this->request_patch_from_body( $body ), $post_id );
+			$semantic = $this->semantic->analyze( $post_id, $patch );
+			$this->semantic->assert_safe( $semantic );
+			$result = $this->applier->apply( $post_id, $patch, $this->expected_scope( $body ) );
+			$result['semantic'] = $semantic;
+			$result['verification'] = $this->semantic->verify( $post_id, $patch );
+			return new WP_REST_Response( $result, 200 );
 		} catch ( \Throwable $error ) {
 			return $this->error( $error );
 		}
