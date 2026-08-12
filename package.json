@@ -1,12 +1,13 @@
 {
   "name": "cresco-layer",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Lossless scoped AI exchange and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
     "lint:js": "node --check assets/admin.js && node --check assets/editor.js",
     "test:editor-bootstrap": "node tests/js/editor-bootstrap-test.mjs",
-    "check": "npm run lint:js && npm run test:editor-bootstrap"
+    "test:editor-live-apply": "node tests/js/editor-live-apply-test.mjs",
+    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply"
   },
   "engines": {
     "node": ">=20"
