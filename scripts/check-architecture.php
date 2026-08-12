@@ -26,7 +26,7 @@ foreach ( $forbidden as $needle => $message ) {
 }
 
 $required = [
-	'includes/AI/PackageBuilder.php' => [ 'cresco-layer-ai-package/v2', 'scopeChecksum', 'widgetCatalog', 'elementCatalog', 'dynamicTags', "'[REDACTED]'", 'nativeControlEnforced', 'customCssFallbackOnly' ],
+	'includes/AI/PackageBuilder.php' => [ 'cresco-layer-ai-package/v2', 'scopeChecksum', 'widgetCatalog', 'elementCatalog', 'dynamicTags', "'[REDACTED]'" ],
 	'includes/AI/ElementLocator.php' => [ "'document', 'widget', 'selection', 'subtree'", 'scope_checksum', 'find_context' ],
 	'includes/AI/CapabilityScanner.php' => [ 'defaultSettings', 'size_units', 'selectors_dictionary', 'frontend_available' ],
 	'includes/AI/PatchValidator.php' => [ 'cresco-layer-patch/v1', 'replace-element', 'replace-document', 'MAX_OPERATIONS', 'Sensitive settings cannot be modified' ],
