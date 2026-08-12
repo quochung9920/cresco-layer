@@ -12,7 +12,7 @@ final class ConfigurationCatalog {
 	}
 
 	public function get(): array {
-		$catalog = $this->scanner->catalog();
+		$catalog = $this->scanner->catalog( true );
 		$widgets = is_array( $catalog['widgets'] ?? null ) ? $catalog['widgets'] : [];
 		$elements = is_array( $catalog['elements'] ?? null ) ? $catalog['elements'] : [];
 
