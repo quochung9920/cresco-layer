@@ -14,7 +14,7 @@ final class CapabilityScanner {
 		'mobile_extra_default', 'group_prefix', 'group_type', 'ai', 'multiple', 'toggle', 'rows', 'language',
 	];
 
-	public function catalog(): array {
+	public function catalog( bool $include_raw_metadata = false ): array {
 		$plugin = ElementorPlugin::instance();
 		$widgets = [];
 		$elements = [];
@@ -23,7 +23,7 @@ final class CapabilityScanner {
 		if ( $widget_manager && method_exists( $widget_manager, 'get_widget_types' ) ) {
 			foreach ( (array) $widget_manager->get_widget_types() as $name => $widget ) {
 				if ( ! is_object( $widget ) ) { continue; }
-				$entry = $this->describe_instance( $widget, (string) $name );
+				$entry = $this->describe_instance( $widget, (string) $name, $include_raw_metadata );
 				$widgets[ $entry['name'] ] = $entry;
 			}
 		}
@@ -32,21 +32,25 @@ final class CapabilityScanner {
 		if ( $elements_manager && method_exists( $elements_manager, 'get_element_types' ) ) {
 			foreach ( (array) $elements_manager->get_element_types() as $name => $element ) {
 				if ( ! is_object( $element ) ) { continue; }
-				$entry = $this->describe_instance( $element, (string) $name );
+				$entry = $this->describe_instance( $element, (string) $name, $include_raw_metadata );
 				$elements[ $entry['name'] ] = $entry;
 			}
+		}
+
+		$notes = [
+			'Raw element settings remain authoritative for persisted values.',
+			'Control metadata describes values the current Elementor installation can accept even when a control is still at its default.',
+			'Unknown Elementor element fields are preserved by Cresco Layer during lossless replace/import operations.',
+		];
+		if ( $include_raw_metadata ) {
+			$notes[] = 'rawMetadata contains every serializable control field exposed by the current Elementor runtime; object/resource/callback values are intentionally omitted.';
 		}
 
 		return [
 			'widgets' => $widgets,
 			'elements' => $elements,
-			'controlMetadataVersion' => 3,
-			'notes' => [
-				'Raw element settings remain authoritative for persisted values.',
-				'Control metadata describes values the current Elementor installation can accept even when a control is still at its default.',
-				'rawMetadata contains every serializable control field exposed by the current Elementor runtime; object/resource/callback values are intentionally omitted.',
-				'Unknown Elementor element fields are preserved by Cresco Layer during lossless replace/import operations.',
-			],
+			'controlMetadataVersion' => $include_raw_metadata ? 3 : 2,
+			'notes' => $notes,
 		];
 	}
 
@@ -72,14 +76,14 @@ final class CapabilityScanner {
 		];
 	}
 
-	private function describe_instance( object $instance, string $fallback_name ): array {
+	private function describe_instance( object $instance, string $fallback_name, bool $include_raw_metadata ): array {
 		$name = method_exists( $instance, 'get_name' ) ? (string) $instance->get_name() : $fallback_name;
 		$title = method_exists( $instance, 'get_title' ) ? wp_strip_all_tags( (string) $instance->get_title() ) : $name;
 		$controls = [];
 		if ( method_exists( $instance, 'get_controls' ) ) {
 			foreach ( (array) $instance->get_controls() as $control_name => $control ) {
 				if ( ! is_array( $control ) ) { continue; }
-				$controls[ (string) $control_name ] = $this->describe_control( $control );
+				$controls[ (string) $control_name ] = $this->describe_control( $control, $include_raw_metadata );
 			}
 		}
 
@@ -109,7 +113,7 @@ final class CapabilityScanner {
 		return $entry;
 	}
 
-	private function describe_control( array $control ): array {
+	private function describe_control( array $control, bool $include_raw_metadata ): array {
 		$out = [];
 		foreach ( self::CONTROL_KEYS as $key ) {
 			if ( ! array_key_exists( $key, $control ) ) { continue; }
@@ -118,8 +122,10 @@ final class CapabilityScanner {
 		}
 		$out['responsive'] = ! empty( $control['responsive'] );
 		$out['dynamic'] = ! empty( $control['dynamic']['active'] );
-		$raw = $this->safe_metadata( $control, 0 );
-		$out['rawMetadata'] = is_array( $raw ) ? $raw : [];
+		if ( $include_raw_metadata ) {
+			$raw = $this->safe_metadata( $control, 0 );
+			$out['rawMetadata'] = is_array( $raw ) ? $raw : [];
+		}
 		return $out;
 	}
 
