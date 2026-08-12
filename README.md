@@ -109,6 +109,30 @@ This lets AI know what the current Elementor installation can do even when a set
 
 The scanner asks Elementor's runtime managers for registered widgets and element types. Therefore Elementor Pro and registered addon widgets can be described without Cresco maintaining a fixed manually copied widget list.
 
+## Elementor Configuration & Widget Catalog
+
+The **Elementor → Cresco Layer** admin screen includes a read-only runtime inspector. Click **Load Elementor catalog** to inspect the actual active installation instead of a hard-coded reference.
+
+The catalog exposes:
+
+- Elementor, Elementor Pro, WordPress and PHP versions;
+- active Elementor breakpoints;
+- active Kit/design-system settings;
+- every registered element type;
+- every registered widget, including Elementor Pro and registered addon widgets;
+- widget/element class name, categories, keywords and panel visibility where available;
+- every registered control with its type, label, description, default, options, responsive/dynamic support, units, ranges, conditions, selectors and related metadata;
+- `rawMetadata`, containing every serializable field Elementor exposes for that control. Object/resource/callback values are intentionally omitted;
+- complete default settings for each widget/element.
+
+The inspector supports search across widget names, element names and control metadata, lazy expandable control details, and a **Download full JSON** action. Secret-like configuration keys are redacted from the read-only catalog response.
+
+Runtime endpoint:
+
+```text
+GET /wp-json/cresco-layer/v1/elementor-catalog
+```
+
 ## Scoped safety
 
 Every scoped package includes both:
@@ -233,7 +257,7 @@ For a new full-page reconstruction, AI can use `replace-document`; for normal da
 
 ## Admin AI Exchange
 
-The existing **Elementor → Cresco Layer** screen remains available for document-level export, quality audit and patch preview/apply.
+The existing **Elementor → Cresco Layer** screen remains available for document-level export, quality audit, runtime Elementor catalog inspection and patch preview/apply.
 
 Cresco audits include design/accessibility/performance signals such as nesting, missing image alt text, multiple H1s, button naming, image sizing and local color proliferation.
 
@@ -260,6 +284,8 @@ AI packages redact key names resembling credentials, passwords, API keys, privat
 
 AI patches are validated before preview and again before apply. Cresco rejects active script/iframe/object/embed markup, JavaScript URLs, inline event handlers, dangerous secret keys, duplicate IDs, cyclic moves, scoped operations outside the exported target and semantically invalid Elementor settings.
 
+The Elementor runtime catalog is read-only and uses the same secret-like key redaction policy before returning active Kit/control configuration to the browser.
+
 Cresco writes reviewed results through Elementor's Document API rather than direct `_elementor_data` updates. Published/private content is kept in working/autosave data where supported; AI Apply does not mean Publish.
 
 ## Development checks
@@ -277,16 +303,3 @@ node --check assets/editor.js
 ## Architecture
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-## Version 0.3 focus
-
-0.3 turns the scoped, lossless AI exchange into a more reliable **semantic Elementor editing layer**:
-
-- native-control-aware patch analysis;
-- responsive control validation;
-- options/units/range validation;
-- visual no-op detection;
-- inert custom-CSS-variable rejection;
-- lossless replacement protection;
-- post-apply read-back verification;
-- focused semantic regression tests.
