@@ -59,13 +59,15 @@ final class Controller {
 			'version' => CRESCO_LAYER_VERSION,
 			'elementor' => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : null,
 			'elementorPro' => defined( 'ELEMENTOR_PRO_VERSION' ) ? ELEMENTOR_PRO_VERSION : null,
+			'packageSchema' => 'cresco-layer-ai-package/v2',
 			'patchSchema' => 'cresco-layer-patch/v1',
+			'scopedExchange' => true,
 		], 200 );
 	}
 
 	public function export( WP_REST_Request $request ) {
 		try {
-			$selected = array_values( array_filter( array_map( 'sanitize_key', explode( ',', (string) $request->get_param( 'selected' ) ) ) ) );
+			$selected = array_values( array_filter( array_map( 'trim', explode( ',', (string) $request->get_param( 'selected' ) ) ) ) );
 			return new WP_REST_Response( $this->builder->build( absint( $request['id'] ), (string) $request->get_param( 'scope' ), $selected ), 200 );
 		} catch ( \Throwable $error ) {
 			return $this->error( $error );
@@ -74,8 +76,11 @@ final class Controller {
 
 	public function preview( WP_REST_Request $request ) {
 		try {
-			$patch = $this->request_patch( $request );
-			return new WP_REST_Response( $this->applier->preview( absint( $request['id'] ), $patch ), 200 );
+			$body = $this->request_body( $request );
+			return new WP_REST_Response(
+				$this->applier->preview( absint( $request['id'] ), $this->request_patch_from_body( $body ), $this->expected_scope( $body ) ),
+				200
+			);
 		} catch ( \Throwable $error ) {
 			return $this->error( $error );
 		}
@@ -83,8 +88,11 @@ final class Controller {
 
 	public function apply( WP_REST_Request $request ) {
 		try {
-			$patch = $this->request_patch( $request );
-			return new WP_REST_Response( $this->applier->apply( absint( $request['id'] ), $patch ), 200 );
+			$body = $this->request_body( $request );
+			return new WP_REST_Response(
+				$this->applier->apply( absint( $request['id'] ), $this->request_patch_from_body( $body ), $this->expected_scope( $body ) ),
+				200
+			);
 		} catch ( \Throwable $error ) {
 			return $this->error( $error );
 		}
@@ -94,16 +102,34 @@ final class Controller {
 		return new WP_REST_Response( $this->auditor->audit_post( absint( $request['id'] ) ), 200 );
 	}
 
-	private function request_patch( WP_REST_Request $request ): array {
+	private function request_body( WP_REST_Request $request ): array {
 		$body = $request->get_json_params();
+		if ( ! is_array( $body ) ) { throw new \InvalidArgumentException( 'Request must contain JSON.' ); }
+		return $body;
+	}
+
+	private function request_patch_from_body( array $body ): array {
 		if ( isset( $body['patch'] ) && is_array( $body['patch'] ) ) { return $body['patch']; }
-		if ( is_array( $body ) ) { return $body; }
+		if ( isset( $body['schema'] ) ) { return $body; }
 		throw new \InvalidArgumentException( 'Request must contain a JSON patch.' );
+	}
+
+	private function expected_scope( array $body ): ?array {
+		if ( ! isset( $body['expectedScope'] ) ) { return null; }
+		if ( ! is_array( $body['expectedScope'] ) ) { throw new \InvalidArgumentException( 'expectedScope must be an object.' ); }
+		$mode = sanitize_key( (string) ( $body['expectedScope']['mode'] ?? '' ) );
+		$root = trim( (string) ( $body['expectedScope']['rootElementId'] ?? '' ) );
+		if ( ! in_array( $mode, [ 'widget', 'subtree', 'selection', 'document' ], true ) ) { throw new \InvalidArgumentException( 'expectedScope mode is invalid.' ); }
+		if ( 'document' !== $mode && ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/', $root ) ) { throw new \InvalidArgumentException( 'expectedScope rootElementId is invalid.' ); }
+		return [ 'mode' => $mode, 'rootElementId' => $root ];
 	}
 
 	private function error( \Throwable $error ): WP_Error {
 		$message = $error->getMessage();
-		$status = str_contains( strtolower( $message ), 'older elementor document' ) || str_contains( strtolower( $message ), 'checksum' ) ? 409 : ( $error instanceof \InvalidArgumentException ? 400 : 500 );
+		$lower = strtolower( $message );
+		$status = str_contains( $lower, 'older elementor document' ) || str_contains( $lower, 'checksum' ) || str_contains( $lower, 'changed after ai export' )
+			? 409
+			: ( $error instanceof \InvalidArgumentException ? 400 : 500 );
 		return new WP_Error( 'cresco_layer_error', $message, [ 'status' => $status ] );
 	}
 }
