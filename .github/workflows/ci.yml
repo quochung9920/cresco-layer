@@ -26,6 +26,8 @@ jobs:
         run: php scripts/check-architecture.php
       - name: Patch and checksum tests
         run: php tests/php/patch-validator-test.php
+      - name: Semantic patch safety tests
+        run: php tests/php/semantic-patch-guard-test.php
       - name: Scoped exchange tests
         run: php tests/php/element-locator-test.php
       - name: JavaScript quality
