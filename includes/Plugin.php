@@ -5,6 +5,7 @@ use CrescoLayer\Admin\AdminPage;
 use CrescoLayer\AI\PackageBuilder;
 use CrescoLayer\AI\PatchApplier;
 use CrescoLayer\AI\PatchValidator;
+use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
 use CrescoLayer\Elementor\DynamicTagRegistry;
 use CrescoLayer\Elementor\ProRegistry;
@@ -46,8 +47,9 @@ final class Plugin {
 		$auditor    = new Auditor();
 		$builder    = new PackageBuilder( $auditor );
 		$validator  = new PatchValidator();
+		$semantic   = new SemanticPatchGuard();
 		$applier    = new PatchApplier( $validator, $auditor );
-		$controller = new Controller( $builder, $validator, $applier, $auditor );
+		$controller = new Controller( $builder, $validator, $semantic, $applier, $auditor );
 		$admin      = new AdminPage();
 
 		add_action( 'rest_api_init', [ $controller, 'register_routes' ] );
