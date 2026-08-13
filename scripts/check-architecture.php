@@ -28,13 +28,13 @@ foreach ( $forbidden as $needle => $message ) {
 $required = [
 	'includes/AI/PackageBuilder.php' => [ 'cresco-layer-ai-package/v2', 'scopeChecksum', 'widgetCatalog', 'elementCatalog', 'dynamicTags', "'[REDACTED]'" ],
 	'includes/AI/ElementLocator.php' => [ "'document', 'widget', 'selection', 'subtree'", 'scope_checksum', 'find_context' ],
-	'includes/AI/CapabilityScanner.php' => [ 'defaultSettings', 'size_units', 'selectors_dictionary', 'frontend_available' ],
+	'includes/AI/CapabilityScanner.php' => [ 'defaultSettings', 'size_units', 'selectors_dictionary', 'frontend_available', 'catalog_index', 'catalog_entry', 'scanErrors', 'MAX_ARRAY_ITEMS' ],
 	'includes/AI/PatchValidator.php' => [ 'cresco-layer-patch/v1', 'replace-element', 'replace-document', 'MAX_OPERATIONS', 'Sensitive settings cannot be modified' ],
 	'includes/AI/SemanticPatchGuard.php' => [ 'inert-css-variable', 'custom-css-native-control', 'unknown-setting', 'verify_data', 'nativeControlOperations' ],
 	'includes/AI/PatchApplier.php' => [ 'assert_scope_operations', 'staleDocumentButScopeUnchanged', 'preserve_children', 'DocumentChecksum::hash', 'get_with_permissions' ],
-	'includes/Elementor/ConfigurationCatalog.php' => [ 'CapabilityScanner', 'activeKit', 'widgetControls', 'elementControls', "'[REDACTED]'" ],
-	'includes/REST/Controller.php' => [ "current_user_can( 'edit_post'", 'expectedScope', '/preview', '/apply', '/elementor-catalog', 'elementorConfigurationCatalog', 'semanticPatchValidation', 'postApplyVerification' ],
-	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Widget Catalog', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query' ],
+	'includes/Elementor/ConfigurationCatalog.php' => [ 'catalog_index', 'lazyDetails', 'activeKit', 'scanErrors', "'[REDACTED]'" ],
+	'includes/REST/Controller.php' => [ "current_user_can( 'edit_post'", 'expectedScope', '/preview', '/apply', '/elementor-catalog/(?P<kind>widget|element)', 'elementor_catalog_detail', "'lazy-v2'", 'semanticPatchValidation', 'postApplyVerification' ],
+	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Widget Catalog', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query', 'on demand' ],
 	'includes/Support/Assets.php' => [ 'elementor/editor/after_enqueue_scripts', 'cresco-layer-editor' ],
 	'includes/Audit/Auditor.php' => [ 'missing-alt', 'multiple-h1', 'large-dom' ],
 ];
@@ -51,8 +51,8 @@ if ( ! is_file( $editor_js ) || ! str_contains( file_get_contents( $editor_js ),
 }
 
 $admin_js = $root . '/assets/admin.js';
-if ( ! is_file( $admin_js ) || ! str_contains( file_get_contents( $admin_js ), '/elementor-catalog' ) || ! str_contains( file_get_contents( $admin_js ), 'createControlDetails' ) ) {
-	$errors[] = 'Elementor runtime configuration catalog inspector is missing.';
+if ( ! is_file( $admin_js ) || ! str_contains( file_get_contents( $admin_js ), '/elementor-catalog/' ) || ! str_contains( file_get_contents( $admin_js ), 'loadCatalogDetail' ) || ! str_contains( file_get_contents( $admin_js ), 'downloadFullCatalog' ) ) {
+	$errors[] = 'Lazy Elementor runtime configuration catalog inspector is missing.';
 }
 
 if ( $errors ) {
