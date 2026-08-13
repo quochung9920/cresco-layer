@@ -24,6 +24,7 @@ context_resolver_assert( str_contains( $resolver, 'cresco-context-resolver/v1' )
 context_resolver_assert( str_contains( $resolver, 'registryIndex' ), 'Resolver must keep a compact registry index of all registered types.' );
 context_resolver_assert( str_contains( $resolver, 'capabilityCoverage' ), 'Resolver must expose trust/coverage information.' );
 context_resolver_assert( str_contains( $resolver, 'insertion-candidate' ), 'Smart document/subtree exports must add bounded insertion candidates.' );
+context_resolver_assert( str_contains( $resolver, 'filter_registered_roles' ) && str_contains( $resolver, "'widget' !== \$name" ), 'Generic persisted elType=widget must not be treated as a missing element capability.' );
 context_resolver_assert( str_contains( $resolver, 'globalDesignSystem' ), 'Resolver must expose normalized global colors/fonts while preserving legacy designSystem settings.' );
 context_resolver_assert( str_contains( $builder, 'contextProfile' ), 'AI package manifest must record the context profile.' );
 context_resolver_assert( str_contains( $builder, 'registryIndex' ), 'AI package must include the compact registry index.' );
