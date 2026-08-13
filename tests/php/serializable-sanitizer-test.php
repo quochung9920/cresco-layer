@@ -56,6 +56,9 @@ sanitizer_assert( count( $report['omissions'] ) >= 1, 'Omission report must list
 
 $hasRuntimeOmission = false;
 foreach ( $report['omissions'] as $omission ) {
-	if ( false !== strpos( $omission, 'runtime-object:RuntimeOnlySnapshotFixture' ) ) { $hasRuntimeOmission = true; break; }
+	if ( false !== strpos( $omission, 'runtime-object:RuntimeOnlySnapshotFixture' ) ) {
+		$hasRuntimeOmission = true;
+		break;
+	}
 }
 sanitar_assert_placeholder;
