@@ -26,6 +26,7 @@ final class Assets {
 	public function enqueue_editor_styles(): void {
 		$this->enqueue_frontend();
 		wp_enqueue_style( 'cresco-layer-editor', CRESCO_LAYER_URL . 'assets/editor.css', [], CRESCO_LAYER_VERSION );
+		wp_enqueue_style( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.css', [ 'cresco-layer-editor' ], CRESCO_LAYER_VERSION );
 	}
 
 	public function enqueue_editor_scripts(): void {
@@ -33,6 +34,7 @@ final class Assets {
 		// integration listens for `elementor/init`; a footer-only script can arrive after
 		// that event on fast or Atomic/V4 editor boots.
 		wp_enqueue_script( 'cresco-layer-editor', CRESCO_LAYER_URL . 'assets/editor.js', [], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-editor' ], CRESCO_LAYER_VERSION, false );
 
 		if ( $this->editor_script_localized ) {
 			return;
