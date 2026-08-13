@@ -5,19 +5,31 @@
 	var bridge = window.CrescoLayerEditorBridge = window.CrescoLayerEditorBridge || {};
 	var selectedModel = null;
 	var selectedElementId = '';
+	var selectionIds = [];
 	var hooksObject = null;
 	var hooksInstalled = false;
+	var exportMode = 'widget';
 	var importMode = 'subtree';
+	var importSourceName = '';
 	var previewedPatch = '';
 	var retries = 0;
 	var timer = null;
 
-	bridge.version = cfg.version || '0.2.2';
+	bridge.version = cfg.version || '0.5.1';
 	bridge.scriptLoaded = true;
 	bridge.state = 'loading';
 
 	function validId(value) {
 		return /^[A-Za-z0-9_-]{1,64}$/.test(String(value || ''));
+	}
+
+	function escapeHtml(value) {
+		return String(value == null ? '' : value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#039;');
 	}
 
 	function modelId(model) {
@@ -126,6 +138,11 @@
 		throw new Error('Select an Elementor widget or container first.');
 	}
 
+	function selectedIdSafe() {
+		try { return selectedId(); }
+		catch (e) { return ''; }
+	}
+
 	function postId() {
 		var id = parseInt(cfg.postId || 0, 10);
 		if (id) return id;
@@ -149,7 +166,12 @@
 		options.headers = Object.assign({ 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json' }, options.headers || {});
 		return fetch(endpoint(path), options).then(function (response) {
 			return response.json().catch(function () { return {}; }).then(function (body) {
-				if (!response.ok) throw new Error(body.message || ('Cresco Layer request failed (' + response.status + ').'));
+				if (!response.ok) {
+					var error = new Error(body.message || ('Cresco Layer request failed (' + response.status + ').'));
+					error.status = response.status;
+					error.body = body;
+					throw error;
+				}
 				return body;
 			});
 		});
@@ -181,21 +203,6 @@
 		setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 	}
 
-	function exportScope(mode) {
-		try {
-			var id = selectedId();
-			var pid = postId();
-			if (!pid) throw new Error('Cannot determine the current Elementor document ID.');
-			toast('Building Elementor ' + mode + ' AI package…', 'busy');
-			request('/documents/' + pid + '/export?scope=' + encodeURIComponent(mode) + '&selected=' + encodeURIComponent(id))
-				.then(function (data) {
-					download('cresco-layer-' + pid + '-' + id + '-' + mode + '.json', data);
-					toast('Cresco AI package exported.', 'success');
-				})
-				.catch(function (error) { toast(error.message, 'error'); });
-		} catch (error) { toast(error.message, 'error'); }
-	}
-
 	function editorApi() {
 		return window.$e && typeof window.$e.run === 'function' ? window.$e : null;
 	}
@@ -220,6 +227,192 @@
 		return null;
 	}
 
+	function elementData(id) {
+		var container = getContainer(id);
+		try {
+			if (container && container.model && typeof container.model.toJSON === 'function') return container.model.toJSON() || {};
+		} catch (e) {}
+		if (selectedModel && modelId(selectedModel) === id) {
+			try {
+				if (typeof selectedModel.toJSON === 'function') return selectedModel.toJSON() || {};
+				if (selectedModel.attributes) return selectedModel.attributes;
+			} catch (e2) {}
+		}
+		return { id: id };
+	}
+
+	function elementLabel(id) {
+		var data = elementData(id);
+		var type = data.widgetType || data.elType || 'element';
+		var title = type.replace(/[-_]+/g, ' ');
+		return title.charAt(0).toUpperCase() + title.slice(1) + ' · ' + id;
+	}
+
+	function uniqueIds(ids) {
+		var out = [];
+		(ids || []).forEach(function (id) {
+			id = String(id || '');
+			if (validId(id) && out.indexOf(id) === -1) out.push(id);
+		});
+		return out;
+	}
+
+	function hasSelection(id) {
+		return selectionIds.indexOf(String(id || '')) !== -1;
+	}
+
+	function addSelection(id) {
+		if (!validId(id)) return false;
+		if (!hasSelection(id)) selectionIds.push(String(id));
+		renderSelectionCount();
+		renderExportSelection();
+		return true;
+	}
+
+	function removeSelection(id) {
+		selectionIds = selectionIds.filter(function (item) { return item !== String(id || ''); });
+		renderSelectionCount();
+		renderExportSelection();
+	}
+
+	function toggleSelection(id) {
+		if (!validId(id)) return false;
+		if (hasSelection(id)) removeSelection(id);
+		else addSelection(id);
+		return hasSelection(id);
+	}
+
+	function clearSelection() {
+		selectionIds = [];
+		renderSelectionCount();
+		renderExportSelection();
+	}
+
+	function renderSelectionCount() {
+		var count = document.querySelector ? document.querySelector('[data-cresco-selection-count]') : null;
+		if (count) count.textContent = String(selectionIds.length);
+		var button = document.querySelector ? document.querySelector('[data-cresco="selection"]') : null;
+		if (button) button.setAttribute('aria-label', 'AI selection: ' + selectionIds.length + ' elements');
+	}
+
+	function selectedIdsForMode(mode) {
+		var current = selectedId();
+		if ('selection' === mode) {
+			if (!selectionIds.length) addSelection(current);
+			return uniqueIds(selectionIds);
+		}
+		return [current];
+	}
+
+	function exportFilename(pid, mode, ids) {
+		var target = ids.length === 1 ? ids[0] : (ids.length + '-elements');
+		return 'cresco-ai-input-post' + pid + '-' + target + '-' + mode + '.json';
+	}
+
+	function exportScope(mode) {
+		try {
+			var ids = selectedIdsForMode(mode);
+			var pid = postId();
+			if (!pid) throw new Error('Cannot determine the current Elementor document ID.');
+			if (!ids.length) throw new Error('Select at least one Elementor element first.');
+			toast('Building AI package for ' + (mode === 'widget' ? 'this element' : mode === 'subtree' ? 'this section' : (ids.length + ' selected elements')) + '…', 'busy');
+			request('/documents/' + pid + '/export?scope=' + encodeURIComponent(mode) + '&selected=' + encodeURIComponent(ids.join(',')))
+				.then(function (data) {
+					download(exportFilename(pid, mode, ids), data);
+					closeExportModal();
+					toast('AI package exported. Send this input file to your AI, then import the returned Cresco patch.', 'success');
+				})
+				.catch(function (error) { showExportError(error.message); toast(error.message, 'error'); });
+		} catch (error) { showExportError(error.message); toast(error.message, 'error'); }
+	}
+
+	function closeExportModal() {
+		var box = document.getElementById('cresco-layer-export-modal');
+		if (box) box.hidden = true;
+	}
+
+	function exportModal() {
+		var box = document.getElementById('cresco-layer-export-modal');
+		if (box) return box;
+		box = document.createElement('div');
+		box.id = 'cresco-layer-export-modal';
+		box.className = 'cresco-layer-editor-modal';
+		box.hidden = true;
+		box.innerHTML = '<div class="cresco-layer-editor-modal__backdrop" data-cresco-export-close></div>' +
+			'<section class="cresco-layer-editor-dialog cresco-layer-editor-dialog--export" role="dialog" aria-modal="true" aria-labelledby="cresco-layer-export-title">' +
+			'<header><div><span class="cresco-layer-editor-eyebrow">Cresco AI</span><h2 id="cresco-layer-export-title">Edit with AI</h2><p class="cresco-layer-editor-subtitle">Choose exactly how much of the current design the AI may edit.</p></div><button type="button" class="cresco-layer-editor-close" data-cresco-export-close aria-label="Close">×</button></header>' +
+			'<div class="cresco-layer-editor-target" id="cresco-layer-export-target"></div>' +
+			'<div class="cresco-layer-scope-cards">' +
+			'<label class="cresco-layer-scope-card"><input type="radio" name="cresco-export-scope" value="widget" checked><span><strong>This element only</strong><small>Change only the selected widget/container settings. Children stay untouched.</small></span></label>' +
+			'<label class="cresco-layer-scope-card"><input type="radio" name="cresco-export-scope" value="subtree"><span><strong>This section + children</strong><small>Redesign the selected container and everything inside it.</small></span></label>' +
+			'<label class="cresco-layer-scope-card"><input type="radio" name="cresco-export-scope" value="selection"><span><strong>Selected elements</strong><small>Edit only the elements collected in your AI selection.</small></span></label>' +
+			'</div>' +
+			'<div class="cresco-layer-selection-panel" id="cresco-layer-selection-panel"><div class="cresco-layer-selection-panel__head"><strong>AI selection</strong><span id="cresco-layer-selection-summary">0 elements</span></div><div id="cresco-layer-selection-chips" class="cresco-layer-selection-chips"></div><div class="cresco-layer-selection-actions"><button type="button" class="cresco-layer-secondary" id="cresco-layer-selection-add">Add current element</button><button type="button" class="cresco-layer-link-button" id="cresco-layer-selection-clear">Clear</button></div><p class="cresco-layer-editor-help">Tip: right-click any Elementor element and use <strong>Cresco · Add/remove AI selection</strong> to build a non-contiguous selection quickly.</p></div>' +
+			'<div id="cresco-layer-export-error" class="cresco-layer-editor-error" hidden></div>' +
+			'<footer><button type="button" class="cresco-layer-secondary" data-cresco-export-close>Cancel</button><button type="button" class="cresco-layer-primary" id="cresco-layer-export-run">Export AI input</button></footer></section>';
+		document.body.appendChild(box);
+		Array.prototype.forEach.call(box.querySelectorAll('[data-cresco-export-close]'), function (button) { button.addEventListener('click', closeExportModal); });
+		Array.prototype.forEach.call(box.querySelectorAll('input[name="cresco-export-scope"]'), function (input) {
+			input.addEventListener('change', function () {
+				if (input.checked) exportMode = input.value;
+				renderExportSelection();
+				showExportError('');
+			});
+		});
+		var add = box.querySelector('#cresco-layer-selection-add');
+		if (add) add.addEventListener('click', function () {
+			try { addSelection(selectedId()); showExportError(''); }
+			catch (error) { showExportError(error.message); }
+		});
+		var clear = box.querySelector('#cresco-layer-selection-clear');
+		if (clear) clear.addEventListener('click', clearSelection);
+		var run = box.querySelector('#cresco-layer-export-run');
+		if (run) run.addEventListener('click', function () { exportScope(exportMode); });
+		return box;
+	}
+
+	function showExportError(message) {
+		var box = document.getElementById('cresco-layer-export-error');
+		if (!box) return;
+		box.textContent = message || '';
+		box.hidden = !message;
+	}
+
+	function renderExportSelection() {
+		var box = document.getElementById('cresco-layer-export-modal');
+		if (!box) return;
+		var panel = box.querySelector('#cresco-layer-selection-panel');
+		if (panel) panel.hidden = exportMode !== 'selection';
+		var summary = box.querySelector('#cresco-layer-selection-summary');
+		if (summary) summary.textContent = selectionIds.length + (selectionIds.length === 1 ? ' element' : ' elements');
+		var chips = box.querySelector('#cresco-layer-selection-chips');
+		if (chips) {
+			chips.innerHTML = selectionIds.length ? selectionIds.map(function (id) {
+				return '<button type="button" class="cresco-layer-selection-chip" data-cresco-remove-selection="' + escapeHtml(id) + '" title="Remove from AI selection"><span>' + escapeHtml(elementLabel(id)) + '</span><b>×</b></button>';
+			}).join('') : '<span class="cresco-layer-selection-empty">No elements added yet.</span>';
+			Array.prototype.forEach.call(chips.querySelectorAll('[data-cresco-remove-selection]'), function (button) {
+				button.addEventListener('click', function () { removeSelection(button.getAttribute('data-cresco-remove-selection')); });
+			});
+		}
+		var run = box.querySelector('#cresco-layer-export-run');
+		if (run) run.disabled = exportMode === 'selection' && !selectionIds.length;
+	}
+
+	function openExport(mode) {
+		try {
+			var id = selectedId();
+			exportMode = mode || 'widget';
+			var box = exportModal();
+			var target = box.querySelector('#cresco-layer-export-target');
+			if (target) target.innerHTML = '<span>Current target</span><strong>' + escapeHtml(elementLabel(id)) + '</strong>';
+			var radio = box.querySelector('input[name="cresco-export-scope"][value="' + exportMode + '"]');
+			if (radio) radio.checked = true;
+			showExportError('');
+			renderExportSelection();
+			box.hidden = false;
+		} catch (error) { toast(error.message, 'error'); }
+	}
+
 	function settingsJson(container) {
 		try {
 			if (container && container.settings && typeof container.settings.toJSON === 'function') return container.settings.toJSON() || {};
@@ -241,10 +434,7 @@
 		var api = editorApi();
 		if (!api || typeof api.internal !== 'function') return null;
 		try {
-			return api.internal('document/history/start-log', {
-				type: 'change',
-				title: label || 'Cresco AI Import'
-			});
+			return api.internal('document/history/start-log', { type: 'change', title: label || 'Cresco AI Import' });
 		} catch (e) { return null; }
 	}
 
@@ -304,7 +494,6 @@
 				settingChange[op.setting] = op.value;
 				runElementSettings(container, settingChange);
 				return true;
-
 			case 'remove-setting':
 				container = getContainer(op.elementId);
 				if (!container) throw new Error('Elementor element is not available in the live canvas: ' + op.elementId);
@@ -312,13 +501,11 @@
 				removeChange[op.setting] = undefined;
 				runElementSettings(container, removeChange);
 				return true;
-
 			case 'replace-settings':
 				container = getContainer(op.elementId);
 				if (!container) throw new Error('Elementor element is not available in the live canvas: ' + op.elementId);
 				replaceSettingsLive(container, op.settings || {});
 				return true;
-
 			case 'replace-element':
 				container = getContainer(op.elementId);
 				if (!container) throw new Error('Elementor element is not available in the live canvas: ' + op.elementId);
@@ -334,60 +521,40 @@
 				api.run('document/elements/delete', { container: container });
 				api.run('document/elements/create', { container: parent, model: replacement, options: { at: position } });
 				return true;
-
 			case 'insert-element':
 				parent = getContainer(op.parentId);
 				if (!parent) throw new Error('Elementor parent is not available in the live canvas: ' + op.parentId);
-				api.run('document/elements/create', {
-					container: parent,
-					model: op.element || {},
-					options: { at: Math.max(0, parseInt(op.position || 0, 10)) }
-				});
+				api.run('document/elements/create', { container: parent, model: op.element || {}, options: { at: Math.max(0, parseInt(op.position || 0, 10)) } });
 				return true;
-
 			case 'remove-element':
 				container = getContainer(op.elementId);
 				if (!container) return true;
 				api.run('document/elements/delete', { container: container });
 				return true;
-
 			case 'move-element':
 				container = getContainer(op.elementId);
 				parent = getContainer(op.parentId);
 				if (!container || !parent) throw new Error('Elementor move target is not available in the live canvas.');
-				api.run('document/elements/move', {
-					container: container,
-					target: parent,
-					options: { at: Math.max(0, parseInt(op.position || 0, 10)) }
-				});
+				api.run('document/elements/move', { container: container, target: parent, options: { at: Math.max(0, parseInt(op.position || 0, 10)) } });
 				return true;
-
 			case 'update-page-setting':
 			case 'remove-page-setting':
 			case 'replace-document':
 				state.requiresReload = true;
 				return false;
 		}
-
 		state.requiresReload = true;
 		return false;
 	}
 
 	function applyPatchToEditor(patch) {
-		var result = {
-			live: false,
-			appliedOperations: 0,
-			unsupportedOperations: 0,
-			requiresReload: false,
-			error: ''
-		};
+		var result = { live: false, appliedOperations: 0, unsupportedOperations: 0, requiresReload: false, error: '' };
 		if (!patch || !Array.isArray(patch.operations) || !patch.operations.length) return result;
 		if (!liveEditorReady()) {
 			result.requiresReload = true;
 			result.error = 'Elementor command API is not ready.';
 			return result;
 		}
-
 		var scopeMode = patch.scope && patch.scope.mode ? patch.scope.mode : 'document';
 		var historyId = startHistory('Cresco AI · ' + (patch.label || 'Import'));
 		try {
@@ -399,27 +566,59 @@
 		} catch (error) {
 			result.requiresReload = true;
 			result.error = error && error.message ? error.message : String(error);
-		} finally {
-			endHistory(historyId);
-		}
-
+		} finally { endHistory(historyId); }
 		try {
 			var rootId = patch.scope && patch.scope.rootElementId ? patch.scope.rootElementId : selectedElementId;
 			var root = getContainer(rootId);
-			if (root && root.model) {
-				selectedModel = root.model;
-				rememberId(rootId);
-			}
+			if (root && root.model) { selectedModel = root.model; rememberId(rootId); }
 		} catch (e) {}
 		return result;
 	}
 
-	function closeModal() {
-		var modal = document.getElementById('cresco-layer-editor-modal');
-		if (modal) modal.hidden = true;
+	function closeImportModal() {
+		var box = document.getElementById('cresco-layer-editor-modal');
+		if (box) box.hidden = true;
 	}
 
-	function modal() {
+	function detectPayload(text) {
+		var clean = String(text || '').trim();
+		if (!clean) return { kind: 'empty', message: 'Choose a Cresco AI result file or paste a patch.' };
+		var payload;
+		try { payload = JSON.parse(clean); }
+		catch (e) { return { kind: 'invalid-json', message: 'This file is not valid JSON.' }; }
+		if (payload && payload.schema === 'cresco-layer-patch/v1') return { kind: 'patch', payload: payload, text: clean };
+		if (payload && payload.schema === 'cresco-layer-ai-package/v2') return { kind: 'ai-package', payload: payload, message: 'This is a Cresco AI input package. Send it to the AI first, then import the returned cresco-layer-patch/v1 result.' };
+		if (payload && payload.type === 'elementor') return { kind: 'elementor-clipboard', payload: payload, message: 'This is Elementor clipboard/export data, not a Cresco AI result. Import AI only accepts cresco-layer-patch/v1.' };
+		return { kind: 'unsupported', payload: payload, message: 'Unsupported JSON. Expected schema cresco-layer-patch/v1.' };
+	}
+
+	function scopeLabel(mode) {
+		if (mode === 'widget') return 'This element only';
+		if (mode === 'subtree') return 'This section + children';
+		if (mode === 'selection') return 'Selected elements';
+		if (mode === 'document') return 'Whole document';
+		return mode || 'Unknown';
+	}
+
+	function patchTargetCheck(patch) {
+		var scope = patch && patch.scope ? patch.scope : null;
+		var pid = patch && patch.base ? parseInt(patch.base.postId || 0, 10) : 0;
+		if (pid && postId() && pid !== postId()) return { ok: false, message: 'This patch belongs to Elementor document #' + pid + ', but the current editor is document #' + postId() + '.' };
+		if (!scope || scope.mode === 'document') return { ok: true, current: selectedIdSafe(), target: '', mode: 'document' };
+		var current = selectedIdSafe();
+		if ((scope.mode === 'widget' || scope.mode === 'subtree') && validId(scope.rootElementId || '')) {
+			if (!current) return { ok: false, message: 'Select the patch target ' + scope.rootElementId + ' in Elementor before validating.', current: '', target: scope.rootElementId, mode: scope.mode };
+			if (current !== scope.rootElementId) return { ok: false, message: 'Patch target is ' + scope.rootElementId + ', but you currently selected ' + current + '. Select the correct Elementor element first.', current: current, target: scope.rootElementId, mode: scope.mode };
+		}
+		if (scope.mode === 'selection') {
+			var ids = uniqueIds(scope.elementIds || []);
+			if (!ids.length) return { ok: false, message: 'Selection patch does not contain elementIds.', current: current, target: '', mode: scope.mode };
+			return { ok: true, current: current, target: ids.join(', '), mode: scope.mode, count: ids.length };
+		}
+		return { ok: true, current: current, target: scope.rootElementId || '', mode: scope.mode };
+	}
+
+	function importModal() {
 		var box = document.getElementById('cresco-layer-editor-modal');
 		if (box) return box;
 		box = document.createElement('div');
@@ -428,78 +627,175 @@
 		box.hidden = true;
 		box.innerHTML = '<div class="cresco-layer-editor-modal__backdrop" data-cresco-close></div>' +
 			'<section class="cresco-layer-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="cresco-layer-dialog-title">' +
-			'<header><div><span class="cresco-layer-editor-eyebrow">AI exchange</span><h2 id="cresco-layer-dialog-title">Import AI changes</h2></div><button type="button" class="cresco-layer-editor-close" data-cresco-close aria-label="Close">×</button></header>' +
-			'<div class="cresco-layer-editor-scope"><label><input type="radio" name="cresco-import-scope" value="widget"> Widget only</label><label><input type="radio" name="cresco-import-scope" value="subtree" checked> Subtree</label></div>' +
-			'<p class="cresco-layer-editor-help">Paste the <code>cresco-layer-patch/v1</code> returned for this exact exported scope.</p>' +
-			'<textarea id="cresco-layer-editor-patch" rows="18" spellcheck="false" placeholder="{&quot;schema&quot;:&quot;cresco-layer-patch/v1&quot;,...}"></textarea>' +
+			'<header><div><span class="cresco-layer-editor-eyebrow">Cresco AI</span><h2 id="cresco-layer-dialog-title">Import AI result</h2><p class="cresco-layer-editor-subtitle">Drop the JSON returned by the AI. Cresco will detect the scope and target automatically.</p></div><button type="button" class="cresco-layer-editor-close" data-cresco-close aria-label="Close">×</button></header>' +
+			'<div class="cresco-layer-import-body">' +
+			'<div id="cresco-layer-drop-zone" class="cresco-layer-drop-zone" tabindex="0" role="button" aria-label="Choose Cresco AI result JSON"><input id="cresco-layer-patch-file" type="file" accept="application/json,.json" hidden><strong>Drop Cresco AI result here</strong><span>or</span><button type="button" class="cresco-layer-secondary" id="cresco-layer-choose-file">Choose JSON file</button><small>Expected: <code>cresco-layer-patch/v1</code></small></div>' +
+			'<div id="cresco-layer-import-detection" class="cresco-layer-import-detection is-neutral"><strong>No AI result loaded yet.</strong><span>Choose the patch file downloaded from your AI conversation.</span></div>' +
+			'<details class="cresco-layer-paste-fallback"><summary>Paste JSON manually</summary><textarea id="cresco-layer-editor-patch" rows="12" spellcheck="false" placeholder="{&quot;schema&quot;:&quot;cresco-layer-patch/v1&quot;,...}"></textarea></details>' +
+			'<div id="cresco-layer-editor-error" class="cresco-layer-editor-error" hidden><strong>Validation failed</strong><p></p><button type="button" class="cresco-layer-link-button" id="cresco-layer-copy-diagnostics">Copy diagnostics</button></div>' +
 			'<div id="cresco-layer-editor-preview" class="cresco-layer-editor-preview">No patch preview yet.</div>' +
-			'<footer><button type="button" class="cresco-layer-secondary" data-cresco-close>Cancel</button><button type="button" class="cresco-layer-secondary" id="cresco-layer-editor-validate">Validate & Preview</button><button type="button" class="cresco-layer-primary" id="cresco-layer-editor-apply" disabled>Apply reviewed patch</button></footer></section>';
+			'</div>' +
+			'<footer><button type="button" class="cresco-layer-secondary" data-cresco-close>Cancel</button><button type="button" class="cresco-layer-secondary" id="cresco-layer-editor-validate" disabled>Validate & Preview</button><button type="button" class="cresco-layer-primary" id="cresco-layer-editor-apply" disabled>Apply reviewed patch</button></footer></section>';
 		document.body.appendChild(box);
-		Array.prototype.forEach.call(box.querySelectorAll('[data-cresco-close]'), function (button) { button.addEventListener('click', closeModal); });
-		Array.prototype.forEach.call(box.querySelectorAll('input[name="cresco-import-scope"]'), function (input) {
-			input.addEventListener('change', function () {
-				if (input.checked) importMode = input.value;
-				previewedPatch = '';
-				box.querySelector('#cresco-layer-editor-apply').disabled = true;
-			});
-		});
-		box.querySelector('#cresco-layer-editor-patch').addEventListener('input', function () {
-			if (this.value.trim() !== previewedPatch) box.querySelector('#cresco-layer-editor-apply').disabled = true;
-		});
-		box.querySelector('#cresco-layer-editor-validate').addEventListener('click', previewPatch);
-		box.querySelector('#cresco-layer-editor-apply').addEventListener('click', applyPatch);
+		Array.prototype.forEach.call(box.querySelectorAll('[data-cresco-close]'), function (button) { button.addEventListener('click', closeImportModal); });
+		var choose = box.querySelector('#cresco-layer-choose-file');
+		var input = box.querySelector('#cresco-layer-patch-file');
+		var drop = box.querySelector('#cresco-layer-drop-zone');
+		if (choose && input) choose.addEventListener('click', function () { input.click(); });
+		if (drop && input) drop.addEventListener('click', function (event) { if (event.target !== choose) input.click(); });
+		if (drop) drop.addEventListener('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (input) input.click(); } });
+		if (input) input.addEventListener('change', function () { if (input.files && input.files[0]) readPatchFile(input.files[0]); });
+		if (drop) {
+			['dragenter', 'dragover'].forEach(function (name) { drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.add('is-dragging'); }); });
+			['dragleave', 'drop'].forEach(function (name) { drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.remove('is-dragging'); }); });
+			drop.addEventListener('drop', function (event) { var files = event.dataTransfer && event.dataTransfer.files; if (files && files[0]) readPatchFile(files[0]); });
+		}
+		var textarea = box.querySelector('#cresco-layer-editor-patch');
+		if (textarea) textarea.addEventListener('input', function () { setPatchText(textarea.value, 'Pasted JSON', true); });
+		var validate = box.querySelector('#cresco-layer-editor-validate');
+		if (validate) validate.addEventListener('click', previewPatch);
+		var apply = box.querySelector('#cresco-layer-editor-apply');
+		if (apply) apply.addEventListener('click', applyPatch);
+		var copy = box.querySelector('#cresco-layer-copy-diagnostics');
+		if (copy) copy.addEventListener('click', copyDiagnostics);
 		return box;
 	}
 
-	function openImport(mode) {
-		try {
-			selectedId();
-			importMode = mode || 'subtree';
-			previewedPatch = '';
-			var box = modal();
-			var radio = box.querySelector('input[name="cresco-import-scope"][value="' + importMode + '"]');
-			if (radio) radio.checked = true;
-			box.querySelector('#cresco-layer-editor-preview').textContent = 'No patch preview yet.';
-			box.querySelector('#cresco-layer-editor-apply').disabled = true;
-			box.hidden = false;
-		} catch (error) { toast(error.message, 'error'); }
+	function readPatchFile(file) {
+		if (!file) return;
+		if (file.name && !/\.json$/i.test(file.name)) {
+			showImportError('Choose a .json file.');
+			return;
+		}
+		var Reader = window.FileReader || (typeof FileReader !== 'undefined' ? FileReader : null);
+		if (!Reader) { showImportError('This browser cannot read local files here. Use “Paste JSON manually” instead.'); return; }
+		var reader = new Reader();
+		reader.onload = function () { setPatchText(String(reader.result || ''), file.name || 'JSON file'); };
+		reader.onerror = function () { showImportError('Cresco could not read that JSON file.'); };
+		reader.readAsText(file);
+	}
+
+	function setPatchText(text, sourceName, fromTextarea) {
+		var box = importModal();
+		var textarea = box.querySelector('#cresco-layer-editor-patch');
+		if (!fromTextarea && textarea) textarea.value = String(text || '');
+		importSourceName = sourceName || '';
+		previewedPatch = '';
+		var apply = box.querySelector('#cresco-layer-editor-apply');
+		if (apply) apply.disabled = true;
+		showImportError('');
+		renderImportDetection(detectPayload(text));
+	}
+
+	function renderImportDetection(result) {
+		var box = importModal();
+		var detection = box.querySelector('#cresco-layer-import-detection');
+		var validate = box.querySelector('#cresco-layer-editor-validate');
+		if (!detection || !validate) return;
+		validate.disabled = true;
+		detection.className = 'cresco-layer-import-detection is-neutral';
+		if (result.kind !== 'patch') {
+			detection.className = 'cresco-layer-import-detection ' + (result.kind === 'empty' ? 'is-neutral' : 'is-error');
+			detection.innerHTML = '<strong>' + escapeHtml(result.kind === 'empty' ? 'No AI result loaded yet.' : 'Wrong JSON type') + '</strong><span>' + escapeHtml(result.message || '') + '</span>';
+			if (result.kind !== 'empty') showImportError(result.message || 'Unsupported JSON.');
+			return;
+		}
+		var patch = result.payload;
+		var scope = patch.scope || { mode: 'document', rootElementId: '', elementIds: [] };
+		importMode = scope.mode || 'document';
+		var target = patchTargetCheck(patch);
+		var ops = Array.isArray(patch.operations) ? patch.operations.length : 0;
+		var source = importSourceName ? '<span class="cresco-layer-file-name">' + escapeHtml(importSourceName) + '</span>' : '';
+		var targetText = scope.mode === 'selection' ? ((scope.elementIds || []).length + ' selected elements') : (scope.rootElementId || 'Document');
+		detection.className = 'cresco-layer-import-detection ' + (target.ok ? 'is-success' : 'is-warning');
+		detection.innerHTML = '<div><strong>✓ Cresco AI Patch v1</strong>' + source + '</div><dl><div><dt>Scope</dt><dd>' + escapeHtml(scopeLabel(importMode)) + '</dd></div><div><dt>Target</dt><dd>' + escapeHtml(targetText) + '</dd></div><div><dt>Operations</dt><dd>' + ops + '</dd></div></dl>' + (target.ok ? '<span class="cresco-layer-target-ok">✓ Target check passed</span>' : '<span class="cresco-layer-target-warning">⚠ ' + escapeHtml(target.message) + '</span>');
+		if (target.ok) validate.disabled = false;
+		else showImportError(target.message);
+	}
+
+	function openImport() {
+		var box = importModal();
+		previewedPatch = '';
+		var apply = box.querySelector('#cresco-layer-editor-apply');
+		if (apply) apply.disabled = true;
+		var preview = box.querySelector('#cresco-layer-editor-preview');
+		if (preview) preview.textContent = 'No patch preview yet.';
+		showImportError('');
+		var textarea = box.querySelector('#cresco-layer-editor-patch');
+		renderImportDetection(detectPayload(textarea ? textarea.value : ''));
+		box.hidden = false;
 	}
 
 	function parsePatch() {
-		var text = modal().querySelector('#cresco-layer-editor-patch').value.trim();
-		if (!text) throw new Error('Paste a Cresco Layer AI patch first.');
-		try { return { text: text, patch: JSON.parse(text) }; }
-		catch (e) { throw new Error('The AI patch is not valid JSON.'); }
+		var textarea = importModal().querySelector('#cresco-layer-editor-patch');
+		var text = textarea ? textarea.value.trim() : '';
+		var detected = detectPayload(text);
+		if (detected.kind !== 'patch') throw new Error(detected.message || 'Choose a cresco-layer-patch/v1 JSON result first.');
+		var target = patchTargetCheck(detected.payload);
+		if (!target.ok) throw new Error(target.message);
+		return { text: detected.text, patch: detected.payload };
 	}
 
-	function expectedScope() {
-		return { mode: importMode, rootElementId: selectedId() };
+	function expectedScope(patch) {
+		var scope = patch && patch.scope ? patch.scope : { mode: 'document', rootElementId: '' };
+		if (scope.mode === 'widget' || scope.mode === 'subtree') return { mode: scope.mode, rootElementId: selectedId() };
+		if (scope.mode === 'selection') return null;
+		return { mode: 'document', rootElementId: '' };
+	}
+
+	function showImportError(message) {
+		var box = document.getElementById('cresco-layer-editor-error');
+		if (!box) return;
+		var paragraph = box.querySelector('p');
+		if (paragraph) paragraph.textContent = message || '';
+		box.hidden = !message;
+		if (message) box.dataset.diagnostics = message;
+		else delete box.dataset.diagnostics;
+	}
+
+	function copyDiagnostics() {
+		var box = document.getElementById('cresco-layer-editor-error');
+		var message = box && box.dataset ? (box.dataset.diagnostics || '') : '';
+		var diagnostics = 'Cresco Layer ' + bridge.version + '\nPost: ' + postId() + '\nSelected: ' + selectedIdSafe() + '\nSource: ' + (importSourceName || 'pasted JSON') + '\nError: ' + message;
+		try {
+			if (window.navigator && window.navigator.clipboard && typeof window.navigator.clipboard.writeText === 'function') {
+				window.navigator.clipboard.writeText(diagnostics).then(function () { toast('Diagnostics copied.', 'success'); });
+				return;
+			}
+		} catch (e) {}
+		toast(diagnostics, 'info');
 	}
 
 	function showPreview(data) {
 		var diff = data.diff || {};
-		modal().querySelector('#cresco-layer-editor-preview').innerHTML =
-			'<strong>Validated · ' + (diff.total || 0) + ' operations</strong>' +
-			'<span>Updated ' + (diff.updated || 0) + '</span><span>Replaced ' + (diff.replaced || 0) + '</span>' +
-			'<span>Inserted ' + (diff.inserted || 0) + '</span><span>Removed ' + (diff.removed || 0) + '</span><span>Moved ' + (diff.moved || 0) + '</span>' +
-			(data.staleDocumentButScopeUnchanged ? '<em>The page changed elsewhere, but this exported scope is unchanged.</em>' : '');
+		var semantic = data.semantic || {};
+		var warnings = Array.isArray(semantic.warnings) ? semantic.warnings.length : 0;
+		var target = data.scope && data.scope.mode === 'selection' ? ((data.scope.elementIds || []).length + ' elements') : (data.scope && data.scope.rootElementId ? data.scope.rootElementId : 'Document');
+		var html = '<div class="cresco-layer-preview-head"><strong>Validated · ready to apply</strong><span>' + escapeHtml(scopeLabel(data.scope && data.scope.mode ? data.scope.mode : importMode)) + ' · ' + escapeHtml(target) + '</span></div>' +
+			'<div class="cresco-layer-preview-grid"><span><b>' + (diff.total || 0) + '</b> operations</span><span><b>' + (diff.updated || 0) + '</b> updated</span><span><b>' + (diff.replaced || 0) + '</b> replaced</span><span><b>' + (diff.inserted || 0) + '</b> inserted</span><span><b>' + (diff.removed || 0) + '</b> removed</span><span><b>' + (diff.moved || 0) + '</b> moved</span></div>';
+		if (semantic.nativeControlOperations || semantic.structuralOperations) html += '<p>Native controls: ' + (semantic.nativeControlOperations || 0) + ' · Structural changes: ' + (semantic.structuralOperations || 0) + '</p>';
+		if (warnings) html += '<em>⚠ ' + warnings + ' semantic warning' + (warnings === 1 ? '' : 's') + ' to review.</em>';
+		if (data.staleDocumentButScopeUnchanged) html += '<em>The page changed elsewhere, but this exported scope is still unchanged.</em>';
+		importModal().querySelector('#cresco-layer-editor-preview').innerHTML = html;
 	}
 
 	function previewPatch() {
 		try {
 			var item = parsePatch();
-			var box = modal();
-			box.querySelector('#cresco-layer-editor-apply').disabled = true;
+			var box = importModal();
+			var apply = box.querySelector('#cresco-layer-editor-apply');
+			if (apply) apply.disabled = true;
 			previewedPatch = '';
-			request('/documents/' + postId() + '/preview', { method: 'POST', body: JSON.stringify({ patch: item.patch, expectedScope: expectedScope() }) })
+			showImportError('');
+			request('/documents/' + postId() + '/preview', { method: 'POST', body: JSON.stringify({ patch: item.patch, expectedScope: expectedScope(item.patch) }) })
 				.then(function (data) {
 					showPreview(data);
 					previewedPatch = item.text;
-					box.querySelector('#cresco-layer-editor-apply').disabled = false;
-					toast('Patch is valid for the selected Elementor scope.', 'success');
+					if (apply) apply.disabled = false;
+					toast('Patch is valid for this Elementor scope.', 'success');
 				})
-				.catch(function (error) { toast(error.message, 'error'); });
-		} catch (error) { toast(error.message, 'error'); }
+				.catch(function (error) { showImportError(error.message); toast(error.message, 'error'); });
+		} catch (error) { showImportError(error.message); toast(error.message, 'error'); }
 	}
 
 	function applyPatch() {
@@ -507,22 +803,24 @@
 			var item = parsePatch();
 			if (!previewedPatch || previewedPatch !== item.text) throw new Error('Validate the patch again before applying.');
 			if (!window.confirm('Apply this reviewed AI patch? It will not publish the page.')) return;
-			var box = modal();
-			box.querySelector('#cresco-layer-editor-apply').disabled = true;
-			request('/documents/' + postId() + '/apply', { method: 'POST', body: JSON.stringify({ patch: item.patch, expectedScope: expectedScope() }) })
-				.then(function () {
+			var box = importModal();
+			var apply = box.querySelector('#cresco-layer-editor-apply');
+			if (apply) apply.disabled = true;
+			showImportError('');
+			request('/documents/' + postId() + '/apply', { method: 'POST', body: JSON.stringify({ patch: item.patch, expectedScope: expectedScope(item.patch) }) })
+				.then(function (data) {
 					var liveResult = applyPatchToEditor(item.patch);
 					previewedPatch = '';
-					closeModal();
-					if (liveResult.requiresReload) {
+					closeImportModal();
+					var verified = data && data.verification ? data.verification.verified : true;
+					if (!verified) toast('AI changes were saved, but post-save verification reported a mismatch. Reopen Elementor and review the target.', 'error');
+					else if (liveResult.requiresReload) {
 						var details = liveResult.error ? ' ' + liveResult.error : '';
 						toast('AI changes were saved. ' + liveResult.appliedOperations + ' operations synced to the open canvas; some changes need an Elementor reopen.' + details, 'success');
-					} else {
-						toast('AI changes applied live in Elementor. Review the canvas, then Update/Publish when ready.', 'success');
-					}
+					} else toast('AI changes applied live in Elementor. Review the canvas, then Update/Publish when ready.', 'success');
 				})
-				.catch(function (error) { box.querySelector('#cresco-layer-editor-apply').disabled = false; toast(error.message, 'error'); });
-		} catch (error) { toast(error.message, 'error'); }
+				.catch(function (error) { if (apply) apply.disabled = false; showImportError(error.message); toast(error.message, 'error'); });
+		} catch (error) { showImportError(error.message); toast(error.message, 'error'); }
 	}
 
 	function toolbar() {
@@ -532,21 +830,30 @@
 		tools = document.createElement('div');
 		tools.id = 'cresco-layer-editor-tools';
 		tools.className = 'cresco-layer-editor-tools';
-		tools.innerHTML = '<button type="button" data-cresco="widget">AI Widget</button><button type="button" data-cresco="subtree">AI Subtree</button><button type="button" data-cresco="import">Import AI</button>';
-		var buttons = tools.querySelectorAll('button');
-		buttons[0].addEventListener('click', function () { exportScope('widget'); });
-		buttons[1].addEventListener('click', function () { exportScope('subtree'); });
-		buttons[2].addEventListener('click', function () { openImport('subtree'); });
+		tools.innerHTML = '<button type="button" class="cresco-layer-tool-primary" data-cresco="edit">✦ Edit with AI</button><button type="button" data-cresco="import">Import AI</button><button type="button" class="cresco-layer-selection-tool" data-cresco="selection">Selection <span data-cresco-selection-count>0</span></button>';
+		Array.prototype.forEach.call(tools.querySelectorAll('button'), function (button) {
+			button.addEventListener('click', function () {
+				var action = button.getAttribute('data-cresco');
+				if (action === 'edit') openExport('widget');
+				else if (action === 'import') openImport();
+				else if (action === 'selection') {
+					try { if (!selectionIds.length) addSelection(selectedId()); openExport('selection'); }
+					catch (error) { toast(error.message, 'error'); }
+				}
+			});
+		});
 		document.body.appendChild(tools);
+		renderSelectionCount();
 		return tools;
 	}
 
 	function contextGroup(view) {
 		function selectView() { if (view) rememberModel(null, view.model, view); }
 		return { name: 'cresco-layer-ai-exchange', actions: [
-			{ name: 'cresco-export-widget', icon: 'eicon-export-kit', title: 'Cresco · Export element for AI', isEnabled: function () { return true; }, callback: function () { selectView(); exportScope('widget'); } },
-			{ name: 'cresco-export-subtree', icon: 'eicon-navigator', title: 'Cresco · Export subtree for AI', isEnabled: function () { return true; }, callback: function () { selectView(); exportScope('subtree'); } },
-			{ name: 'cresco-import-ai', icon: 'eicon-import-kit', title: 'Cresco · Import AI changes', isEnabled: function () { return true; }, callback: function () { selectView(); openImport('subtree'); } }
+			{ name: 'cresco-edit-element-ai', icon: 'eicon-ai', title: 'Cresco · Edit this element with AI', isEnabled: function () { return true; }, callback: function () { selectView(); openExport('widget'); } },
+			{ name: 'cresco-edit-subtree-ai', icon: 'eicon-navigator', title: 'Cresco · Edit this section + children', isEnabled: function () { return true; }, callback: function () { selectView(); openExport('subtree'); } },
+			{ name: 'cresco-toggle-ai-selection', icon: 'eicon-checkbox', title: 'Cresco · Add/remove AI selection', isEnabled: function () { return true; }, callback: function () { selectView(); var id = selectedId(); var added = toggleSelection(id); toast((added ? 'Added ' : 'Removed ') + id + (added ? ' to' : ' from') + ' AI selection.', 'success'); } },
+			{ name: 'cresco-import-ai', icon: 'eicon-import-kit', title: 'Cresco · Import AI result', isEnabled: function () { return true; }, callback: function () { selectView(); openImport(); } }
 		] };
 	}
 
@@ -569,9 +876,7 @@
 		var types = ['widget', 'container', 'section', 'column', 'e-div-block', 'e-flexbox', 'e-grid'];
 		types.forEach(function (type) { elementor.hooks.addAction('panel/open_editor/' + type, rememberModel); });
 		elementor.hooks.addFilter('elements/context-menu/groups', function (groups, type, view) { return addContext(groups, type, view); });
-		types.forEach(function (type) {
-			elementor.hooks.addFilter('elements/' + type + '/contextMenuGroups', function (groups, view) { return addContext(groups, type, view); });
-		});
+		types.forEach(function (type) { elementor.hooks.addFilter('elements/' + type + '/contextMenuGroups', function (groups, view) { return addContext(groups, type, view); }); });
 		return true;
 	}
 
@@ -605,13 +910,17 @@
 	}
 
 	bridge.boot = boot;
+	bridge.openEdit = function (mode) { openExport(mode || 'widget'); };
 	bridge.exportWidget = function () { exportScope('widget'); };
 	bridge.exportSubtree = function () { exportScope('subtree'); };
-	bridge.openImport = function () { openImport('subtree'); };
+	bridge.exportSelection = function () { exportScope('selection'); };
+	bridge.addCurrentToSelection = function () { return addSelection(selectedId()); };
+	bridge.clearSelection = clearSelection;
+	bridge.openImport = openImport;
 	bridge.applyPatchToEditor = applyPatchToEditor;
+	bridge.detectPayload = detectPayload;
 	bridge.getDiagnostics = function () {
-		var id = '';
-		try { id = selectedId(); } catch (e) {}
+		var id = selectedIdSafe();
 		return {
 			version: bridge.version,
 			state: bridge.state,
@@ -621,6 +930,7 @@
 			hooksInstalled: hooksInstalled,
 			liveEditorReady: liveEditorReady(),
 			selectedElementId: id,
+			selectionElementIds: selectionIds.slice(),
 			elementorVersion: cfg.elementorVersion || null,
 			elementorProVersion: cfg.elementorProVersion || null
 		};
