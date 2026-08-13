@@ -45,7 +45,7 @@ $compiled = $compiler->compile( $entry, $current, $breakpoints, $knowledge );
 
 skill_assert( SkillCompiler::SCHEMA === $compiled['schema'], 'Skill schema mismatch.' );
 skill_assert( 8 === $compiled['skillCount'], 'Every runtime control should compile into a skill record.' );
-skill_assert( 6 === $compiled['executableSkillCount'], 'Read-only heading and expert code counts are incorrect.' );
+skill_assert( 7 === $compiled['executableSkillCount'], 'Executable skill count is incorrect.' );
 skill_assert( in_array( 'container-layout', $compiled['knowledge']['profiles'], true ), 'Container expert profile was not attached.' );
 
 $padding = skill_by_setting( $compiled, 'padding' );
