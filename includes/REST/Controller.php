@@ -1,13 +1,14 @@
 <?php
 namespace CrescoLayer\REST;
 
+use CrescoLayer\AI\ContextResolver;
 use CrescoLayer\AI\PackageBuilder;
 use CrescoLayer\AI\PatchApplier;
 use CrescoLayer\AI\PatchValidator;
 use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
 use CrescoLayer\Elementor\ConfigurationCatalog;
-use CrescoLayer\Elementor\RuntimeSnapshot;
+use CrescoLayer\Elementor\RuntimeSnapshotCoordinator;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -18,7 +19,7 @@ final class Controller {
 		private PatchValidator $validator,
 		private SemanticPatchGuard $semantic,
 		private ConfigurationCatalog $catalog,
-		private RuntimeSnapshot $snapshot,
+		private RuntimeSnapshotCoordinator $snapshot,
 		private PatchApplier $applier,
 		private Auditor $auditor
 	) {}
@@ -66,6 +67,7 @@ final class Controller {
 			'args' => [
 				'scope' => [ 'default' => 'document', 'sanitize_callback' => 'sanitize_key' ],
 				'selected' => [ 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
+				'context' => [ 'default' => ContextResolver::PROFILE_SMART, 'sanitize_callback' => 'sanitize_key' ],
 			],
 		] );
 		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/preview', [
@@ -105,16 +107,16 @@ final class Controller {
 			'semanticPatchValidation' => true,
 			'postApplyVerification' => true,
 			'elementorConfigurationCatalog' => 'lazy-v2',
-			'elementorRuntimeSnapshot' => RuntimeSnapshot::SCHEMA,
+			'elementorRuntimeSnapshot' => RuntimeSnapshotCoordinator::SCHEMA,
+			'aiContextResolver' => 'smart-v1',
+			'dynamicTagDiscovery' => 'registry-info-v2',
+			'elementorProModuleDiscovery' => 'named-modules-v2',
 		], 200 );
 	}
 
 	public function elementor_catalog( WP_REST_Request $request ) {
-		try {
-			return new WP_REST_Response( $this->catalog->summary(), 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+		try { return new WP_REST_Response( $this->catalog->summary(), 200 ); }
+		catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function elementor_catalog_detail( WP_REST_Request $request ) {
@@ -122,25 +124,17 @@ final class Controller {
 			$kind = (string) $request['kind'];
 			$name = rawurldecode( (string) $request['name'] );
 			return new WP_REST_Response( $this->catalog->detail( $kind, $name ), 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function elementor_snapshot( WP_REST_Request $request ) {
-		try {
-			return new WP_REST_Response( $this->snapshot->index(), 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+		try { return new WP_REST_Response( $this->snapshot->index(), 200 ); }
+		catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function elementor_snapshot_section( WP_REST_Request $request ) {
-		try {
-			return new WP_REST_Response( $this->snapshot->section( sanitize_key( (string) $request['section'] ) ), 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+		try { return new WP_REST_Response( $this->snapshot->section( sanitize_key( (string) $request['section'] ) ), 200 ); }
+		catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function elementor_snapshot_registry( WP_REST_Request $request ) {
@@ -148,26 +142,27 @@ final class Controller {
 			$kind = (string) $request['kind'];
 			$name = rawurldecode( (string) $request['name'] );
 			return new WP_REST_Response( $this->snapshot->registryEntry( $kind, $name ), 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function elementor_snapshot_record( WP_REST_Request $request ) {
-		try {
-			return new WP_REST_Response( $this->snapshot->record( absint( $request['id'] ) ), 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+		try { return new WP_REST_Response( $this->snapshot->record( absint( $request['id'] ) ), 200 ); }
+		catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function export( WP_REST_Request $request ) {
 		try {
 			$selected = array_values( array_filter( array_map( 'trim', explode( ',', (string) $request->get_param( 'selected' ) ) ) ) );
-			return new WP_REST_Response( $this->builder->build( absint( $request['id'] ), (string) $request->get_param( 'scope' ), $selected ), 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+			return new WP_REST_Response(
+				$this->builder->build(
+					absint( $request['id'] ),
+					(string) $request->get_param( 'scope' ),
+					$selected,
+					(string) $request->get_param( 'context' )
+				),
+				200
+			);
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function preview( WP_REST_Request $request ) {
@@ -180,9 +175,7 @@ final class Controller {
 			$result = $this->applier->preview( $post_id, $patch, $this->expected_scope( $body ) );
 			$result['semantic'] = $semantic;
 			return new WP_REST_Response( $result, 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function apply( WP_REST_Request $request ) {
@@ -196,9 +189,7 @@ final class Controller {
 			$result['semantic'] = $semantic;
 			$result['verification'] = $this->semantic->verify( $post_id, $patch );
 			return new WP_REST_Response( $result, 200 );
-		} catch ( \Throwable $error ) {
-			return $this->error( $error );
-		}
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function audit( WP_REST_Request $request ): WP_REST_Response {
