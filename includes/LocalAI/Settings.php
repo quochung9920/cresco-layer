@@ -30,9 +30,7 @@ final class Settings {
 		$stored = is_array( $stored ) ? $stored : [];
 		$settings = array_replace( $this->defaults(), $stored );
 		$settings['hasApiToken'] = '' !== (string) ( $settings['apiToken'] ?? '' );
-		if ( ! $include_secret ) {
-			unset( $settings['apiToken'] );
-		}
+		if ( ! $include_secret ) { unset( $settings['apiToken'] ); }
 		return $settings;
 	}
 
@@ -40,21 +38,14 @@ final class Settings {
 		$current = $this->get( true );
 		$defaults = $this->defaults();
 		$provider = sanitize_key( (string) ( $input['provider'] ?? $current['provider'] ) );
-		if ( ! in_array( $provider, [ 'ollama', 'lm-studio', 'llama-cpp', 'openai-compatible' ], true ) ) {
-			throw new \InvalidArgumentException( 'Unsupported local AI provider.' );
-		}
+		if ( ! in_array( $provider, [ 'ollama', 'lm-studio', 'llama-cpp', 'openai-compatible' ], true ) ) { throw new \InvalidArgumentException( 'Unsupported local AI provider.' ); }
 		$mode = sanitize_key( (string) ( $input['connectionMode'] ?? $current['connectionMode'] ) );
-		if ( ! in_array( $mode, [ 'server', 'browser' ], true ) ) {
-			throw new \InvalidArgumentException( 'Local AI connection mode must be server or browser.' );
-		}
-		$endpoint = trim( (string) ( $input['endpoint'] ?? $current['endpoint'] ) );
-		$endpoint = $this->sanitize_endpoint( $endpoint );
+		if ( ! in_array( $mode, [ 'server', 'browser' ], true ) ) { throw new \InvalidArgumentException( 'Local AI connection mode must be server or browser.' ); }
+		$endpoint = $this->sanitize_endpoint( trim( (string) ( $input['endpoint'] ?? $current['endpoint'] ) ) );
 		$token = (string) ( $current['apiToken'] ?? '' );
 		if ( array_key_exists( 'apiToken', $input ) ) {
 			$incoming = trim( (string) $input['apiToken'] );
-			if ( '[REDACTED]' !== $incoming && '********' !== $incoming ) {
-				$token = $incoming;
-			}
+			if ( '' !== $incoming && '[REDACTED]' !== $incoming && '********' !== $incoming ) { $token = $incoming; }
 		}
 		if ( ! empty( $input['clearApiToken'] ) ) { $token = ''; }
 
@@ -103,12 +94,8 @@ final class Settings {
 		$parts = wp_parse_url( $endpoint );
 		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
 		$host = strtolower( (string) ( $parts['host'] ?? '' ) );
-		if ( ! in_array( $scheme, [ 'http', 'https' ], true ) || '' === $host ) {
-			throw new \InvalidArgumentException( 'Local AI endpoint must be an HTTP(S) URL.' );
-		}
-		if ( ! $this->is_local_host( $host ) ) {
-			throw new \InvalidArgumentException( 'Local AI endpoint must resolve to localhost, a private LAN address, host.docker.internal, or a .local host.' );
-		}
+		if ( ! in_array( $scheme, [ 'http', 'https' ], true ) || '' === $host ) { throw new \InvalidArgumentException( 'Local AI endpoint must be an HTTP(S) URL.' ); }
+		if ( ! $this->is_local_host( $host ) ) { throw new \InvalidArgumentException( 'Local AI endpoint must resolve to localhost, a private LAN address, host.docker.internal, or a .local host.' ); }
 		return $endpoint;
 	}
 
@@ -118,26 +105,12 @@ final class Settings {
 			$long = ip2long( $host );
 			if ( false === $long ) { return false; }
 			$unsigned = (int) sprintf( '%u', $long );
-			return ( $unsigned >= 167772160 && $unsigned <= 184549375 )
-				|| ( $unsigned >= 2886729728 && $unsigned <= 2887778303 )
-				|| ( $unsigned >= 3232235520 && $unsigned <= 3232301055 )
-				|| ( $unsigned >= 2130706432 && $unsigned <= 2147483647 );
+			return ( $unsigned >= 167772160 && $unsigned <= 184549375 ) || ( $unsigned >= 2886729728 && $unsigned <= 2887778303 ) || ( $unsigned >= 3232235520 && $unsigned <= 3232301055 ) || ( $unsigned >= 2130706432 && $unsigned <= 2147483647 );
 		}
 		return false;
 	}
 
-	private function bool( $value ): bool {
-		if ( is_bool( $value ) ) { return $value; }
-		return in_array( strtolower( trim( (string) $value ) ), [ '1', 'true', 'yes', 'on' ], true );
-	}
-
-	private function int_range( $value, int $min, int $max, int $fallback ): int {
-		$value = is_numeric( $value ) ? (int) $value : $fallback;
-		return max( $min, min( $max, $value ) );
-	}
-
-	private function float_range( $value, float $min, float $max, float $fallback ): float {
-		$value = is_numeric( $value ) ? (float) $value : $fallback;
-		return max( $min, min( $max, $value ) );
-	}
+	private function bool( $value ): bool { if ( is_bool( $value ) ) { return $value; } return in_array( strtolower( trim( (string) $value ) ), [ '1', 'true', 'yes', 'on' ], true ); }
+	private function int_range( $value, int $min, int $max, int $fallback ): int { $value = is_numeric( $value ) ? (int) $value : $fallback; return max( $min, min( $max, $value ) ); }
+	private function float_range( $value, float $min, float $max, float $fallback ): float { $value = is_numeric( $value ) ? (float) $value : $fallback; return max( $min, min( $max, $value ) ); }
 }

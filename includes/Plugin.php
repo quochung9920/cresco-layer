@@ -12,6 +12,9 @@ use CrescoLayer\Elementor\DynamicTagRegistry;
 use CrescoLayer\Elementor\ProRegistry;
 use CrescoLayer\Elementor\RuntimeSnapshotCoordinator;
 use CrescoLayer\Elementor\WidgetRegistry;
+use CrescoLayer\LocalAI\AdminIntegration as LocalAIAdminIntegration;
+use CrescoLayer\LocalAI\Manager as LocalAIManager;
+use CrescoLayer\LocalAI\RESTController as LocalAIRESTController;
 use CrescoLayer\REST\Controller;
 use CrescoLayer\Skills\WidgetSkillRuntime;
 use CrescoLayer\Support\Assets;
@@ -21,10 +24,7 @@ final class Plugin {
 	private static ?self $instance = null;
 	private bool $booted = false;
 
-	public static function instance(): self {
-		return self::$instance ??= new self();
-	}
-
+	public static function instance(): self { return self::$instance ??= new self(); }
 	private function __construct() {}
 
 	public function boot(): void {
@@ -54,13 +54,17 @@ final class Plugin {
 		$catalog    = new ConfigurationCatalog();
 		$snapshot   = new RuntimeSnapshotCoordinator();
 		$skills     = new WidgetSkillRuntime( $catalog );
+		$local_ai   = new LocalAIManager();
 		$applier    = new PatchApplier( $validator, $auditor );
 		$controller = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $skills, $applier, $auditor );
+		$local_rest = new LocalAIRESTController( $local_ai );
 		$admin      = new AdminPage();
 
 		add_action( 'rest_api_init', [ $controller, 'register_routes' ] );
+		add_action( 'rest_api_init', [ $local_rest, 'register_routes' ] );
 		add_action( 'admin_menu', [ $admin, 'register_menu' ] );
 		add_action( 'admin_enqueue_scripts', [ $admin, 'enqueue_assets' ] );
+		( new LocalAIAdminIntegration() )->register_hooks();
 		add_action( 'elementor/editor/after_save', [ $auditor, 'invalidate_post_cache' ], 10, 2 );
 	}
 }

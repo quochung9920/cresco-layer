@@ -46,5 +46,7 @@ jobs:
         run: php tests/php/skill-atomic-binding-test.php
       - name: Widget skill runtime contract tests
         run: php tests/php/widget-skill-runtime-contract-test.php
+      - name: Local AI manager contract tests
+        run: php tests/php/local-ai-contract-test.php
       - name: JavaScript quality
         run: npm run check
