@@ -24,6 +24,7 @@ $sanitizer = new SerializableSanitizer();
 $output = $sanitizer->sanitize( [
 	'api_key' => 'abc123',
 	'password' => 'pw',
+	'public_key' => 'safe-public-key-material',
 	'url' => 'https://example.test/?access_token=token-value&mode=1',
 	'authorization' => 'Bearer token-value',
 	'json' => new SnapshotJsonFixture(),
@@ -35,6 +36,7 @@ $report = $sanitizer->report();
 
 assert_snapshot( '[REDACTED]' === $output['api_key'], 'API key redaction failed.' );
 assert_snapshot( '[REDACTED]' === $output['password'], 'Password redaction failed.' );
+assert_snapshot( 'safe-public-key-material' === $output['public_key'], 'Non-secret public keys must remain available.' );
 assert_snapshot( false !== strpos( $output['url'], 'access_token=[REDACTED]' ), 'Token-bearing URL redaction failed.' );
 assert_snapshot( '[REDACTED]' === $output['authorization'], 'Authorization redaction failed.' );
 assert_snapshot( '[REDACTED]' === $output['json']['client_secret'], 'JsonSerializable nested redaction failed.' );
