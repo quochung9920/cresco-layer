@@ -61,7 +61,7 @@ The index includes a `downloadPlan` containing the section names, registered wid
 
 ## Secret handling
 
-Cresco never intentionally exports credentials. The shared `SerializableSanitizer` redacts keys matching common secret/credential patterns, including passwords, API keys, access/refresh tokens, private/public keys, consumer/client/app secrets, license keys, SMTP passwords, webhook secrets, authorization values and nonces.
+Cresco never intentionally exports credentials. The shared `SerializableSanitizer` redacts keys matching common secret/credential patterns, including passwords, API keys, access/refresh tokens, private keys, consumer/client/app secrets, license keys, SMTP passwords, webhook secrets, authorization values and nonces. Non-secret public configuration such as public keys remains available.
 
 It also redacts common secret-bearing URL query parameters and bearer tokens before output.
 
