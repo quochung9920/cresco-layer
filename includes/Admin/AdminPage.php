@@ -23,7 +23,11 @@ final class AdminPage {
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 			'restRoot' => esc_url_raw( rest_url( 'cresco-layer/v1' ) ),
 			'documents' => $this->documents(),
+			'canManageSnapshot' => current_user_can( 'manage_options' ),
 		] );
+		if ( current_user_can( 'manage_options' ) ) {
+			wp_add_inline_script( 'cresco-layer-admin', $this->snapshot_inline_script(), 'after' );
+		}
 	}
 
 	public function render(): void {
@@ -34,7 +38,7 @@ final class AdminPage {
 				<div>
 					<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Elementor intelligence layer', 'cresco-layer' ); ?></p>
 					<h1><?php echo esc_html__( 'Cresco Layer', 'cresco-layer' ); ?></h1>
-					<p><?php echo esc_html__( 'Export an AI-safe Elementor design package, inspect the live Elementor capability catalog, review a validated patch, then apply it through Elementor without giving an AI direct database access.', 'cresco-layer' ); ?></p>
+					<p><?php echo esc_html__( 'Export an AI-safe Elementor design package, inspect the live Elementor runtime, review a validated patch, then apply it through Elementor without giving an AI direct database access.', 'cresco-layer' ); ?></p>
 				</div>
 				<span class="cresco-layer-version">v<?php echo esc_html( CRESCO_LAYER_VERSION ); ?></span>
 			</div>
@@ -67,21 +71,27 @@ final class AdminPage {
 				<div class="cresco-layer-result-head">
 					<div>
 						<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Live runtime inspector', 'cresco-layer' ); ?></p>
-						<h2><?php echo esc_html__( 'Elementor Configuration & Widget Catalog', 'cresco-layer' ); ?></h2>
+						<h2><?php echo esc_html__( 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer' ); ?></h2>
 					</div>
 					<span id="cresco-layer-catalog-status" aria-live="polite"></span>
 				</div>
-				<p class="description"><?php echo esc_html__( 'Load a lightweight index of the active Elementor installation first. Open any widget or element to fetch its controls, defaults, options, responsive flags, units, ranges, conditions, selectors and raw serializable metadata on demand. A broken addon entry will no longer crash the whole catalog.', 'cresco-layer' ); ?></p>
+				<p class="description"><?php echo esc_html__( 'Load the lightweight widget/element catalog first. Open any entry to fetch its controls on demand. Administrators can also download a full cresco-elementor-snapshot/v1 containing normalized and raw serializable Elementor Core/Pro settings, Site Kit data, features, breakpoints, Dynamic Tags, runtime registries, Elementor-owned documents/templates/popups/Theme Builder records and every registered widget/element capability.', 'cresco-layer' ); ?></p>
 				<div class="cresco-layer-catalog-toolbar">
 					<div class="cresco-layer-actions">
 						<button class="button button-primary" id="cresco-layer-catalog-load"><?php echo esc_html__( 'Load Elementor catalog', 'cresco-layer' ); ?></button>
-						<button class="button" id="cresco-layer-catalog-download" disabled><?php echo esc_html__( 'Download full JSON', 'cresco-layer' ); ?></button>
+						<button class="button" id="cresco-layer-catalog-download" disabled><?php echo esc_html__( 'Download controls JSON', 'cresco-layer' ); ?></button>
+						<?php if ( current_user_can( 'manage_options' ) ) : ?>
+							<button class="button" id="cresco-layer-snapshot-download" disabled><?php echo esc_html__( 'Download full Elementor snapshot', 'cresco-layer' ); ?></button>
+						<?php endif; ?>
 					</div>
 					<label class="cresco-layer-catalog-search" for="cresco-layer-catalog-query">
 						<span class="screen-reader-text"><?php echo esc_html__( 'Search Elementor widgets and elements', 'cresco-layer' ); ?></span>
 						<input type="search" id="cresco-layer-catalog-query" placeholder="<?php echo esc_attr__( 'Search widget or element…', 'cresco-layer' ); ?>" disabled>
 					</label>
 				</div>
+				<?php if ( current_user_can( 'manage_options' ) ) : ?>
+					<p class="description"><?php echo esc_html__( 'Full snapshot export is administrator-only. Secrets, credentials, API keys, tokens, nonces and common token-bearing URL values are redacted; unsupported runtime objects/resources/callbacks are omitted and listed in the snapshot coverage report.', 'cresco-layer' ); ?></p>
+				<?php endif; ?>
 				<div id="cresco-layer-catalog-summary" class="cresco-layer-catalog-summary" hidden></div>
 				<div id="cresco-layer-catalog-result" class="cresco-layer-catalog-result">
 					<p><?php echo esc_html__( 'Catalog not loaded yet. Click “Load Elementor catalog” to inspect the current runtime configuration.', 'cresco-layer' ); ?></p>
@@ -115,5 +125,98 @@ final class AdminPage {
 			$result[] = [ 'id' => $post->ID, 'title' => $post->post_title ?: sprintf( __( '(no title) #%d', 'cresco-layer' ), $post->ID ), 'type' => $post->post_type, 'modified' => $post->post_modified_gmt ];
 		}
 		return $result;
+	}
+
+	private function snapshot_inline_script(): string {
+		return <<<'JS'
+(function(){
+	'use strict';
+	var config=window.crescoLayerAdmin||{};
+	if(!config.canManageSnapshot)return;
+	var button=document.getElementById('cresco-layer-snapshot-download');
+	var status=document.getElementById('cresco-layer-catalog-status');
+	var catalogLoad=document.getElementById('cresco-layer-catalog-load');
+	var catalogDownload=document.getElementById('cresco-layer-catalog-download');
+	if(!button)return;
+	button.disabled=false;
+
+	function setStatus(text,tone){if(!status)return;status.textContent=text||'';status.className=tone?'is-'+tone:'';}
+	function endpoint(path){return String(config.restRoot||'').replace(/\/$/,'')+path;}
+	function request(path){
+		return fetch(endpoint(path),{headers:{'X-WP-Nonce':config.nonce,'Content-Type':'application/json'}}).then(function(response){
+			return response.text().then(function(text){
+				var body={};
+				if(text){try{body=JSON.parse(text);}catch(e){body={};}}
+				if(!response.ok){throw new Error(body&&body.message?body.message:'Snapshot request failed ('+response.status+').');}
+				return body;
+			});
+		});
+	}
+	function download(data){
+		var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+		var url=URL.createObjectURL(blob);
+		var a=document.createElement('a');
+		a.href=url;a.download='cresco-layer-elementor-snapshot.json';document.body.appendChild(a);a.click();a.remove();
+		setTimeout(function(){URL.revokeObjectURL(url);},1000);
+	}
+	function sequential(items,worker){
+		return items.reduce(function(chain,item,index){return chain.then(function(){return worker(item,index);});},Promise.resolve());
+	}
+	function message(error){return error&&error.message?error.message:String(error);}
+
+	button.addEventListener('click',function(){
+		button.disabled=true;if(catalogLoad)catalogLoad.disabled=true;if(catalogDownload)catalogDownload.disabled=true;
+		setStatus('Preparing full Elementor snapshot index…','busy');
+		request('/elementor-snapshot').then(function(index){
+			var plan=index.downloadPlan||{};
+			var sections=Array.isArray(plan.sections)?plan.sections:[];
+			var widgets=Array.isArray(plan.widgets)?plan.widgets:[];
+			var elements=Array.isArray(plan.elements)?plan.elements:[];
+			var recordIds=Array.isArray(plan.recordIds)?plan.recordIds:[];
+			var total=sections.length+widgets.length+elements.length+recordIds.length;
+			var completed=0;
+			var snapshot={
+				schema:index.schema||'cresco-elementor-snapshot/v1',
+				generatedAt:new Date().toISOString(),
+				index:index,
+				sections:{},
+				registries:{widgets:{},elements:{}},
+				records:{},
+				downloadErrors:[],
+				coverage:{sections:{total:sections.length,scanned:0,failed:0},widgets:{total:widgets.length,scanned:0,failed:0},elements:{total:elements.length,scanned:0,failed:0},records:{total:recordIds.length,scanned:0,failed:0}}
+			};
+			function progress(label){completed++;setStatus('Building full Elementor snapshot '+completed+'/'+Math.max(total,1)+' · '+label,'busy');}
+			function failed(bucket,id,error){snapshot.coverage[bucket].failed++;snapshot.downloadErrors.push({bucket:bucket,id:String(id),message:message(error)});}
+
+			return sequential(sections,function(slug){
+				return request('/elementor-snapshot/section/'+encodeURIComponent(slug)).then(function(data){snapshot.sections[slug]=data;snapshot.coverage.sections.scanned++;}).catch(function(error){failed('sections',slug,error);snapshot.sections[slug]={scanErrors:[{stage:'section-request',message:message(error)}]};}).then(function(){progress('section '+slug);});
+			}).then(function(){
+				return sequential(widgets,function(name){
+					return request('/elementor-snapshot/widget/'+encodeURIComponent(name)).then(function(data){snapshot.registries.widgets[name]=data;snapshot.coverage.widgets.scanned++;}).catch(function(error){failed('widgets',name,error);snapshot.registries.widgets[name]={scanErrors:[{stage:'registry-request',message:message(error)}]};}).then(function(){progress('widget '+name);});
+				});
+			}).then(function(){
+				return sequential(elements,function(name){
+					return request('/elementor-snapshot/element/'+encodeURIComponent(name)).then(function(data){snapshot.registries.elements[name]=data;snapshot.coverage.elements.scanned++;}).catch(function(error){failed('elements',name,error);snapshot.registries.elements[name]={scanErrors:[{stage:'registry-request',message:message(error)}]};}).then(function(){progress('element '+name);});
+				});
+			}).then(function(){
+				return sequential(recordIds,function(id){
+					return request('/elementor-snapshot/record/'+encodeURIComponent(String(id))).then(function(data){snapshot.records[String(id)]=data;snapshot.coverage.records.scanned++;}).catch(function(error){failed('records',id,error);snapshot.records[String(id)]={scanErrors:[{stage:'record-request',message:message(error)}]};}).then(function(){progress('record #'+id);});
+				});
+			}).then(function(){
+				Object.keys(snapshot.coverage).forEach(function(key){var row=snapshot.coverage[key];row.status=row.failed===0?'complete':(row.scanned>0?'partial':'failed');});
+				snapshot.coverage.status=snapshot.downloadErrors.length?'partial':'complete';
+				return snapshot;
+			});
+		}).then(function(snapshot){
+			download(snapshot);
+			setStatus('Full Elementor snapshot built. Coverage: '+snapshot.coverage.status+'. Failed requests: '+snapshot.downloadErrors.length+'.','success');
+		}).catch(function(error){
+			setStatus(message(error),'error');
+		}).finally(function(){
+			button.disabled=false;if(catalogLoad)catalogLoad.disabled=false;if(catalogDownload&&window.crescoLayerAdmin)catalogDownload.disabled=false;
+		});
+	});
+})();
+JS;
 	}
 }

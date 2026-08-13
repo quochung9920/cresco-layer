@@ -10,6 +10,7 @@ use CrescoLayer\Audit\Auditor;
 use CrescoLayer\Elementor\ConfigurationCatalog;
 use CrescoLayer\Elementor\DynamicTagRegistry;
 use CrescoLayer\Elementor\ProRegistry;
+use CrescoLayer\Elementor\RuntimeSnapshot;
 use CrescoLayer\Elementor\WidgetRegistry;
 use CrescoLayer\REST\Controller;
 use CrescoLayer\Support\Assets;
@@ -50,8 +51,9 @@ final class Plugin {
 		$validator  = new PatchValidator();
 		$semantic   = new SemanticPatchGuard();
 		$catalog    = new ConfigurationCatalog();
+		$snapshot   = new RuntimeSnapshot();
 		$applier    = new PatchApplier( $validator, $auditor );
-		$controller = new Controller( $builder, $validator, $semantic, $catalog, $applier, $auditor );
+		$controller = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $applier, $auditor );
 		$admin      = new AdminPage();
 
 		add_action( 'rest_api_init', [ $controller, 'register_routes' ] );
