@@ -38,6 +38,23 @@ Elementor working document
 
 Secrets are redacted before the package leaves WordPress.
 
+## Full Elementor runtime snapshot
+
+`cresco-elementor-snapshot/v1` is a separate administrator-only diagnostic/configuration export. It is intentionally not embedded into every AI package because a complete site snapshot can be very large.
+
+The snapshot uses lazy, fault-isolated REST requests. The index advertises sections, registered widgets/elements and Elementor-owned record IDs. The browser downloads each item sequentially and assembles one final JSON file.
+
+Every payload keeps two representations:
+
+- `normalized`: stable data intended for human/AI reasoning;
+- `raw`: the closest safe serializable runtime/post/meta representation exposed by the current Elementor installation.
+
+Snapshot coverage includes environment, Elementor-related global options, features/experiments, breakpoints, the active Kit/Site Settings, Dynamic Tags, Elementor/Pro runtime managers, Classic + Atomic widget/element capabilities, and recognized Elementor-owned records such as documents, templates, Theme Builder templates, popups, custom fonts, custom icons and custom code.
+
+A shared `SerializableSanitizer` redacts secrets and reports unsupported runtime objects/resources/callbacks instead of stringifying them. New/unknown Elementor fields are preserved in `raw` whenever they are serializable.
+
+See `docs/ELEMENTOR-SNAPSHOT.md` for the REST contract and coverage semantics.
+
 ## Scope model
 
 Supported export scopes:
@@ -63,6 +80,8 @@ The scanner queries Elementor's registered widget manager and element manager at
 
 Control metadata includes the values Cresco can safely serialize from Elementor's control stack: type, label, description, defaults, options, responsive/dynamic flags, units, ranges, selectors, conditions, render type and related metadata.
 
+Classic Elementor entries use `get_controls()` and derive defaults from control metadata without calling `get_settings()` on registry prototypes. Atomic/V4 entries use `get_atomic_controls()` plus `get_props_schema()` and normalize schema-only properties so editable Atomic data is not lost merely because legacy controls are empty.
+
 The control catalog describes what an element *can* do, even when the current document omits a setting because Elementor is using the default.
 
 ## Editor-native exchange
@@ -80,8 +99,10 @@ For published/private documents Cresco uses Elementor working/autosave data when
 ## Security rules
 
 - WordPress edit capability is checked per target post.
+- Full runtime snapshots require `manage_options`.
 - REST requests use WordPress REST nonces.
 - secrets and credentials are redacted from exports and rejected in patches;
+- unsupported runtime objects/resources/callbacks are omitted from full snapshots and reported;
 - active/executable markup is rejected;
 - operation counts and nesting depth are bounded;
 - duplicate IDs and cyclic moves are rejected;
@@ -95,5 +116,8 @@ The repository quality gate enforces:
 - package v2 + scope checksum presence;
 - scoped patch guard presence;
 - lossless element replacement support;
+- full runtime snapshot schema/routes/sanitizer presence;
+- Classic + Atomic capability scanner tests;
+- snapshot serializer + snapshot contract tests;
 - editor-native integration registration;
-- syntax checks and standalone scope/validator tests.
+- PHP/JavaScript syntax checks and standalone scope/validator tests.
