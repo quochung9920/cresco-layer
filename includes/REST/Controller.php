@@ -7,6 +7,7 @@ use CrescoLayer\AI\PatchValidator;
 use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
 use CrescoLayer\Elementor\ConfigurationCatalog;
+use CrescoLayer\Elementor\RuntimeSnapshot;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -17,6 +18,7 @@ final class Controller {
 		private PatchValidator $validator,
 		private SemanticPatchGuard $semantic,
 		private ConfigurationCatalog $catalog,
+		private RuntimeSnapshot $snapshot,
 		private PatchApplier $applier,
 		private Auditor $auditor
 	) {}
@@ -36,6 +38,26 @@ final class Controller {
 			'methods' => 'GET',
 			'callback' => [ $this, 'elementor_catalog_detail' ],
 			'permission_callback' => static fn() => current_user_can( 'edit_posts' ),
+		] );
+		register_rest_route( 'cresco-layer/v1', '/elementor-snapshot', [
+			'methods' => 'GET',
+			'callback' => [ $this, 'elementor_snapshot' ],
+			'permission_callback' => [ $this, 'can_manage_snapshot' ],
+		] );
+		register_rest_route( 'cresco-layer/v1', '/elementor-snapshot/section/(?P<section>[a-z0-9-]+)', [
+			'methods' => 'GET',
+			'callback' => [ $this, 'elementor_snapshot_section' ],
+			'permission_callback' => [ $this, 'can_manage_snapshot' ],
+		] );
+		register_rest_route( 'cresco-layer/v1', '/elementor-snapshot/(?P<kind>widget|element)/(?P<name>[^/]+)', [
+			'methods' => 'GET',
+			'callback' => [ $this, 'elementor_snapshot_registry' ],
+			'permission_callback' => [ $this, 'can_manage_snapshot' ],
+		] );
+		register_rest_route( 'cresco-layer/v1', '/elementor-snapshot/record/(?P<id>\d+)', [
+			'methods' => 'GET',
+			'callback' => [ $this, 'elementor_snapshot_record' ],
+			'permission_callback' => [ $this, 'can_manage_snapshot' ],
 		] );
 		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/export', [
 			'methods' => 'GET',
@@ -67,6 +89,10 @@ final class Controller {
 		return current_user_can( 'edit_post', absint( $request['id'] ) );
 	}
 
+	public function can_manage_snapshot(): bool {
+		return current_user_can( 'manage_options' );
+	}
+
 	public function health(): WP_REST_Response {
 		return new WP_REST_Response( [
 			'ok' => true,
@@ -79,6 +105,7 @@ final class Controller {
 			'semanticPatchValidation' => true,
 			'postApplyVerification' => true,
 			'elementorConfigurationCatalog' => 'lazy-v2',
+			'elementorRuntimeSnapshot' => RuntimeSnapshot::SCHEMA,
 		], 200 );
 	}
 
@@ -95,6 +122,40 @@ final class Controller {
 			$kind = (string) $request['kind'];
 			$name = rawurldecode( (string) $request['name'] );
 			return new WP_REST_Response( $this->catalog->detail( $kind, $name ), 200 );
+		} catch ( \Throwable $error ) {
+			return $this->error( $error );
+		}
+	}
+
+	public function elementor_snapshot( WP_REST_Request $request ) {
+		try {
+			return new WP_REST_Response( $this->snapshot->index(), 200 );
+		} catch ( \Throwable $error ) {
+			return $this->error( $error );
+		}
+	}
+
+	public function elementor_snapshot_section( WP_REST_Request $request ) {
+		try {
+			return new WP_REST_Response( $this->snapshot->section( sanitize_key( (string) $request['section'] ) ), 200 );
+		} catch ( \Throwable $error ) {
+			return $this->error( $error );
+		}
+	}
+
+	public function elementor_snapshot_registry( WP_REST_Request $request ) {
+		try {
+			$kind = (string) $request['kind'];
+			$name = rawurldecode( (string) $request['name'] );
+			return new WP_REST_Response( $this->snapshot->registryEntry( $kind, $name ), 200 );
+		} catch ( \Throwable $error ) {
+			return $this->error( $error );
+		}
+	}
+
+	public function elementor_snapshot_record( WP_REST_Request $request ) {
+		try {
+			return new WP_REST_Response( $this->snapshot->record( absint( $request['id'] ) ), 200 );
 		} catch ( \Throwable $error ) {
 			return $this->error( $error );
 		}
