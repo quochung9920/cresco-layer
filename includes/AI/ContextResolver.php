@@ -42,9 +42,9 @@ final class ContextResolver {
 		$dependencies = $this->runtime->dependency_map();
 
 		$errors = array_merge( $errors, (array) ( $dynamicTags['scanErrors'] ?? [] ), (array) ( $modules['scanErrors'] ?? [] ) );
-		$controlStatus = $this->status_from_errors( $errors, [ 'catalog', 'registry', 'capability' ] );
-		$kitStatus = $this->status_from_errors( $errors, [ 'active-kit', 'design-system' ] );
-		$breakpointStatus = $this->status_from_errors( $errors, [ 'breakpoint' ] );
+		$controlStatus = $this->status_from_errors( $errors, [ 'catalog', 'registry', 'capability', 'control', 'atomic', 'widget', 'element' ], (bool) ( $widgets || $elements || ! $roles['widgets'] && ! $roles['elements'] ) );
+		$kitStatus = $this->status_from_errors( $errors, [ 'active-kit', 'design-system', 'kit' ], ! empty( $designSystem ) );
+		$breakpointStatus = $this->status_from_errors( $errors, [ 'breakpoint' ], ! empty( $breakpoints ) );
 
 		return [
 			'profile' => $profile,
@@ -142,7 +142,10 @@ final class ContextResolver {
 		$out = [];
 		try {
 			$manager = ElementorPlugin::instance()->breakpoints ?? null;
-			if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_active_breakpoints' ) ) { return []; }
+			if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_active_breakpoints' ) ) {
+				$errors[] = [ 'stage' => 'breakpoints-unavailable', 'message' => 'Elementor active breakpoint manager is unavailable.' ];
+				return [];
+			}
 			foreach ( (array) $manager->get_active_breakpoints() as $name => $breakpoint ) {
 				if ( ! is_object( $breakpoint ) ) { continue; }
 				$out[ (string) $name ] = [
@@ -160,9 +163,15 @@ final class ContextResolver {
 	private function design_system( array &$errors ): array {
 		try {
 			$manager = ElementorPlugin::instance()->kits_manager ?? null;
-			if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_active_kit' ) ) { return []; }
+			if ( ! is_object( $manager ) || ! method_exists( $manager, 'get_active_kit' ) ) {
+				$errors[] = [ 'stage' => 'active-kit-unavailable', 'message' => 'Elementor active Kit manager is unavailable.' ];
+				return [];
+			}
 			$kit = $manager->get_active_kit();
-			if ( ! is_object( $kit ) ) { return []; }
+			if ( ! is_object( $kit ) ) {
+				$errors[] = [ 'stage' => 'active-kit-unavailable', 'message' => 'Elementor active Kit is unavailable.' ];
+				return [];
+			}
 			$settings = method_exists( $kit, 'get_settings_for_display' ) ? $kit->get_settings_for_display() : [];
 			$settings = is_array( $settings ) ? $settings : [];
 			return [
@@ -176,11 +185,11 @@ final class ContextResolver {
 		}
 	}
 
-	private function status_from_errors( array $errors, array $needles ): string {
+	private function status_from_errors( array $errors, array $needles, bool $hasData ): string {
 		foreach ( $errors as $error ) {
 			$stage = strtolower( (string) ( $error['stage'] ?? '' ) );
 			foreach ( $needles as $needle ) { if ( false !== strpos( $stage, strtolower( $needle ) ) ) { return 'partial'; } }
 		}
-		return 'trusted';
+		return $hasData ? 'trusted' : 'unavailable';
 	}
 }
