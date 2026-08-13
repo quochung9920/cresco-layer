@@ -24,6 +24,8 @@ jobs:
         run: find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
       - name: Architecture invariants
         run: php scripts/check-architecture.php
+      - name: Capability scanner tests
+        run: php tests/php/capability-scanner-test.php
       - name: Patch and checksum tests
         run: php tests/php/patch-validator-test.php
       - name: Semantic patch safety tests
