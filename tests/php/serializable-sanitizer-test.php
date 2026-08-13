@@ -42,4 +42,6 @@ $output = $sanitizer->sanitize( $input );
 $report = $sanitizer->report();
 
 sanitizer_assert( '[REDACTED]' === $output['api_key'], 'API keys must be redacted by key.' );
-sanitor_assert_placeholder;
+sanitizer_assert( '[REDACTED]' === $output['nested']['password'], 'Passwords must be redacted by key.' );
+sanitizer_assert( false !== strpos( $output['nested']['url'], 'access_token=[REDACTED]' ), 'Token-bearing URL query parameters must be redacted.' );
+sanitar_assert_placeholder;
