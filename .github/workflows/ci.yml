@@ -42,5 +42,7 @@ jobs:
         run: php tests/php/element-locator-test.php
       - name: Runtime widget skill compiler tests
         run: php tests/php/skill-compiler-test.php
+      - name: Atomic widget skill binding tests
+        run: php tests/php/skill-atomic-binding-test.php
       - name: JavaScript quality
         run: npm run check
