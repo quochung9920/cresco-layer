@@ -47,15 +47,27 @@ $required = [
 		'conditionalCapabilities', 'dependency-inactive', 'dynamic-tags-empty', 'dynamic_tags_snapshot', 'runtime_snapshot',
 	],
 	'includes/Elementor/RuntimeSnapshotCoordinator.php' => [ 'RuntimeSnapshot::SCHEMA', 'runtimeDiscoveryVersion', 'section-aware-v2', "'dynamic-tags'", "'runtime'" ],
+	'includes/Skills/SkillCompiler.php' => [
+		'cresco-layer-widget-skills/v1', 'cresco-layer-skill-resolution/v1', 'compile_control', 'safe_prerequisite_operations',
+		'normalize_command_text', 'spacing.padding', 'responsive.visibility', 'atomic-control',
+	],
+	'includes/Skills/WidgetSkillRuntime.php' => [
+		'ConfigurationCatalog', 'ExpertProfiles::for', 'liveSettings', 'runtimeValidated', 'usesNativeControl',
+		'No chatbot or LLM is involved in skill resolution.',
+	],
+	'includes/Skills/ExpertProfiles.php' => [
+		'runtime-derived+expert-hints', 'container-layout', 'forms', 'query-loop', 'commerce', 'atomic-v4',
+	],
 	'includes/Support/SerializableSanitizer.php' => [ "'[REDACTED]'", 'redactions', 'omissions', 'JsonSerializable', 'runtime-object', 'access[_-]?token' ],
 	'includes/REST/Controller.php' => [
 		"current_user_can( 'edit_post'", 'expectedScope', '/preview', '/apply', '/elementor-catalog/(?P<kind>widget|element)',
 		'elementor_catalog_detail', "'lazy-v2'", 'semanticPatchValidation', 'postApplyVerification', '/elementor-snapshot',
 		'elementor_snapshot_section', 'elementor_snapshot_registry', 'elementor_snapshot_record', 'manage_options',
 		"'context' =>", "'aiContextResolver' => 'smart-v1'", "'dynamicTagDiscovery' => 'registry-info-v2'", "'elementorProModuleDiscovery' => 'named-modules-v2'",
+		'/skills/(?P<element>', 'widget_skills', 'resolve_widget_skill', "'widgetSkillRuntime' => 'runtime-v1'", 'deterministicSkillCommands',
 	],
 	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query', 'cresco-layer-snapshot-download', 'Download full Elementor snapshot', '/elementor-snapshot/section/', '/elementor-snapshot/record/' ],
-	'includes/Support/Assets.php' => [ 'elementor/editor/after_enqueue_scripts', 'cresco-layer-editor' ],
+	'includes/Support/Assets.php' => [ 'elementor/editor/after_enqueue_scripts', 'cresco-layer-editor', 'cresco-layer-skills', 'assets/skills.js', 'assets/skills.css' ],
 	'includes/Audit/Auditor.php' => [ 'missing-alt', 'multiple-h1', 'large-dom' ],
 ];
 foreach ( $required as $relative => $tokens ) {
@@ -78,6 +90,19 @@ if ( is_file( $runtimeDiscovery ) && str_contains( file_get_contents( $runtimeDi
 $editor_js = $root . '/assets/editor.js';
 if ( ! is_file( $editor_js ) || ! str_contains( file_get_contents( $editor_js ), 'elements/context-menu/groups' ) ) {
 	$errors[] = 'Elementor editor-native scoped AI exchange is missing.';
+}
+
+$skills_js = $root . '/assets/skills.js';
+if ( ! is_file( $skills_js ) ) {
+	$errors[] = 'Elementor deterministic widget skill palette is missing.';
+} else {
+	$skills_source = file_get_contents( $skills_js );
+	foreach ( [ 'deterministic-widget-skills-v1', 'usesChatbot = false', 'document/elements/settings', 'document/history/start-log', '/skills/', 'liveSettings' ] as $token ) {
+		if ( ! str_contains( $skills_source, $token ) ) { $errors[] = 'assets/skills.js missing skill runtime token: ' . $token; }
+	}
+	if ( preg_match( '/(?:openai|anthropic|chatgpt|completion|messages\/create)/i', $skills_source ) ) {
+		$errors[] = 'Deterministic widget skill runtime must not embed a chatbot/LLM provider.';
+	}
 }
 
 $admin_js = $root . '/assets/admin.js';
