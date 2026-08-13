@@ -3,9 +3,13 @@ $root = dirname( __DIR__, 2 );
 $resolverPath = $root . '/includes/AI/ContextResolver.php';
 $builderPath = $root . '/includes/AI/PackageBuilder.php';
 $controllerPath = $root . '/includes/REST/Controller.php';
+$adminPagePath = $root . '/includes/Admin/AdminPage.php';
+$adminJsPath = $root . '/assets/admin.js';
 $resolver = is_file( $resolverPath ) ? file_get_contents( $resolverPath ) : '';
 $builder = is_file( $builderPath ) ? file_get_contents( $builderPath ) : '';
 $controller = is_file( $controllerPath ) ? file_get_contents( $controllerPath ) : '';
+$adminPage = is_file( $adminPagePath ) ? file_get_contents( $adminPagePath ) : '';
+$adminJs = is_file( $adminJsPath ) ? file_get_contents( $adminJsPath ) : '';
 
 function context_resolver_assert( bool $condition, string $message ): void {
 	if ( ! $condition ) {
@@ -28,5 +32,8 @@ context_resolver_assert( str_contains( $builder, 'Never invent a setting name.' 
 context_resolver_assert( ! str_contains( $builder, '$this->scanner->catalog();' ), 'Normal AI export must not scan the full detailed runtime catalog.' );
 context_resolver_assert( str_contains( $controller, "'context' =>" ), 'REST export must expose context profile selection.' );
 context_resolver_assert( str_contains( $controller, "'aiContextResolver' => 'smart-v1'" ), 'Health endpoint must advertise the smart resolver.' );
+context_resolver_assert( str_contains( $adminPage, 'cresco-layer-context-profile' ), 'Admin export must let the user choose Smart or Full context.' );
+context_resolver_assert( str_contains( $adminJs, '&context=' ), 'Admin export request must send the selected context profile.' );
+context_resolver_assert( str_contains( $adminPage, 'isIncomplete(data)' ) && str_contains( $adminPage, 'row.partial' ), 'Full snapshot top-level coverage must include internal partial scanner results, not only HTTP failures.' );
 
 echo "AI context resolver contract tests passed.\n";
