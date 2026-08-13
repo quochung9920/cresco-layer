@@ -5,6 +5,7 @@
 	var select=document.getElementById('cresco-layer-document');
 	if(!select)return;
 
+	var contextProfile=document.getElementById('cresco-layer-context-profile');
 	var patch=document.getElementById('cresco-layer-patch');
 	var result=document.getElementById('cresco-layer-result');
 	var status=document.getElementById('cresco-layer-status');
@@ -56,6 +57,7 @@
 		});
 	}
 	function documentId(){var id=parseInt(select.value||'0',10);if(!id)throw new Error('Choose an Elementor document first.');return id;}
+	function selectedContextProfile(){var value=contextProfile?String(contextProfile.value||'smart'):'smart';return value==='full'?'full':'smart';}
 	function clearNode(node){while(node&&node.firstChild)node.removeChild(node.firstChild);}
 	function clearResult(){clearNode(result);}
 	function line(label,value){var row=document.createElement('div');row.className='cresco-layer-metric';var key=document.createElement('strong');key.textContent=label;var val=document.createElement('span');val.textContent=String(value);row.appendChild(key);row.appendChild(val);return row;}
@@ -134,7 +136,7 @@
 	function busy(text){setStatus(text,'busy');}
 	function failure(error){setStatus(error&&error.message?error.message:String(error),'error');}
 
-	document.getElementById('cresco-layer-export').addEventListener('click',function(){try{var id=documentId();busy('Building AI-safe package…');request('/documents/'+id+'/export?scope=document').then(function(data){downloadJson('cresco-layer-'+id+'-ai-package.json',data);renderAudit(data.audit||{});setStatus('AI package exported.','success');}).catch(failure);}catch(e){failure(e);}});
+	document.getElementById('cresco-layer-export').addEventListener('click',function(){try{var id=documentId();var profile=selectedContextProfile();busy('Building '+profile+' context AI-safe package…');request('/documents/'+id+'/export?scope=document&context='+encodeURIComponent(profile)).then(function(data){downloadJson('cresco-layer-'+id+'-'+profile+'-ai-package.json',data);renderAudit(data.audit||{});var stats=(data.contextResolver&&data.contextResolver.stats)||{};setStatus('AI package exported · '+profile+' context · '+(stats.detailedWidgets||0)+' widget types + '+(stats.detailedElements||0)+' element types expanded.','success');}).catch(failure);}catch(e){failure(e);}});
 	document.getElementById('cresco-layer-audit').addEventListener('click',function(){try{var id=documentId();busy('Auditing…');request('/documents/'+id+'/audit').then(function(data){renderAudit(data);setStatus('Audit complete.','success');}).catch(failure);}catch(e){failure(e);}});
 	document.getElementById('cresco-layer-preview').addEventListener('click',function(){try{var id=documentId();var item=parsePatch();applyButton.disabled=true;previewedText='';busy('Validating patch…');request('/documents/'+id+'/preview',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderPreview(data);previewedText=item.text;applyButton.disabled=false;setStatus('Patch is valid. Review before applying.','success');}).catch(failure);}catch(e){failure(e);}});
 	applyButton.addEventListener('click',function(){try{var id=documentId();var item=parsePatch();if(!previewedText||item.text!==previewedText){applyButton.disabled=true;throw new Error('Patch changed after preview. Validate it again before applying.');}if(!window.confirm('Apply this reviewed patch to the Elementor document? It will not publish the page.'))return;busy('Applying through Elementor…');applyButton.disabled=true;request('/documents/'+id+'/apply',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderAudit(data.audit||{});previewedText='';setStatus(data.verification&&data.verification.verified===false?'Patch saved, but verification found mismatched operations. Review before publishing.':'Patch applied and saved to Elementor working data. Review, then Update/Publish when ready.',data.verification&&data.verification.verified===false?'error':'success');}).catch(function(error){applyButton.disabled=false;failure(error);});}catch(e){failure(e);}});
