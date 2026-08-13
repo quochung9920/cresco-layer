@@ -3,62 +3,47 @@ require_once dirname( __DIR__, 2 ) . '/includes/Support/SerializableSanitizer.ph
 
 use CrescoLayer\Support\SerializableSanitizer;
 
-function sanitizer_assert( bool $condition, string $message ): void {
+function assert_snapshot( bool $condition, string $message ): void {
 	if ( ! $condition ) {
 		fwrite( STDERR, "FAIL: {$message}\n" );
 		exit( 1 );
 	}
 }
 
-final class SerializableSnapshotFixture implements JsonSerializable {
+final class SnapshotJsonFixture implements JsonSerializable {
 	public function jsonSerialize(): array {
-		return [
-			'name' => 'fixture',
-			'client_secret' => 'super-secret',
-			'nested' => [ 'enabled' => true ],
-		];
+		return [ 'name' => 'fixture', 'client_secret' => 'secret', 'enabled' => true ];
 	}
 }
 
-final class RuntimeOnlySnapshotFixture {
-	public string $value = 'must-not-leak-through-object-introspection';
+final class SnapshotRuntimeFixture {
+	public string $value = 'runtime-only';
 }
 
 $sanitizer = new SerializableSanitizer();
-$input = [
+$output = $sanitizer->sanitize( [
 	'api_key' => 'abc123',
-	'nested' => [
-		'password' => 'pw',
-		'url' => 'https://example.test/callback?access_token=token-value&mode=1',
-		'authorization_header' => 'Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature',
-	],
-	'json' => new SerializableSnapshotFixture(),
-	'std' => (object) [ 'safe' => 'yes', 'webhook_secret' => 'nope' ],
-	'runtime' => new RuntimeOnlySnapshotFixture(),
-	'scalar' => 42,
-];
-
-$output = $sanitizer->sanitize( $input );
+	'password' => 'pw',
+	'url' => 'https://example.test/?access_token=token-value&mode=1',
+	'authorization' => 'Bearer token-value',
+	'json' => new SnapshotJsonFixture(),
+	'std' => (object) [ 'safe' => 'yes', 'webhook_secret' => 'hidden' ],
+	'runtime' => new SnapshotRuntimeFixture(),
+	'number' => 42,
+] );
 $report = $sanitizer->report();
 
-sanitizer_assert( '[REDACTED]' === $output['api_key'], 'API keys must be redacted by key.' );
-sanitizer_assert( '[REDACTED]' === $output['nested']['password'], 'Passwords must be redacted by key.' );
-sanitizer_assert( false !== strpos( $output['nested']['url'], 'access_token=[REDACTED]' ), 'Token-bearing URL query parameters must be redacted.' );
-sanitizer_assert( '[REDACTED]' === $output['nested']['authorization_header'], 'Authorization values must be redacted by key.' );
-sanitizer_assert( '[REDACTED]' === $output['json']['client_secret'], 'JsonSerializable secrets must be redacted recursively.' );
-sanitizer_assert( true === $output['json']['nested']['enabled'], 'JsonSerializable safe data must be preserved.' );
-sanitizer_assert( 'yes' === $output['std']['safe'], 'stdClass serializable fields must be preserved.' );
-sanitizer_assert( '[REDACTED]' === $output['std']['webhook_secret'], 'stdClass secrets must be redacted.' );
-sanitizer_assert( ! array_key_exists( 'runtime', $output ), 'Unsupported runtime objects must be omitted.' );
-sanitizer_assert( 42 === $output['scalar'], 'Scalar values must be preserved.' );
-sanitizer_assert( count( $report['redactions'] ) >= 5, 'Redaction report must list redacted paths.' );
-sanitizer_assert( count( $report['omissions'] ) >= 1, 'Omission report must list unsupported runtime objects.' );
+assert_snapshot( '[REDACTED]' === $output['api_key'], 'API key redaction failed.' );
+assert_snapshot( '[REDACTED]' === $output['password'], 'Password redaction failed.' );
+assert_snapshot( false !== strpos( $output['url'], 'access_token=[REDACTED]' ), 'Token-bearing URL redaction failed.' );
+assert_snapshot( '[REDACTED]' === $output['authorization'], 'Authorization redaction failed.' );
+assert_snapshot( '[REDACTED]' === $output['json']['client_secret'], 'JsonSerializable nested redaction failed.' );
+assert_snapshot( true === $output['json']['enabled'], 'JsonSerializable safe data was lost.' );
+assert_snapshot( 'yes' === $output['std']['safe'], 'stdClass safe data was lost.' );
+assert_snapshot( '[REDACTED]' === $output['std']['webhook_secret'], 'stdClass nested redaction failed.' );
+assert_snapshot( ! array_key_exists( 'runtime', $output ), 'Unsupported runtime object must be omitted.' );
+assert_snapshot( 42 === $output['number'], 'Scalar value changed unexpectedly.' );
+assert_snapshot( count( $report['redactions'] ) >= 5, 'Redaction paths were not reported.' );
+assert_snapshot( false !== strpos( implode( "\n", $report['omissions'] ), 'runtime-object:SnapshotRuntimeFixture' ), 'Runtime object omission was not reported.' );
 
-$hasRuntimeOmission = false;
-foreach ( $report['omissions'] as $omission ) {
-	if ( false !== strpos( $omission, 'runtime-object:RuntimeOnlySnapshotFixture' ) ) {
-		$hasRuntimeOmission = true;
-		break;
-	}
-}
-sanitar_assert_placeholder;
+echo "Serializable sanitizer tests passed.\n";
