@@ -41,7 +41,7 @@ $required = [
 	'includes/AI/SemanticPatchGuard.php' => [ 'inert-css-variable', 'custom-css-native-control', 'unknown-setting', 'verify_data', 'nativeControlOperations' ],
 	'includes/AI/PatchApplier.php' => [ 'assert_scope_operations', 'staleDocumentButScopeUnchanged', 'preserve_children', 'DocumentChecksum::hash', 'get_with_permissions' ],
 	'includes/Elementor/ConfigurationCatalog.php' => [ 'catalog_index', 'lazyDetails', 'activeKit', 'scanErrors', "'[REDACTED]'" ],
-	'includes/Elementor/RuntimeSnapshot.php' => [ 'cresco-elementor-snapshot/v1', 'global-settings', 'features', 'active-kit', 'dynamic-tags', 'runtime', 'records', 'normalized', 'raw', 'downloadPlan', 'registryEntry', 'recordIndex', 'ElementorPro' ],
+	'includes/Elementor/RuntimeSnapshot.php' => [ 'cresco-elementor-snapshot/v1', 'global-settings', 'features', 'breakpoints', 'active-kit', 'dynamic-tags', 'runtime', 'records', 'normalized', 'raw', 'downloadPlan', 'registryEntry', 'recordIndex', 'ElementorPro' ],
 	'includes/Elementor/RuntimeDiscovery.php' => [
 		'dynamic_tag_catalog', "['instance']", 'get_tags()', 'get_modules_names()', 'get_modules( $name )',
 		'conditionalCapabilities', 'dependency-inactive', 'dynamic-tags-empty', 'dynamic_tags_snapshot', 'runtime_snapshot',
@@ -49,7 +49,7 @@ $required = [
 	'includes/Elementor/RuntimeSnapshotCoordinator.php' => [ 'RuntimeSnapshot::SCHEMA', 'runtimeDiscoveryVersion', 'section-aware-v2', "'dynamic-tags'", "'runtime'" ],
 	'includes/Skills/SkillCompiler.php' => [
 		'cresco-layer-widget-skills/v1', 'cresco-layer-skill-resolution/v1', 'compile_control', 'safe_prerequisite_operations',
-		'normalize_command_text', 'spacing.padding', 'responsive.visibility', 'atomic-control',
+		'normalize_command_text', 'spacing.padding', 'responsive.visibility', "str_starts_with( \$source, 'atomic' )",
 	],
 	'includes/Skills/WidgetSkillRuntime.php' => [
 		'ConfigurationCatalog', 'ExpertProfiles::for', 'liveSettings', 'runtimeValidated', 'usesNativeControl',
