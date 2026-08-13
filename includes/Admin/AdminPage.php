@@ -71,15 +71,15 @@ final class AdminPage {
 					</div>
 					<span id="cresco-layer-catalog-status" aria-live="polite"></span>
 				</div>
-				<p class="description"><?php echo esc_html__( 'Read the active Elementor installation directly: Elementor/Pro versions, active breakpoints, Kit/design-system settings, every registered element type and every registered widget with its controls, defaults, options, responsive flags, units, ranges, conditions and selectors.', 'cresco-layer' ); ?></p>
+				<p class="description"><?php echo esc_html__( 'Load a lightweight index of the active Elementor installation first. Open any widget or element to fetch its controls, defaults, options, responsive flags, units, ranges, conditions, selectors and raw serializable metadata on demand. A broken addon entry will no longer crash the whole catalog.', 'cresco-layer' ); ?></p>
 				<div class="cresco-layer-catalog-toolbar">
 					<div class="cresco-layer-actions">
 						<button class="button button-primary" id="cresco-layer-catalog-load"><?php echo esc_html__( 'Load Elementor catalog', 'cresco-layer' ); ?></button>
 						<button class="button" id="cresco-layer-catalog-download" disabled><?php echo esc_html__( 'Download full JSON', 'cresco-layer' ); ?></button>
 					</div>
 					<label class="cresco-layer-catalog-search" for="cresco-layer-catalog-query">
-						<span class="screen-reader-text"><?php echo esc_html__( 'Search Elementor widgets and controls', 'cresco-layer' ); ?></span>
-						<input type="search" id="cresco-layer-catalog-query" placeholder="<?php echo esc_attr__( 'Search widget, element or control…', 'cresco-layer' ); ?>" disabled>
+						<span class="screen-reader-text"><?php echo esc_html__( 'Search Elementor widgets and elements', 'cresco-layer' ); ?></span>
+						<input type="search" id="cresco-layer-catalog-query" placeholder="<?php echo esc_attr__( 'Search widget or element…', 'cresco-layer' ); ?>" disabled>
 					</label>
 				</div>
 				<div id="cresco-layer-catalog-summary" class="cresco-layer-catalog-summary" hidden></div>

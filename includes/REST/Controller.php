@@ -32,6 +32,11 @@ final class Controller {
 			'callback' => [ $this, 'elementor_catalog' ],
 			'permission_callback' => static fn() => current_user_can( 'edit_posts' ),
 		] );
+		register_rest_route( 'cresco-layer/v1', '/elementor-catalog/(?P<kind>widget|element)/(?P<name>[^/]+)', [
+			'methods' => 'GET',
+			'callback' => [ $this, 'elementor_catalog_detail' ],
+			'permission_callback' => static fn() => current_user_can( 'edit_posts' ),
+		] );
 		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/export', [
 			'methods' => 'GET',
 			'callback' => [ $this, 'export' ],
@@ -73,12 +78,26 @@ final class Controller {
 			'scopedExchange' => true,
 			'semanticPatchValidation' => true,
 			'postApplyVerification' => true,
-			'elementorConfigurationCatalog' => true,
+			'elementorConfigurationCatalog' => 'lazy-v2',
 		], 200 );
 	}
 
-	public function elementor_catalog(): WP_REST_Response {
-		return new WP_REST_Response( $this->catalog->get(), 200 );
+	public function elementor_catalog( WP_REST_Request $request ) {
+		try {
+			return new WP_REST_Response( $this->catalog->summary(), 200 );
+		} catch ( \Throwable $error ) {
+			return $this->error( $error );
+		}
+	}
+
+	public function elementor_catalog_detail( WP_REST_Request $request ) {
+		try {
+			$kind = (string) $request['kind'];
+			$name = rawurldecode( (string) $request['name'] );
+			return new WP_REST_Response( $this->catalog->detail( $kind, $name ), 200 );
+		} catch ( \Throwable $error ) {
+			return $this->error( $error );
+		}
 	}
 
 	public function export( WP_REST_Request $request ) {
