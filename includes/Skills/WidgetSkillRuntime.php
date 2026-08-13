@@ -115,8 +115,7 @@ final class WidgetSkillRuntime {
 		$detail = $this->catalog->detail( $kind, $name );
 		$entry = is_array( $detail['entry'] ?? null ) ? $detail['entry'] : [];
 		if ( ! $entry ) { throw new \RuntimeException( 'Runtime capability metadata is unavailable for the selected element.' ); }
-		$summary = $this->catalog->summary();
-		$breakpoints = is_array( $summary['breakpoints'] ?? null ) ? $summary['breakpoints'] : [];
+		$breakpoints = $this->catalog->runtime_breakpoints();
 		$current = is_array( $element['settings'] ?? null ) ? $element['settings'] : [];
 		$knowledge = ExpertProfiles::for( $kind, $name, $entry );
 
