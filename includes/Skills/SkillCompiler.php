@@ -53,10 +53,8 @@ final class SkillCompiler {
 
 		$device = strtolower( trim( (string) ( $params['device'] ?? 'desktop' ) ) );
 		$device = '' === $device ? 'desktop' : $device;
-		$variants = (array) ( $skill['devices'] ?? [ 'desktop' ] );
-		if ( ! in_array( $device, $variants, true ) ) {
-			throw new \InvalidArgumentException( 'This skill is not available for the requested responsive device.' );
-		}
+		$devices = (array) ( $skill['devices'] ?? [ 'desktop' ] );
+		if ( ! in_array( $device, $devices, true ) ) { throw new \InvalidArgumentException( 'This skill is not available for the requested responsive device.' ); }
 
 		$setting = (string) ( $skill['setting'] ?? '' );
 		if ( '' === $setting ) { throw new \InvalidArgumentException( 'Skill does not expose an Elementor setting binding.' ); }
@@ -66,17 +64,10 @@ final class SkillCompiler {
 		}
 
 		$value = $this->normalize_value( $skill, $params );
-		$operations = [];
-		$prerequisites = $this->safe_prerequisite_operations( $compiled, $skill, $current_settings, $element_id );
-		foreach ( $prerequisites as $operation ) { $operations[] = $operation; }
-		$operations[] = [
-			'operation' => 'update-setting',
-			'elementId' => $element_id,
-			'setting' => $setting,
-			'value' => $value,
-		];
-
+		$operations = $this->safe_prerequisite_operations( $compiled, $skill, $current_settings, $element_id );
+		$operations[] = [ 'operation' => 'update-setting', 'elementId' => $element_id, 'setting' => $setting, 'value' => $value ];
 		$before = array_key_exists( $setting, $current_settings ) ? $current_settings[ $setting ] : ( $skill['current']['devices'][ $device ] ?? null );
+
 		return [
 			'schema' => self::RESOLUTION_SCHEMA,
 			'elementId' => $element_id,
@@ -87,7 +78,7 @@ final class SkillCompiler {
 			'risk' => (string) ( $skill['risk'] ?? 'safe' ),
 			'historyLabel' => 'Cresco Skill · ' . (string) ( $skill['label'] ?? $skill_id ),
 			'operations' => $operations,
-			'preview' => [ 'setting' => $setting, 'before' => $before, 'after' => $value, 'prerequisites' => $prerequisites ],
+			'preview' => [ 'setting' => $setting, 'before' => $before, 'after' => $value, 'prerequisites' => array_slice( $operations, 0, -1 ) ],
 		];
 	}
 
@@ -135,16 +126,14 @@ final class SkillCompiler {
 		if ( ! $skill ) { throw new \InvalidArgumentException( 'Selected widget does not expose a native control for ' . $role . '.' ); }
 
 		$value = null;
-		if ( in_array( $role, [ 'typography.align' ], true ) ) {
+		if ( 'typography.align' === $role ) {
 			if ( preg_match( '/\b(center|giua)\b/u', $normalized ) ) { $value = 'center'; }
 			elseif ( preg_match( '/\b(right|phai)\b/u', $normalized ) ) { $value = 'right'; }
 			elseif ( preg_match( '/\b(left|trai)\b/u', $normalized ) ) { $value = 'left'; }
 			elseif ( preg_match( '/\b(justify|deu)\b/u', $normalized ) ) { $value = 'justify'; }
 		}
 		if ( null === $value && preg_match( '/#(?:[0-9a-f]{3,8})\b/i', $raw, $match ) ) { $value = $match[0]; }
-		if ( null === $value && preg_match( '/(-?\d+(?:\.\d+)?)\s*(px|%|em|rem|vh|vw|deg|s|ms)?/i', $raw, $match ) ) {
-			$value = $match[1] . ( $match[2] ?? '' );
-		}
+		if ( null === $value && preg_match( '/(-?\d+(?:\.\d+)?)\s*(px|%|em|rem|vh|vw|deg|s|ms)?/i', $raw, $match ) ) { $value = $match[1] . ( $match[2] ?? '' ); }
 		if ( null === $value ) { throw new \InvalidArgumentException( 'Command matched a skill but no value could be parsed.' ); }
 		return $this->resolve( $compiled, $skill['id'], [ 'device' => $device, 'value' => $value ], $current_settings, $element_id );
 	}
@@ -229,7 +218,7 @@ final class SkillCompiler {
 	}
 
 	private function normalize_value( array $skill, array $params ) {
-		if ( ! array_key_exists( 'value', $params ) && ! array_intersect( [ 'top', 'right', 'bottom', 'left', 'all' ], array_keys( $params ) ) ) {
+		if ( ! array_key_exists( 'value', $params ) && ! array_key_exists( 'all', $params ) && ! array_intersect( [ 'top', 'right', 'bottom', 'left' ], array_keys( $params ) ) ) {
 			throw new \InvalidArgumentException( 'Skill value is required.' );
 		}
 		$type = (string) ( $skill['type'] ?? '' );
@@ -263,27 +252,40 @@ final class SkillCompiler {
 		if ( 'url' === $type && is_string( $value ) ) {
 			return [ 'url' => trim( $value ), 'is_external' => '', 'nofollow' => '', 'custom_attributes' => '' ];
 		}
-		if ( in_array( $type, [ 'repeater', 'gallery', 'structure' ], true ) && ! is_array( $value ) ) {
-			throw new \InvalidArgumentException( 'Structured Elementor skill requires an array/object value.' );
-		}
+		if ( in_array( $type, [ 'repeater', 'gallery', 'structure' ], true ) && ! is_array( $value ) ) { throw new \InvalidArgumentException( 'Structured Elementor skill requires an array/object value.' ); }
 		if ( is_scalar( $value ) || is_array( $value ) || null === $value ) { return $value; }
 		throw new \InvalidArgumentException( 'Skill value type is not supported.' );
 	}
 
 	private function dimensions_value( array $params, array $input ): array {
-		$seed = $params['value'] ?? ( $params['all'] ?? '' );
-		[ $size, $unit ] = $this->parse_size( $seed, $input );
+		$seed = $params['value'] ?? ( $params['all'] ?? null );
+		if ( null === $seed || '' === (string) $seed ) {
+			foreach ( [ 'top', 'right', 'bottom', 'left' ] as $side ) {
+				if ( array_key_exists( $side, $params ) && '' !== (string) $params[ $side ] ) { $seed = $params[ $side ]; break; }
+			}
+		}
+		if ( null === $seed || '' === (string) $seed ) { $seed = 0; }
+		[ $size, $inferred_unit ] = $this->parse_size( $seed, $input );
+		$unit = (string) ( $params['unit'] ?? $inferred_unit );
+		$this->assert_unit( $unit, $input );
 		$all = (string) $size;
 		$result = [
-			'unit' => (string) ( $params['unit'] ?? $unit ),
-			'top' => array_key_exists( 'top', $params ) ? (string) $params['top'] : $all,
-			'right' => array_key_exists( 'right', $params ) ? (string) $params['right'] : $all,
-			'bottom' => array_key_exists( 'bottom', $params ) ? (string) $params['bottom'] : $all,
-			'left' => array_key_exists( 'left', $params ) ? (string) $params['left'] : $all,
-			'isLinked' => ! isset( $params['top'], $params['right'], $params['bottom'], $params['left'] ),
+			'unit' => $unit,
+			'top' => array_key_exists( 'top', $params ) ? $this->dimension_side( $params['top'], $unit, $input ) : $all,
+			'right' => array_key_exists( 'right', $params ) ? $this->dimension_side( $params['right'], $unit, $input ) : $all,
+			'bottom' => array_key_exists( 'bottom', $params ) ? $this->dimension_side( $params['bottom'], $unit, $input ) : $all,
+			'left' => array_key_exists( 'left', $params ) ? $this->dimension_side( $params['left'], $unit, $input ) : $all,
+			'isLinked' => ! array_intersect( [ 'top', 'right', 'bottom', 'left' ], array_keys( $params ) ),
 		];
-		$this->assert_unit( $result['unit'], $input );
 		return $result;
+	}
+
+	private function dimension_side( $value, string $unit, array $input ): string {
+		if ( '' === (string) $value ) { return ''; }
+		if ( is_numeric( $value ) ) { return (string) ( 0 + $value ); }
+		[ $size, $parsed_unit ] = $this->parse_size( $value, $input );
+		if ( $parsed_unit !== $unit ) { throw new \InvalidArgumentException( 'All dimension sides must use the selected Elementor unit.' ); }
+		return (string) $size;
 	}
 
 	private function slider_value( $value, array $input ): array {
@@ -302,9 +304,7 @@ final class SkillCompiler {
 	private function parse_size( $value, array $input ): array {
 		if ( is_numeric( $value ) ) { return [ 0 + $value, $this->preferred_unit( $input ) ]; }
 		$string = trim( (string) $value );
-		if ( ! preg_match( '/^(-?\d+(?:\.\d+)?)\s*(px|%|em|rem|vh|vw|deg|s|ms|fr)?$/i', $string, $match ) ) {
-			throw new \InvalidArgumentException( 'Expected a numeric value with an optional Elementor unit.' );
-		}
+		if ( ! preg_match( '/^(-?\d+(?:\.\d+)?)\s*(px|%|em|rem|vh|vw|deg|s|ms|fr)?$/i', $string, $match ) ) { throw new \InvalidArgumentException( 'Expected a numeric value with an optional Elementor unit.' ); }
 		$unit = '' !== ( $match[2] ?? '' ) ? strtolower( $match[2] ) : $this->preferred_unit( $input );
 		$this->assert_unit( $unit, $input );
 		return [ 0 + $match[1], $unit ];
@@ -353,23 +353,17 @@ final class SkillCompiler {
 	}
 
 	private function find_skill( array $compiled, string $id ): ?array {
-		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) {
-			if ( is_array( $skill ) && $id === ( $skill['id'] ?? '' ) ) { return $skill; }
-		}
+		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $id === ( $skill['id'] ?? '' ) ) { return $skill; } }
 		return null;
 	}
 
 	private function find_role_skill( array $compiled, string $role ): ?array {
-		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) {
-			if ( is_array( $skill ) && $role === ( $skill['role'] ?? '' ) && 'read-only' !== ( $skill['mode'] ?? '' ) ) { return $skill; }
-		}
+		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $role === ( $skill['role'] ?? '' ) && 'read-only' !== ( $skill['mode'] ?? '' ) ) { return $skill; } }
 		return null;
 	}
 
 	private function find_setting_skill( array $compiled, string $setting ): ?array {
-		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) {
-			if ( is_array( $skill ) && $setting === ( $skill['setting'] ?? '' ) && 'read-only' !== ( $skill['mode'] ?? '' ) ) { return $skill; }
-		}
+		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $setting === ( $skill['setting'] ?? '' ) && 'read-only' !== ( $skill['mode'] ?? '' ) ) { return $skill; } }
 		return null;
 	}
 
