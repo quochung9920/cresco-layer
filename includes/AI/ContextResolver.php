@@ -43,7 +43,7 @@ final class ContextResolver {
 
 		$errors = array_merge( $errors, (array) ( $dynamicTags['scanErrors'] ?? [] ), (array) ( $modules['scanErrors'] ?? [] ) );
 		$controlStatus = $this->status_from_errors( $errors, [ 'catalog', 'registry', 'capability', 'control', 'atomic', 'widget', 'element' ], (bool) ( $widgets || $elements || ! $roles['widgets'] && ! $roles['elements'] ) );
-		$kitStatus = $this->status_from_errors( $errors, [ 'active-kit', 'design-system', 'kit' ], ! empty( $designSystem ) );
+		$kitStatus = $this->status_from_errors( $errors, [ 'active-kit', 'design-system', 'kit' ], ! empty( $designSystem['settings'] ?? [] ) );
 		$breakpointStatus = $this->status_from_errors( $errors, [ 'breakpoint' ], ! empty( $breakpoints ) );
 
 		return [
@@ -61,7 +61,12 @@ final class ContextResolver {
 			],
 			'siteContext' => [
 				'breakpoints' => $breakpoints,
-				'designSystem' => $designSystem,
+				// Preserve the v2 AI package contract: designSystem is the active Kit settings array.
+				'designSystem' => (array) ( $designSystem['settings'] ?? [] ),
+				'globalDesignSystem' => [
+					'globalColors' => (array) ( $designSystem['globalColors'] ?? [] ),
+					'globalFonts' => (array) ( $designSystem['globalFonts'] ?? [] ),
+				],
 			],
 			'dynamicTags' => [
 				'tags' => $dynamicTags['tags'] ?? [],
