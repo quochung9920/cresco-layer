@@ -3,19 +3,28 @@ namespace CrescoLayer\AI;
 
 use CrescoLayer\Audit\Auditor;
 use CrescoLayer\Support\DocumentChecksum;
+use CrescoLayer\Support\SerializableSanitizer;
 use Elementor\Plugin as ElementorPlugin;
 
 final class PackageBuilder {
 	private ElementLocator $locator;
 	private CapabilityScanner $scanner;
+	private ContextResolver $contextResolver;
 
-	public function __construct( private Auditor $auditor, ?ElementLocator $locator = null, ?CapabilityScanner $scanner = null ) {
+	public function __construct(
+		private Auditor $auditor,
+		?ElementLocator $locator = null,
+		?CapabilityScanner $scanner = null,
+		?ContextResolver $contextResolver = null
+	) {
 		$this->locator = $locator ?? new ElementLocator();
 		$this->scanner = $scanner ?? new CapabilityScanner();
+		$this->contextResolver = $contextResolver ?? new ContextResolver( $this->scanner );
 	}
 
-	public function build( int $post_id, string $scope = 'document', array $selected_ids = [] ): array {
+	public function build( int $post_id, string $scope = 'document', array $selected_ids = [], string $context_profile = ContextResolver::PROFILE_SMART ): array {
 		$scope = in_array( $scope, ElementLocator::SCOPES, true ) ? $scope : 'document';
+		$context_profile = in_array( $context_profile, ContextResolver::PROFILES, true ) ? $context_profile : ContextResolver::PROFILE_SMART;
 		$selected_ids = $this->locator->normalize_ids( $selected_ids );
 		if ( 'document' !== $scope && ! $selected_ids ) {
 			throw new \InvalidArgumentException( 'A widget, selection or subtree export requires at least one selected Elementor element ID.' );
@@ -42,7 +51,13 @@ final class PackageBuilder {
 		$editable_ids = $this->locator->scope_ids( $elements, $scope, $selected_ids );
 		$post = get_post( $post_id );
 		$theme = wp_get_theme();
-		$catalog = $this->scanner->catalog();
+		$element_context = 'document' === $scope ? [] : $this->locator->context( $elements, $selected_ids );
+		$resolved = $this->contextResolver->resolve( $export_elements, $element_context, $scope, $context_profile );
+		$catalog = [
+			'widgets' => (array) ( $resolved['capabilities']['widgets'] ?? [] ),
+			'elements' => (array) ( $resolved['capabilities']['elements'] ?? [] ),
+			'controlMetadataVersion' => (int) ( $resolved['registryIndex']['controlMetadataVersion'] ?? 0 ),
+		];
 
 		$package = [
 			'schema' => 'cresco-layer-ai-package/v2',
@@ -54,11 +69,13 @@ final class PackageBuilder {
 				'workingPostId' => $working_post_id,
 				'isAutosave' => $working_post_id !== $post_id,
 				'documentType' => method_exists( $main_document, 'get_name' ) ? (string) $main_document->get_name() : get_post_type( $post_id ),
-				'documentVersion' => '0.4',
+				'documentVersion' => '0.5',
 				'baseChecksum' => $checksum,
 				'scopeChecksum' => $scope_checksum,
 				'exportedAt' => gmdate( 'c' ),
 				'scope' => $scope,
+				'contextProfile' => $context_profile,
+				'contextResolver' => (string) ( $resolved['resolver'] ?? 'cresco-context-resolver/v1' ),
 			],
 			'editableScope' => [
 				'mode' => $scope,
@@ -76,20 +93,33 @@ final class PackageBuilder {
 				'page_settings' => $page_settings,
 				'content' => $export_elements,
 			],
-			'elementContext' => 'document' === $scope ? [] : $this->locator->context( $elements, $selected_ids ),
+			'elementContext' => $element_context,
 			'elementStates' => $this->element_states( $export_elements, $catalog ),
 			'siteContext' => [
 				'homeUrl' => home_url( '/' ),
 				'locale' => get_locale(),
 				'theme' => $theme->get( 'Name' ),
 				'themeVersion' => $theme->get( 'Version' ),
-				'breakpoints' => $this->breakpoints(),
+				'breakpoints' => (array) ( $resolved['siteContext']['breakpoints'] ?? [] ),
 			],
-			'designSystem' => $this->get_design_system(),
+			'designSystem' => (array) ( $resolved['siteContext']['designSystem'] ?? [] ),
+			'registryIndex' => (array) ( $resolved['registryIndex'] ?? [] ),
 			'widgetCatalog' => $catalog['widgets'],
 			'elementCatalog' => $catalog['elements'],
-			'relevantCapabilities' => $this->scanner->relevant_catalog( $export_elements, $catalog ),
-			'dynamicTags' => $this->dynamic_tags(),
+			'relevantCapabilities' => [
+				'widgets' => $catalog['widgets'],
+				'elements' => $catalog['elements'],
+				'roles' => (array) ( $resolved['capabilities']['roles'] ?? [] ),
+				'controlMetadataVersion' => $catalog['controlMetadataVersion'],
+			],
+			'dynamicTags' => (array) ( $resolved['dynamicTags'] ?? [] ),
+			'capabilityCoverage' => (array) ( $resolved['capabilityCoverage'] ?? [] ),
+			'contextResolver' => [
+				'profile' => $context_profile,
+				'stats' => (array) ( $resolved['contextStats'] ?? [] ),
+				'runtime' => (array) ( $resolved['runtime'] ?? [] ),
+				'scanErrors' => (array) ( $resolved['scanErrors'] ?? [] ),
+			],
 			'templates' => $this->template_catalog(),
 			'assets' => $this->asset_catalog( $export_elements ),
 			'capabilities' => [
@@ -104,11 +134,17 @@ final class PackageBuilder {
 				'preferGlobalStyles' => true,
 				'elementorOwnsPersistence' => true,
 				'publishedDocumentsUseAutosave' => true,
+				'contextResolved' => true,
+				'fullRuntimeSnapshotIsSeparate' => true,
 			],
 			'audit' => $this->auditor->audit_elements( $export_elements ),
-			'instructions' => $this->instructions( $scope, $selected_ids, $scope_checksum ),
+			'instructions' => $this->instructions( $scope, $selected_ids, $scope_checksum, $context_profile ),
 		];
-		return $this->redact( $package );
+
+		$sanitizer = new SerializableSanitizer();
+		$package = $sanitizer->sanitize( $package, '$.aiPackage' );
+		if ( is_array( $package ) ) { $package['serialization'] = $sanitizer->report(); }
+		return is_array( $package ) ? $package : [];
 	}
 
 	private function element_states( array $elements, array $catalog ): array {
@@ -154,50 +190,6 @@ final class PackageBuilder {
 		foreach ( $settings as $key => $value ) {
 			if ( ! preg_match( '/^(.+?)_(tablet|mobile|widescreen|laptop|tablet_extra|mobile_extra)$/', (string) $key, $matches ) ) { continue; }
 			$out[ $matches[1] ][ $matches[2] ] = $value;
-		}
-		return $out;
-	}
-
-	private function get_design_system(): array {
-		$plugin = ElementorPlugin::instance();
-		if ( ! isset( $plugin->kits_manager ) || ! method_exists( $plugin->kits_manager, 'get_active_kit' ) ) { return []; }
-		$kit = $plugin->kits_manager->get_active_kit();
-		if ( ! $kit ) { return []; }
-		if ( method_exists( $kit, 'get_settings_for_display' ) ) {
-			$settings = $kit->get_settings_for_display();
-			return is_array( $settings ) ? $settings : [];
-		}
-		return [];
-	}
-
-	private function breakpoints(): array {
-		$plugin = ElementorPlugin::instance();
-		if ( ! isset( $plugin->breakpoints ) || ! method_exists( $plugin->breakpoints, 'get_active_breakpoints' ) ) { return []; }
-		$out = [];
-		foreach ( (array) $plugin->breakpoints->get_active_breakpoints() as $key => $breakpoint ) {
-			if ( ! is_object( $breakpoint ) ) { continue; }
-			$out[ (string) $key ] = [
-				'label' => method_exists( $breakpoint, 'get_label' ) ? (string) $breakpoint->get_label() : (string) $key,
-				'value' => method_exists( $breakpoint, 'get_value' ) ? $breakpoint->get_value() : null,
-				'direction' => method_exists( $breakpoint, 'get_direction' ) ? (string) $breakpoint->get_direction() : '',
-			];
-		}
-		return $out;
-	}
-
-	private function dynamic_tags(): array {
-		$manager = ElementorPlugin::instance()->dynamic_tags ?? null;
-		if ( ! $manager || ! method_exists( $manager, 'get_tags' ) ) { return []; }
-		$out = [];
-		foreach ( (array) $manager->get_tags() as $name => $tag ) {
-			if ( ! is_object( $tag ) ) { continue; }
-			$tag_name = method_exists( $tag, 'get_name' ) ? (string) $tag->get_name() : (string) $name;
-			$out[ $tag_name ] = [
-				'name' => $tag_name,
-				'title' => method_exists( $tag, 'get_title' ) ? wp_strip_all_tags( (string) $tag->get_title() ) : $tag_name,
-				'group' => method_exists( $tag, 'get_group' ) ? (string) $tag->get_group() : '',
-				'categories' => method_exists( $tag, 'get_categories' ) ? array_values( array_map( 'strval', (array) $tag->get_categories() ) ) : [],
-			];
 		}
 		return $out;
 	}
@@ -253,12 +245,10 @@ final class PackageBuilder {
 		if ( isset( $value['id'] ) && is_numeric( $value['id'] ) && ( isset( $value['url'] ) || preg_match( '/(?:image|media|background|icon|video)/i', $key ) ) ) {
 			$ids[] = absint( $value['id'] );
 		}
-		foreach ( $value as $child_key => $child ) {
-			$this->collect_attachment_ids( $child, $ids, (string) $child_key );
-		}
+		foreach ( $value as $child_key => $child ) { $this->collect_attachment_ids( $child, $ids, (string) $child_key ); }
 	}
 
-	private function instructions( string $scope, array $selected_ids, string $scope_checksum ): string {
+	private function instructions( string $scope, array $selected_ids, string $scope_checksum, string $context_profile ): string {
 		$scope_payload = wp_json_encode( [
 			'mode' => $scope,
 			'rootElementId' => 1 === count( $selected_ids ) ? $selected_ids[0] : '',
@@ -273,7 +263,9 @@ final class PackageBuilder {
 			'For scoped exports, modify only the IDs allowed by editableScope. Context parents/siblings are read-only unless they are also editable.',
 			'For widget scope, preserve existing children. Prefer update-setting/remove-setting; replace-element is allowed only when you preserve all unknown fields and the same root ID.',
 			'For subtree scope, inserted descendants are allowed only below an editable parent. Do not move the subtree into unrelated parts of the page.',
-			'Use widgetCatalog/elementCatalog to discover every available control, including defaults, options, responsive flags, ranges, units, conditions and selectors.',
+			'This package uses Context Resolver profile "' . $context_profile . '". widgetCatalog and elementCatalog contain detailed controls selected for this task; registryIndex is the compact list of all registered types.',
+			'Never invent a setting name. Only write settings backed by a detailed capability entry. If a type exists only in registryIndex, leave its settings at Elementor defaults or request a full-context export.',
+			'Use capabilityCoverage before relying on controls, Active Kit, breakpoints, Dynamic Tags or Elementor Pro runtime modules. Do not guess data marked partial or unavailable.',
 			'Preserve existing element IDs unless inserting new elements. Generate unique IDs for inserted elements.',
 			'Respect Elementor responsive suffix semantics and the active breakpoints supplied by the package.',
 			'Preserve Dynamic Tags, global style references, Atomic/V4 fields, classes, variables, interactions, editor_settings and unknown Elementor fields unless intentionally changing them.',
@@ -281,12 +273,5 @@ final class PackageBuilder {
 			'Do not output secrets, WordPress nonces, credentials, API keys, authentication data or executable JavaScript.',
 			'Do not save or publish. Cresco Layer validates, previews and writes reviewed changes into Elementor working data; the user chooses Update/Publish.',
 		] );
-	}
-
-	private function redact( $value, string $key = '' ) {
-		if ( preg_match( '/(?:secret|password|passwd|api[_-]?key|private[_-]?key|access[_-]?token|refresh[_-]?token|authorization|nonce|smtp[_-]?pass|webhook[_-]?secret)/i', $key ) ) { return '[REDACTED]'; }
-		if ( ! is_array( $value ) ) { return $value; }
-		foreach ( $value as $child_key => $child ) { $value[ $child_key ] = $this->redact( $child, (string) $child_key ); }
-		return $value;
 	}
 }

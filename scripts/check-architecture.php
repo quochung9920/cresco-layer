@@ -26,7 +26,15 @@ foreach ( $forbidden as $needle => $message ) {
 }
 
 $required = [
-	'includes/AI/PackageBuilder.php' => [ 'cresco-layer-ai-package/v2', 'scopeChecksum', 'widgetCatalog', 'elementCatalog', 'dynamicTags', "'[REDACTED]'" ],
+	'includes/AI/PackageBuilder.php' => [
+		'cresco-layer-ai-package/v2', 'scopeChecksum', 'widgetCatalog', 'elementCatalog', 'dynamicTags',
+		'ContextResolver', 'contextProfile', 'registryIndex', 'capabilityCoverage', 'fullRuntimeSnapshotIsSeparate',
+		'SerializableSanitizer', 'Never invent a setting name.',
+	],
+	'includes/AI/ContextResolver.php' => [
+		'cresco-context-resolver/v1', "PROFILE_SMART = 'smart'", "PROFILE_FULL = 'full'", 'registryIndex',
+		'capabilityCoverage', 'insertion-candidate', 'globalDesignSystem', 'dependency_map',
+	],
 	'includes/AI/ElementLocator.php' => [ "'document', 'widget', 'selection', 'subtree'", 'scope_checksum', 'find_context' ],
 	'includes/AI/CapabilityScanner.php' => [ 'defaultSettings', 'size_units', 'selectors_dictionary', 'frontend_available', 'catalog_index', 'catalog_entry', 'scanErrors', 'MAX_ARRAY_ITEMS', 'get_atomic_controls', 'get_props_schema' ],
 	'includes/AI/PatchValidator.php' => [ 'cresco-layer-patch/v1', 'replace-element', 'replace-document', 'MAX_OPERATIONS', 'Sensitive settings cannot be modified' ],
@@ -34,8 +42,18 @@ $required = [
 	'includes/AI/PatchApplier.php' => [ 'assert_scope_operations', 'staleDocumentButScopeUnchanged', 'preserve_children', 'DocumentChecksum::hash', 'get_with_permissions' ],
 	'includes/Elementor/ConfigurationCatalog.php' => [ 'catalog_index', 'lazyDetails', 'activeKit', 'scanErrors', "'[REDACTED]'" ],
 	'includes/Elementor/RuntimeSnapshot.php' => [ 'cresco-elementor-snapshot/v1', 'global-settings', 'features', 'active-kit', 'dynamic-tags', 'runtime', 'records', 'normalized', 'raw', 'downloadPlan', 'registryEntry', 'recordIndex', 'ElementorPro' ],
+	'includes/Elementor/RuntimeDiscovery.php' => [
+		'dynamic_tag_catalog', "['instance']", 'get_tags()', 'get_modules_names()', 'get_modules( $name )',
+		'conditionalCapabilities', 'dependency-inactive', 'dynamic-tags-empty', 'dynamic_tags_snapshot', 'runtime_snapshot',
+	],
+	'includes/Elementor/RuntimeSnapshotCoordinator.php' => [ 'RuntimeSnapshot::SCHEMA', 'runtimeDiscoveryVersion', 'section-aware-v2', "'dynamic-tags'", "'runtime'" ],
 	'includes/Support/SerializableSanitizer.php' => [ "'[REDACTED]'", 'redactions', 'omissions', 'JsonSerializable', 'runtime-object', 'access[_-]?token' ],
-	'includes/REST/Controller.php' => [ "current_user_can( 'edit_post'", 'expectedScope', '/preview', '/apply', '/elementor-catalog/(?P<kind>widget|element)', 'elementor_catalog_detail', "'lazy-v2'", 'semanticPatchValidation', 'postApplyVerification', '/elementor-snapshot', 'elementor_snapshot_section', 'elementor_snapshot_registry', 'elementor_snapshot_record', 'manage_options' ],
+	'includes/REST/Controller.php' => [
+		"current_user_can( 'edit_post'", 'expectedScope', '/preview', '/apply', '/elementor-catalog/(?P<kind>widget|element)',
+		'elementor_catalog_detail', "'lazy-v2'", 'semanticPatchValidation', 'postApplyVerification', '/elementor-snapshot',
+		'elementor_snapshot_section', 'elementor_snapshot_registry', 'elementor_snapshot_record', 'manage_options',
+		"'context' =>", "'aiContextResolver' => 'smart-v1'", "'dynamicTagDiscovery' => 'registry-info-v2'", "'elementorProModuleDiscovery' => 'named-modules-v2'",
+	],
 	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query', 'cresco-layer-snapshot-download', 'Download full Elementor snapshot', '/elementor-snapshot/section/', '/elementor-snapshot/record/' ],
 	'includes/Support/Assets.php' => [ 'elementor/editor/after_enqueue_scripts', 'cresco-layer-editor' ],
 	'includes/Audit/Auditor.php' => [ 'missing-alt', 'multiple-h1', 'large-dom' ],
@@ -45,6 +63,16 @@ foreach ( $required as $relative => $tokens ) {
 	if ( ! is_file( $path ) ) { $errors[] = 'Missing required file: ' . $relative; continue; }
 	$content = file_get_contents( $path );
 	foreach ( $tokens as $token ) { if ( ! str_contains( $content, $token ) ) { $errors[] = $relative . ' missing architecture token: ' . $token; } }
+}
+
+$packageBuilder = $root . '/includes/AI/PackageBuilder.php';
+if ( is_file( $packageBuilder ) && str_contains( file_get_contents( $packageBuilder ), '$this->scanner->catalog();' ) ) {
+	$errors[] = 'Normal AI exports must not scan and embed the full detailed Elementor catalog; use ContextResolver.';
+}
+
+$runtimeDiscovery = $root . '/includes/Elementor/RuntimeDiscovery.php';
+if ( is_file( $runtimeDiscovery ) && str_contains( file_get_contents( $runtimeDiscovery ), '$manager->get_modules() as' ) ) {
+	$errors[] = 'Elementor module discovery must call get_modules(name), not no-argument get_modules().';
 }
 
 $editor_js = $root . '/assets/editor.js';

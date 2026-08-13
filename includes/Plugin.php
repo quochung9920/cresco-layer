@@ -10,7 +10,7 @@ use CrescoLayer\Audit\Auditor;
 use CrescoLayer\Elementor\ConfigurationCatalog;
 use CrescoLayer\Elementor\DynamicTagRegistry;
 use CrescoLayer\Elementor\ProRegistry;
-use CrescoLayer\Elementor\RuntimeSnapshot;
+use CrescoLayer\Elementor\RuntimeSnapshotCoordinator;
 use CrescoLayer\Elementor\WidgetRegistry;
 use CrescoLayer\REST\Controller;
 use CrescoLayer\Support\Assets;
@@ -51,7 +51,7 @@ final class Plugin {
 		$validator  = new PatchValidator();
 		$semantic   = new SemanticPatchGuard();
 		$catalog    = new ConfigurationCatalog();
-		$snapshot   = new RuntimeSnapshot();
+		$snapshot   = new RuntimeSnapshotCoordinator();
 		$applier    = new PatchApplier( $validator, $auditor );
 		$controller = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $applier, $auditor );
 		$admin      = new AdminPage();
