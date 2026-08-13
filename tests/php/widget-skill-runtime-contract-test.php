@@ -4,10 +4,6 @@ $runtime = file_get_contents( $root . '/includes/Skills/WidgetSkillRuntime.php' 
 $catalog = file_get_contents( $root . '/includes/Elementor/ConfigurationCatalog.php' );
 $controller = file_get_contents( $root . '/includes/REST/Controller.php' );
 
-$required_runtime = [
-	"$this->catalog->detail" => false,
-];
-
 if ( ! str_contains( $runtime, '$this->catalog->detail( $kind, $name )' ) ) {
 	fwrite( STDERR, "FAIL: widget skill runtime must load detail only for the selected runtime type.\n" ); exit( 1 );
 }
