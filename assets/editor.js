@@ -642,7 +642,7 @@
 		var input = box.querySelector('#cresco-layer-patch-file');
 		var drop = box.querySelector('#cresco-layer-drop-zone');
 		if (choose && input) choose.addEventListener('click', function () { input.click(); });
-		if (drop && input) drop.addEventListener('click', function (event) { if (event.target !== choose) input.click(); });
+		if (drop && input) drop.addEventListener('click', function (event) { if (event.target !== choose && event.target !== input) input.click(); });
 		if (drop) drop.addEventListener('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (input) input.click(); } });
 		if (input) input.addEventListener('change', function () { if (input.files && input.files[0]) readPatchFile(input.files[0]); });
 		if (drop) {
