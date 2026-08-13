@@ -38,7 +38,7 @@ final class AdminPage {
 				<div>
 					<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Elementor intelligence layer', 'cresco-layer' ); ?></p>
 					<h1><?php echo esc_html__( 'Cresco Layer', 'cresco-layer' ); ?></h1>
-					<p><?php echo esc_html__( 'Export an AI-safe Elementor design package, inspect the live Elementor runtime, review a validated patch, then apply it through Elementor without giving an AI direct database access.', 'cresco-layer' ); ?></p>
+					<p><?php echo esc_html__( 'Export a context-resolved AI-safe Elementor package, inspect the live Elementor runtime, review a validated patch, then apply it through Elementor without giving an AI direct database access.', 'cresco-layer' ); ?></p>
 				</div>
 				<span class="cresco-layer-version">v<?php echo esc_html( CRESCO_LAYER_VERSION ); ?></span>
 			</div>
@@ -48,11 +48,16 @@ final class AdminPage {
 					<h2><?php echo esc_html__( '1. Choose document', 'cresco-layer' ); ?></h2>
 					<label for="cresco-layer-document"><?php echo esc_html__( 'Elementor document', 'cresco-layer' ); ?></label>
 					<select id="cresco-layer-document"></select>
+					<label for="cresco-layer-context-profile"><?php echo esc_html__( 'AI context profile', 'cresco-layer' ); ?></label>
+					<select id="cresco-layer-context-profile">
+						<option value="smart" selected><?php echo esc_html__( 'Smart — relevant controls + global context', 'cresco-layer' ); ?></option>
+						<option value="full"><?php echo esc_html__( 'Full — detailed controls for every registered type', 'cresco-layer' ); ?></option>
+					</select>
 					<div class="cresco-layer-actions">
 						<button class="button button-primary" id="cresco-layer-export"><?php echo esc_html__( 'Export for AI', 'cresco-layer' ); ?></button>
 						<button class="button" id="cresco-layer-audit"><?php echo esc_html__( 'Run audit', 'cresco-layer' ); ?></button>
 					</div>
-					<p class="description"><?php echo esc_html__( 'The package includes page content, page settings, Elementor design-system context, widget capabilities, an audit and AI instructions. Sensitive keys are redacted.', 'cresco-layer' ); ?></p>
+					<p class="description"><?php echo esc_html__( 'Smart is recommended: it keeps the full registered type index but expands only controls relevant to the task, plus Site Kit, breakpoints, Dynamic Tags and capability coverage. Use Full only when an AI must choose freely from every registered Elementor type.', 'cresco-layer' ); ?></p>
 				</section>
 
 				<section class="cresco-layer-card">
@@ -75,7 +80,7 @@ final class AdminPage {
 					</div>
 					<span id="cresco-layer-catalog-status" aria-live="polite"></span>
 				</div>
-				<p class="description"><?php echo esc_html__( 'Load the lightweight widget/element catalog first. Open any entry to fetch its controls on demand. Administrators can also download a full cresco-elementor-snapshot/v1 containing normalized and raw serializable Elementor Core/Pro settings, Site Kit data, features, breakpoints, Dynamic Tags, runtime registries, Elementor-owned documents/templates/popups/Theme Builder records and every registered widget/element capability.', 'cresco-layer' ); ?></p>
+				<p class="description"><?php echo esc_html__( 'Load the lightweight widget/element catalog first. Open any entry to fetch its controls on demand. Administrators can also download a full cresco-elementor-snapshot/v1 containing normalized and raw serializable Elementor Core/Pro settings, Site Kit data, features, breakpoints, Dynamic Tags, runtime modules, Elementor-owned documents/templates/popups/Theme Builder records and every registered widget/element capability.', 'cresco-layer' ); ?></p>
 				<div class="cresco-layer-catalog-toolbar">
 					<div class="cresco-layer-actions">
 						<button class="button button-primary" id="cresco-layer-catalog-load"><?php echo esc_html__( 'Load Elementor catalog', 'cresco-layer' ); ?></button>
@@ -90,7 +95,7 @@ final class AdminPage {
 					</label>
 				</div>
 				<?php if ( current_user_can( 'manage_options' ) ) : ?>
-					<p class="description"><?php echo esc_html__( 'Full snapshot export is administrator-only. Secrets, credentials, API keys, tokens, nonces and common token-bearing URL values are redacted; unsupported runtime objects/resources/callbacks are omitted and listed in the snapshot coverage report.', 'cresco-layer' ); ?></p>
+					<p class="description"><?php echo esc_html__( 'Full snapshot export is administrator-only. Secrets, credentials, API keys, tokens, nonces and common token-bearing URL values are redacted; unsupported runtime objects/resources/callbacks are omitted and listed in the snapshot coverage report. Coverage is partial if any request or scanner reports a partial/failed result.', 'cresco-layer' ); ?></p>
 				<?php endif; ?>
 				<div id="cresco-layer-catalog-summary" class="cresco-layer-catalog-summary" hidden></div>
 				<div id="cresco-layer-catalog-result" class="cresco-layer-catalog-result">
@@ -159,10 +164,10 @@ final class AdminPage {
 		a.href=url;a.download='cresco-layer-elementor-snapshot.json';document.body.appendChild(a);a.click();a.remove();
 		setTimeout(function(){URL.revokeObjectURL(url);},1000);
 	}
-	function sequential(items,worker){
-		return items.reduce(function(chain,item,index){return chain.then(function(){return worker(item,index);});},Promise.resolve());
-	}
+	function sequential(items,worker){return items.reduce(function(chain,item,index){return chain.then(function(){return worker(item,index);});},Promise.resolve());}
 	function message(error){return error&&error.message?error.message:String(error);}
+	function internalStatus(data){return data&&data.coverage&&typeof data.coverage.status==='string'?data.coverage.status:'complete';}
+	function isIncomplete(data){var value=internalStatus(data);return value==='partial'||value==='failed'||value==='unavailable';}
 
 	button.addEventListener('click',function(){
 		button.disabled=true;if(catalogLoad)catalogLoad.disabled=true;if(catalogDownload)catalogDownload.disabled=true;
@@ -183,36 +188,36 @@ final class AdminPage {
 				registries:{widgets:{},elements:{}},
 				records:{},
 				downloadErrors:[],
-				coverage:{sections:{total:sections.length,scanned:0,failed:0},widgets:{total:widgets.length,scanned:0,failed:0},elements:{total:elements.length,scanned:0,failed:0},records:{total:recordIds.length,scanned:0,failed:0}}
+				coverage:{sections:{total:sections.length,scanned:0,failed:0,partial:0},widgets:{total:widgets.length,scanned:0,failed:0,partial:0},elements:{total:elements.length,scanned:0,failed:0,partial:0},records:{total:recordIds.length,scanned:0,failed:0,partial:0}}
 			};
 			function progress(label){completed++;setStatus('Building full Elementor snapshot '+completed+'/'+Math.max(total,1)+' · '+label,'busy');}
 			function failed(bucket,id,error){snapshot.coverage[bucket].failed++;snapshot.downloadErrors.push({bucket:bucket,id:String(id),message:message(error)});}
+			function scanned(bucket,data){snapshot.coverage[bucket].scanned++;if(isIncomplete(data)){snapshot.coverage[bucket].partial++;snapshot.downloadErrors.push({bucket:bucket,id:String(data&&data.section?data.section:''),message:'Scanner coverage: '+internalStatus(data)});}}
 
 			return sequential(sections,function(slug){
-				return request('/elementor-snapshot/section/'+encodeURIComponent(slug)).then(function(data){snapshot.sections[slug]=data;snapshot.coverage.sections.scanned++;}).catch(function(error){failed('sections',slug,error);snapshot.sections[slug]={scanErrors:[{stage:'section-request',message:message(error)}]};}).then(function(){progress('section '+slug);});
+				return request('/elementor-snapshot/section/'+encodeURIComponent(slug)).then(function(data){snapshot.sections[slug]=data;scanned('sections',data);}).catch(function(error){failed('sections',slug,error);snapshot.sections[slug]={coverage:{status:'failed'},scanErrors:[{stage:'section-request',message:message(error)}]};}).then(function(){progress('section '+slug);});
 			}).then(function(){
 				return sequential(widgets,function(name){
-					return request('/elementor-snapshot/widget/'+encodeURIComponent(name)).then(function(data){snapshot.registries.widgets[name]=data;snapshot.coverage.widgets.scanned++;}).catch(function(error){failed('widgets',name,error);snapshot.registries.widgets[name]={scanErrors:[{stage:'registry-request',message:message(error)}]};}).then(function(){progress('widget '+name);});
+					return request('/elementor-snapshot/widget/'+encodeURIComponent(name)).then(function(data){snapshot.registries.widgets[name]=data;scanned('widgets',data);}).catch(function(error){failed('widgets',name,error);snapshot.registries.widgets[name]={coverage:{status:'failed'},scanErrors:[{stage:'registry-request',message:message(error)}]};}).then(function(){progress('widget '+name);});
 				});
 			}).then(function(){
 				return sequential(elements,function(name){
-					return request('/elementor-snapshot/element/'+encodeURIComponent(name)).then(function(data){snapshot.registries.elements[name]=data;snapshot.coverage.elements.scanned++;}).catch(function(error){failed('elements',name,error);snapshot.registries.elements[name]={scanErrors:[{stage:'registry-request',message:message(error)}]};}).then(function(){progress('element '+name);});
+					return request('/elementor-snapshot/element/'+encodeURIComponent(name)).then(function(data){snapshot.registries.elements[name]=data;scanned('elements',data);}).catch(function(error){failed('elements',name,error);snapshot.registries.elements[name]={coverage:{status:'failed'},scanErrors:[{stage:'registry-request',message:message(error)}]};}).then(function(){progress('element '+name);});
 				});
 			}).then(function(){
 				return sequential(recordIds,function(id){
-					return request('/elementor-snapshot/record/'+encodeURIComponent(String(id))).then(function(data){snapshot.records[String(id)]=data;snapshot.coverage.records.scanned++;}).catch(function(error){failed('records',id,error);snapshot.records[String(id)]={scanErrors:[{stage:'record-request',message:message(error)}]};}).then(function(){progress('record #'+id);});
+					return request('/elementor-snapshot/record/'+encodeURIComponent(String(id))).then(function(data){snapshot.records[String(id)]=data;scanned('records',data);}).catch(function(error){failed('records',id,error);snapshot.records[String(id)]={coverage:{status:'failed'},scanErrors:[{stage:'record-request',message:message(error)}]};}).then(function(){progress('record #'+id);});
 				});
 			}).then(function(){
-				Object.keys(snapshot.coverage).forEach(function(key){var row=snapshot.coverage[key];row.status=row.failed===0?'complete':(row.scanned>0?'partial':'failed');});
-				snapshot.coverage.status=snapshot.downloadErrors.length?'partial':'complete';
+				Object.keys(snapshot.coverage).forEach(function(key){var row=snapshot.coverage[key];row.status=row.failed>0?(row.scanned>0?'partial':'failed'):(row.partial>0?'partial':'complete');});
+				var buckets=['sections','widgets','elements','records'];
+				snapshot.coverage.status=buckets.some(function(key){return snapshot.coverage[key].status!=='complete';})?'partial':'complete';
 				return snapshot;
 			});
 		}).then(function(snapshot){
 			download(snapshot);
-			setStatus('Full Elementor snapshot built. Coverage: '+snapshot.coverage.status+'. Failed requests: '+snapshot.downloadErrors.length+'.','success');
-		}).catch(function(error){
-			setStatus(message(error),'error');
-		}).finally(function(){
+			setStatus('Full Elementor snapshot built. Coverage: '+snapshot.coverage.status+'. Issues: '+snapshot.downloadErrors.length+'.',snapshot.coverage.status==='complete'?'success':'error');
+		}).catch(function(error){setStatus(message(error),'error');}).finally(function(){
 			button.disabled=false;if(catalogLoad)catalogLoad.disabled=false;if(catalogDownload&&window.crescoLayerAdmin)catalogDownload.disabled=false;
 		});
 	});
