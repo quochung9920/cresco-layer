@@ -38,7 +38,7 @@ final class ConfigurationCatalog {
 				'widgetControls' => null,
 				'elementControls' => null,
 			],
-			'breakpoints' => $this->breakpoints(),
+			'breakpoints' => $this->runtime_breakpoints(),
 			'activeKit' => $this->active_kit(),
 			'widgets' => $widgets,
 			'elements' => $elements,
@@ -67,7 +67,12 @@ final class ConfigurationCatalog {
 		] );
 	}
 
-	private function breakpoints(): array {
+	/**
+	 * Lightweight breakpoint lookup for hot editor paths such as Widget Skills.
+	 * This deliberately avoids catalog_index(), which enumerates every registered
+	 * widget/element and is unnecessary when one selected element is being edited.
+	 */
+	public function runtime_breakpoints(): array {
 		try {
 			$plugin = ElementorPlugin::instance();
 			if ( ! isset( $plugin->breakpoints ) || ! method_exists( $plugin->breakpoints, 'get_active_breakpoints' ) ) {

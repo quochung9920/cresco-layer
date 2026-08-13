@@ -1,14 +1,15 @@
 {
   "name": "cresco-layer",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
-  "description": "Lossless scoped AI exchange, context-resolved Elementor runtime snapshots and professional intelligence for Elementor and Elementor Pro.",
+  "description": "Lossless scoped AI exchange, deterministic runtime widget skills and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
-    "lint:js": "node --check assets/admin.js && node --check assets/editor.js",
+    "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/skills.js",
     "test:editor-bootstrap": "node tests/js/editor-bootstrap-test.mjs",
     "test:editor-live-apply": "node tests/js/editor-live-apply-test.mjs",
     "test:editor-ai-ux": "node tests/js/editor-ai-ux-contract-test.mjs",
-    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux"
+    "test:editor-skills": "node tests/js/editor-skills-contract-test.mjs",
+    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:editor-skills"
   },
   "engines": {
     "node": ">=20"

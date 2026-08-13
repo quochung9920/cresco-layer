@@ -9,6 +9,7 @@ use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
 use CrescoLayer\Elementor\ConfigurationCatalog;
 use CrescoLayer\Elementor\RuntimeSnapshotCoordinator;
+use CrescoLayer\Skills\WidgetSkillRuntime;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -20,6 +21,7 @@ final class Controller {
 		private SemanticPatchGuard $semantic,
 		private ConfigurationCatalog $catalog,
 		private RuntimeSnapshotCoordinator $snapshot,
+		private WidgetSkillRuntime $skills,
 		private PatchApplier $applier,
 		private Auditor $auditor
 	) {}
@@ -70,6 +72,16 @@ final class Controller {
 				'context' => [ 'default' => ContextResolver::PROFILE_SMART, 'sanitize_callback' => 'sanitize_key' ],
 			],
 		] );
+		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/skills/(?P<element>[A-Za-z0-9_-]+)', [
+			'methods' => 'GET',
+			'callback' => [ $this, 'widget_skills' ],
+			'permission_callback' => [ $this, 'can_edit' ],
+		] );
+		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/skills/(?P<element>[A-Za-z0-9_-]+)/resolve', [
+			'methods' => 'POST',
+			'callback' => [ $this, 'resolve_widget_skill' ],
+			'permission_callback' => [ $this, 'can_edit' ],
+		] );
 		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/preview', [
 			'methods' => 'POST',
 			'callback' => [ $this, 'preview' ],
@@ -108,6 +120,8 @@ final class Controller {
 			'postApplyVerification' => true,
 			'elementorConfigurationCatalog' => 'lazy-v2',
 			'elementorRuntimeSnapshot' => RuntimeSnapshotCoordinator::SCHEMA,
+			'widgetSkillRuntime' => 'runtime-v1',
+			'deterministicSkillCommands' => true,
 			'aiContextResolver' => 'smart-v1',
 			'dynamicTagDiscovery' => 'registry-info-v2',
 			'elementorProModuleDiscovery' => 'named-modules-v2',
@@ -160,6 +174,21 @@ final class Controller {
 					$selected,
 					(string) $request->get_param( 'context' )
 				),
+				200
+			);
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
+	}
+
+	public function widget_skills( WP_REST_Request $request ) {
+		try {
+			return new WP_REST_Response( $this->skills->profile( absint( $request['id'] ), (string) $request['element'] ), 200 );
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
+	}
+
+	public function resolve_widget_skill( WP_REST_Request $request ) {
+		try {
+			return new WP_REST_Response(
+				$this->skills->resolve( absint( $request['id'] ), (string) $request['element'], $this->request_body( $request ) ),
 				200
 			);
 		} catch ( \Throwable $error ) { return $this->error( $error ); }
