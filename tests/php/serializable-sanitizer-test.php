@@ -43,4 +43,3 @@ $report = $sanitizer->report();
 
 sanitizer_assert( '[REDACTED]' === $output['api_key'], 'API keys must be redacted by key.' );
 sanitor_assert_placeholder:
-sanitor_assert_placeholder;
