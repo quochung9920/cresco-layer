@@ -20,11 +20,12 @@ final class ContextResolver {
 	public function resolve( array $editableElements, array $readOnlyContext = [], string $scope = 'document', string $profile = self::PROFILE_SMART ): array {
 		$profile = in_array( $profile, self::PROFILES, true ) ? $profile : self::PROFILE_SMART;
 		$index = $this->scanner->catalog_index();
-		$errors = array_values( (array) ( $index['scanErrors'] ?? [] ) );
+		$capabilityErrors = array_values( (array) ( $index['scanErrors'] ?? [] ) );
 		$roles = [ 'widgets' => [], 'elements' => [] ];
 
 		$this->collect_types( $editableElements, $roles, 'editable' );
 		$this->collect_types( $readOnlyContext, $roles, 'read-only-context' );
+		$this->filter_registered_roles( $roles, $index, $capabilityErrors );
 
 		if ( self::PROFILE_FULL === $profile ) {
 			foreach ( array_keys( (array) ( $index['widgets'] ?? [] ) ) as $name ) { $roles['widgets'][ (string) $name ] = 'full-profile'; }
@@ -33,18 +34,31 @@ final class ContextResolver {
 			$this->add_insertion_candidates( $roles, $index );
 		}
 
-		$widgets = $this->load_entries( 'widget', $roles['widgets'], $errors );
-		$elements = $this->load_entries( 'element', $roles['elements'], $errors );
-		$breakpoints = $this->breakpoints( $errors );
-		$designSystem = $this->design_system( $errors );
+		$widgets = $this->load_entries( 'widget', $roles['widgets'], $capabilityErrors );
+		$elements = $this->load_entries( 'element', $roles['elements'], $capabilityErrors );
+		$expectedCapabilities = count( $roles['widgets'] ) + count( $roles['elements'] );
+		$loadedCapabilities = count( $widgets ) + count( $elements );
+
+		$siteErrors = [];
+		$breakpoints = $this->breakpoints( $siteErrors );
+		$designSystem = $this->design_system( $siteErrors );
 		$dynamicTags = $this->runtime->dynamic_tag_catalog();
 		$modules = $this->runtime->module_catalog();
 		$dependencies = $this->runtime->dependency_map();
 
-		$errors = array_merge( $errors, (array) ( $dynamicTags['scanErrors'] ?? [] ), (array) ( $modules['scanErrors'] ?? [] ) );
-		$controlStatus = $this->status_from_errors( $errors, [ 'catalog', 'registry', 'capability', 'control', 'atomic', 'widget', 'element' ], (bool) ( $widgets || $elements || ! $roles['widgets'] && ! $roles['elements'] ) );
-		$kitStatus = $this->status_from_errors( $errors, [ 'active-kit', 'design-system', 'kit' ], ! empty( $designSystem['settings'] ?? [] ) );
-		$breakpointStatus = $this->status_from_errors( $errors, [ 'breakpoint' ], ! empty( $breakpoints ) );
+		$controlStatus = $this->status_from_errors(
+			$capabilityErrors,
+			[ 'catalog', 'registry', 'capability', 'control', 'atomic' ],
+			0 === $expectedCapabilities || $loadedCapabilities === $expectedCapabilities
+		);
+		$kitStatus = $this->status_from_errors( $siteErrors, [ 'active-kit', 'design-system', 'kit' ], ! empty( $designSystem['settings'] ?? [] ) );
+		$breakpointStatus = $this->status_from_errors( $siteErrors, [ 'breakpoint' ], ! empty( $breakpoints ) );
+		$errors = array_merge(
+			$capabilityErrors,
+			$siteErrors,
+			(array) ( $dynamicTags['scanErrors'] ?? [] ),
+			(array) ( $modules['scanErrors'] ?? [] )
+		);
 
 		return [
 			'profile' => $profile,
@@ -82,13 +96,14 @@ final class ContextResolver {
 				'activeKit' => $kitStatus,
 				'breakpoints' => $breakpointStatus,
 				'dynamicTags' => (string) ( $dynamicTags['coverage']['status'] ?? 'partial' ),
-				'proRuntimeModules' => (string) ( $modules['coverage']['status'] ?? 'partial' ),
+				'proRuntimeModules' => defined( 'ELEMENTOR_PRO_VERSION' ) ? (string) ( $modules['coverage']['status'] ?? 'partial' ) : 'unavailable',
 			],
 			'contextStats' => [
 				'registeredWidgets' => count( (array) ( $index['widgets'] ?? [] ) ),
 				'registeredElements' => count( (array) ( $index['elements'] ?? [] ) ),
 				'detailedWidgets' => count( $widgets ),
 				'detailedElements' => count( $elements ),
+				'expectedDetailedCapabilities' => $expectedCapabilities,
 				'dynamicTags' => (int) ( $dynamicTags['count'] ?? 0 ),
 				'errors' => count( $errors ),
 			],
@@ -125,6 +140,22 @@ final class ContextResolver {
 			$roles['elements'][ $value['elType'] ] = $this->stronger_role( $roles['elements'][ $value['elType'] ] ?? '', $role );
 		}
 		foreach ( $value as $child ) { if ( is_array( $child ) ) { $this->collect_types( $child, $roles, $role ); } }
+	}
+
+	private function filter_registered_roles( array &$roles, array $index, array &$errors ): void {
+		foreach ( array_keys( $roles['widgets'] ) as $name ) {
+			if ( isset( $index['widgets'][ $name ] ) ) { continue; }
+			$errors[] = [ 'kind' => 'widget', 'name' => (string) $name, 'stage' => 'registry-type-missing', 'message' => 'Widget type is present in document/context data but is not registered in the current Elementor runtime.' ];
+			unset( $roles['widgets'][ $name ] );
+		}
+		foreach ( array_keys( $roles['elements'] ) as $name ) {
+			if ( isset( $index['elements'][ $name ] ) ) { continue; }
+			// Elementor widgets persist elType=widget; widgetType is the real registered capability key.
+			if ( 'widget' !== $name ) {
+				$errors[] = [ 'kind' => 'element', 'name' => (string) $name, 'stage' => 'registry-type-missing', 'message' => 'Element type is present in document/context data but is not registered in the current Elementor runtime.' ];
+			}
+			unset( $roles['elements'][ $name ] );
+		}
 	}
 
 	private function stronger_role( string $existing, string $incoming ): string {
