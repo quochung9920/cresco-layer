@@ -48,7 +48,7 @@ final class SkillCompiler {
 	public function resolve( array $compiled, string $skill_id, array $params, array $current_settings, string $element_id ): array {
 		$skill = $this->find_skill( $compiled, $skill_id );
 		if ( ! $skill ) { throw new \InvalidArgumentException( 'Requested Cresco skill is not available for this Elementor element.' ); }
-		if ( 'read-only' === ( $skill['mode'] ?? '' ) ) { throw new \InvalidArgumentException( 'This runtime control is descriptive/action-only and cannot be changed as a value skill.' ); }
+		if ( 'read-only' === ( $skill['mode'] ?? '' ) ) { throw new \InvalidArgumentException( 'This runtime control is descriptive/action-only or lacks a proven Elementor binding.' ); }
 		if ( ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/', $element_id ) ) { throw new \InvalidArgumentException( 'Element ID is invalid.' ); }
 
 		$device = strtolower( trim( (string) ( $params['device'] ?? 'desktop' ) ) );
@@ -57,7 +57,7 @@ final class SkillCompiler {
 		if ( ! in_array( $device, $devices, true ) ) { throw new \InvalidArgumentException( 'This skill is not available for the requested responsive device.' ); }
 
 		$setting = (string) ( $skill['setting'] ?? '' );
-		if ( '' === $setting ) { throw new \InvalidArgumentException( 'Skill does not expose an Elementor setting binding.' ); }
+		if ( '' === $setting ) { throw new \InvalidArgumentException( 'Skill does not expose a proven Elementor setting/prop binding.' ); }
 		if ( 'desktop' !== $device ) {
 			if ( empty( $skill['responsive'] ) ) { throw new \InvalidArgumentException( 'This Elementor control is not responsive.' ); }
 			$setting .= '_' . $device;
@@ -142,7 +142,8 @@ final class SkillCompiler {
 		$type = strtolower( (string) ( $control['type'] ?? 'unknown' ) );
 		$source = (string) ( $control['source'] ?? 'classic-control' );
 		$bind = trim( (string) ( $control['bind'] ?? '' ) );
-		$setting = str_starts_with( $source, 'atomic' ) && '' !== $bind ? $bind : $name;
+		$is_atomic_source = str_starts_with( $source, 'atomic' );
+		$setting = $is_atomic_source ? $bind : $name;
 		$responsive = ! empty( $control['responsive'] );
 		$devices = [ 'desktop' ];
 		if ( $responsive ) {
@@ -153,19 +154,19 @@ final class SkillCompiler {
 				if ( in_array( $device, self::RESPONSIVE_SUFFIXES, true ) && ! in_array( $device, $devices, true ) ) { $devices[] = $device; }
 			}
 		}
-		$mode = in_array( $type, self::NON_VALUE_TYPES, true ) || ( str_starts_with( $source, 'atomic' ) && '' === $setting ) ? 'read-only' : ( in_array( $type, self::COMPLEX_TYPES, true ) ? 'expert' : 'direct' );
-		$role = $this->infer_role( $setting, $type );
-		$category = $this->infer_category( $setting, $type, $role );
+		$mode = in_array( $type, self::NON_VALUE_TYPES, true ) || ( $is_atomic_source && '' === $setting ) ? 'read-only' : ( in_array( $type, self::COMPLEX_TYPES, true ) ? 'expert' : 'direct' );
+		$role = '' === $setting ? '' : $this->infer_role( $setting, $type );
+		$category = $this->infer_category( '' === $setting ? $name : $setting, $type, $role );
 		$device_values = [];
 		foreach ( $devices as $device ) {
 			$key = 'desktop' === $device ? $setting : $setting . '_' . $device;
-			$device_values[ $device ] = array_key_exists( $key, $current ) ? $current[ $key ] : ( $defaults[ $key ] ?? null );
+			$device_values[ $device ] = '' === $setting ? null : ( array_key_exists( $key, $current ) ? $current[ $key ] : ( $defaults[ $key ] ?? null ) );
 		}
 		$conditions = [];
 		if ( isset( $control['condition'] ) ) { $conditions['condition'] = $control['condition']; }
 		if ( isset( $control['conditions'] ) ) { $conditions['conditions'] = $control['conditions']; }
 		$label = trim( (string) ( $control['label'] ?? '' ) );
-		if ( '' === $label ) { $label = ucwords( str_replace( [ '_', '-' ], ' ', $setting ) ); }
+		if ( '' === $label ) { $label = ucwords( str_replace( [ '_', '-' ], ' ', '' === $setting ? $name : $setting ) ); }
 
 		return [
 			'id' => 'control.' . $name,
@@ -179,7 +180,7 @@ final class SkillCompiler {
 			'category' => $category,
 			'role' => $role,
 			'mode' => $mode,
-			'risk' => $this->risk( $setting, $type, $conditions ),
+			'risk' => $this->risk( '' === $setting ? $name : $setting, $type, $conditions ),
 			'responsive' => $responsive,
 			'devices' => $devices,
 			'dynamic' => ! empty( $control['dynamic'] ),
@@ -193,10 +194,15 @@ final class SkillCompiler {
 			'current' => [ 'devices' => $device_values ],
 			'metadata' => [
 				'default' => $control['default'] ?? null,
+				'tabletDefault' => $control['tablet_default'] ?? null,
+				'mobileDefault' => $control['mobile_default'] ?? null,
 				'placeholder' => $control['placeholder'] ?? null,
 				'classes' => $control['classes'] ?? null,
 				'prefixClass' => $control['prefix_class'] ?? null,
 				'propSchema' => $control['propSchema'] ?? null,
+				'atomicProps' => $control['props'] ?? null,
+				'atomicMeta' => $control['meta'] ?? null,
+				'rawMetadata' => $control['rawMetadata'] ?? null,
 			],
 			'searchTerms' => array_values( array_unique( array_filter( [ $name, $setting, $label, $role, $category, $type ] ) ) ),
 		];
@@ -213,14 +219,12 @@ final class SkillCompiler {
 			'max' => $control['max'] ?? null,
 			'step' => $control['step'] ?? null,
 			'multiple' => ! empty( $control['multiple'] ),
-			'returnValue' => $raw['return_value'] ?? 'yes',
+			'returnValue' => $control['return_value'] ?? ( $raw['return_value'] ?? 'yes' ),
 		];
 	}
 
 	private function normalize_value( array $skill, array $params ) {
-		if ( ! array_key_exists( 'value', $params ) && ! array_key_exists( 'all', $params ) && ! array_intersect( [ 'top', 'right', 'bottom', 'left' ], array_keys( $params ) ) ) {
-			throw new \InvalidArgumentException( 'Skill value is required.' );
-		}
+		if ( ! array_key_exists( 'value', $params ) && ! array_key_exists( 'all', $params ) && ! array_intersect( [ 'top', 'right', 'bottom', 'left' ], array_keys( $params ) ) ) { throw new \InvalidArgumentException( 'Skill value is required.' ); }
 		$type = (string) ( $skill['type'] ?? '' );
 		$input = is_array( $skill['input'] ?? null ) ? $skill['input'] : [];
 		$value = $params['value'] ?? ( $params['all'] ?? null );
@@ -228,9 +232,7 @@ final class SkillCompiler {
 		if ( in_array( $type, [ 'slider', 'size' ], true ) ) { return $this->slider_value( $value, $input ); }
 		if ( 'number' === $type ) {
 			if ( ! is_numeric( $value ) ) { throw new \InvalidArgumentException( 'Numeric skill requires a number.' ); }
-			$number = 0 + $value;
-			$this->assert_numeric_range( $number, $input );
-			return $number;
+			$number = 0 + $value; $this->assert_numeric_range( $number, $input ); return $number;
 		}
 		if ( 'switcher' === $type ) {
 			if ( is_bool( $value ) ) { return $value ? (string) ( $input['returnValue'] ?? 'yes' ) : ''; }
@@ -241,17 +243,10 @@ final class SkillCompiler {
 		}
 		if ( in_array( $type, [ 'select', 'choose', 'select2' ], true ) ) {
 			$options = is_array( $input['options'] ?? null ) ? $input['options'] : [];
-			if ( ! empty( $input['multiple'] ) ) {
-				$values = is_array( $value ) ? $value : [ $value ];
-				foreach ( $values as $item ) { $this->assert_option( $item, $options ); }
-				return array_values( $values );
-			}
-			$this->assert_option( $value, $options );
-			return $value;
+			if ( ! empty( $input['multiple'] ) ) { $values = is_array( $value ) ? $value : [ $value ]; foreach ( $values as $item ) { $this->assert_option( $item, $options ); } return array_values( $values ); }
+			$this->assert_option( $value, $options ); return $value;
 		}
-		if ( 'url' === $type && is_string( $value ) ) {
-			return [ 'url' => trim( $value ), 'is_external' => '', 'nofollow' => '', 'custom_attributes' => '' ];
-		}
+		if ( 'url' === $type && is_string( $value ) ) { return [ 'url' => trim( $value ), 'is_external' => '', 'nofollow' => '', 'custom_attributes' => '' ]; }
 		if ( in_array( $type, [ 'repeater', 'gallery', 'structure' ], true ) && ! is_array( $value ) ) { throw new \InvalidArgumentException( 'Structured Elementor skill requires an array/object value.' ); }
 		if ( is_scalar( $value ) || is_array( $value ) || null === $value ) { return $value; }
 		throw new \InvalidArgumentException( 'Skill value type is not supported.' );
@@ -259,17 +254,11 @@ final class SkillCompiler {
 
 	private function dimensions_value( array $params, array $input ): array {
 		$seed = $params['value'] ?? ( $params['all'] ?? null );
-		if ( null === $seed || '' === (string) $seed ) {
-			foreach ( [ 'top', 'right', 'bottom', 'left' ] as $side ) {
-				if ( array_key_exists( $side, $params ) && '' !== (string) $params[ $side ] ) { $seed = $params[ $side ]; break; }
-			}
-		}
+		if ( null === $seed || '' === (string) $seed ) { foreach ( [ 'top', 'right', 'bottom', 'left' ] as $side ) { if ( array_key_exists( $side, $params ) && '' !== (string) $params[ $side ] ) { $seed = $params[ $side ]; break; } } }
 		if ( null === $seed || '' === (string) $seed ) { $seed = 0; }
 		[ $size, $inferred_unit ] = $this->parse_size( $seed, $input );
-		$unit = (string) ( $params['unit'] ?? $inferred_unit );
-		$this->assert_unit( $unit, $input );
-		$all = (string) $size;
-		$result = [
+		$unit = (string) ( $params['unit'] ?? $inferred_unit ); $this->assert_unit( $unit, $input ); $all = (string) $size;
+		return [
 			'unit' => $unit,
 			'top' => array_key_exists( 'top', $params ) ? $this->dimension_side( $params['top'], $unit, $input ) : $all,
 			'right' => array_key_exists( 'right', $params ) ? $this->dimension_side( $params['right'], $unit, $input ) : $all,
@@ -277,7 +266,6 @@ final class SkillCompiler {
 			'left' => array_key_exists( 'left', $params ) ? $this->dimension_side( $params['left'], $unit, $input ) : $all,
 			'isLinked' => ! array_intersect( [ 'top', 'right', 'bottom', 'left' ], array_keys( $params ) ),
 		];
-		return $result;
 	}
 
 	private function dimension_side( $value, string $unit, array $input ): string {
@@ -290,14 +278,12 @@ final class SkillCompiler {
 
 	private function slider_value( $value, array $input ): array {
 		if ( is_array( $value ) && array_key_exists( 'size', $value ) ) {
-			$unit = (string) ( $value['unit'] ?? $this->preferred_unit( $input ) );
-			$this->assert_unit( $unit, $input );
+			$unit = (string) ( $value['unit'] ?? $this->preferred_unit( $input ) ); $this->assert_unit( $unit, $input );
 			if ( ! is_numeric( $value['size'] ) && '' !== (string) $value['size'] ) { throw new \InvalidArgumentException( 'Slider size must be numeric.' ); }
 			if ( is_numeric( $value['size'] ) ) { $this->assert_numeric_range( 0 + $value['size'], $input, $unit ); }
 			return [ 'unit' => $unit, 'size' => '' === (string) $value['size'] ? '' : 0 + $value['size'], 'sizes' => is_array( $value['sizes'] ?? null ) ? $value['sizes'] : [] ];
 		}
-		[ $size, $unit ] = $this->parse_size( $value, $input );
-		$this->assert_numeric_range( 0 + $size, $input, $unit );
+		[ $size, $unit ] = $this->parse_size( $value, $input ); $this->assert_numeric_range( 0 + $size, $input, $unit );
 		return [ 'unit' => $unit, 'size' => 0 + $size, 'sizes' => [] ];
 	}
 
@@ -305,39 +291,22 @@ final class SkillCompiler {
 		if ( is_numeric( $value ) ) { return [ 0 + $value, $this->preferred_unit( $input ) ]; }
 		$string = trim( (string) $value );
 		if ( ! preg_match( '/^(-?\d+(?:\.\d+)?)\s*(px|%|em|rem|vh|vw|deg|s|ms|fr)?$/i', $string, $match ) ) { throw new \InvalidArgumentException( 'Expected a numeric value with an optional Elementor unit.' ); }
-		$unit = '' !== ( $match[2] ?? '' ) ? strtolower( $match[2] ) : $this->preferred_unit( $input );
-		$this->assert_unit( $unit, $input );
+		$unit = '' !== ( $match[2] ?? '' ) ? strtolower( $match[2] ) : $this->preferred_unit( $input ); $this->assert_unit( $unit, $input );
 		return [ 0 + $match[1], $unit ];
 	}
 
-	private function preferred_unit( array $input ): string {
-		$units = (array) ( $input['units'] ?? [] );
-		return $units ? (string) $units[0] : 'px';
-	}
-
-	private function assert_unit( string $unit, array $input ): void {
-		$units = array_values( array_map( 'strval', (array) ( $input['units'] ?? [] ) ) );
-		if ( $units && ! in_array( $unit, $units, true ) ) { throw new \InvalidArgumentException( 'Unit is not supported by this Elementor control.' ); }
-	}
-
+	private function preferred_unit( array $input ): string { $units = (array) ( $input['units'] ?? [] ); return $units ? (string) $units[0] : 'px'; }
+	private function assert_unit( string $unit, array $input ): void { $units = array_values( array_map( 'strval', (array) ( $input['units'] ?? [] ) ) ); if ( $units && ! in_array( $unit, $units, true ) ) { throw new \InvalidArgumentException( 'Unit is not supported by this Elementor control.' ); } }
 	private function assert_numeric_range( $number, array $input, string $unit = '' ): void {
-		$range = is_array( $input['range'] ?? null ) ? $input['range'] : [];
-		$bounds = $unit && is_array( $range[ $unit ] ?? null ) ? $range[ $unit ] : [];
-		$min = $bounds['min'] ?? ( $input['min'] ?? null );
-		$max = $bounds['max'] ?? ( $input['max'] ?? null );
+		$range = is_array( $input['range'] ?? null ) ? $input['range'] : []; $bounds = $unit && is_array( $range[ $unit ] ?? null ) ? $range[ $unit ] : [];
+		$min = $bounds['min'] ?? ( $input['min'] ?? null ); $max = $bounds['max'] ?? ( $input['max'] ?? null );
 		if ( is_numeric( $min ) && $number < $min ) { throw new \InvalidArgumentException( 'Value is below the Elementor control minimum.' ); }
 		if ( is_numeric( $max ) && $number > $max ) { throw new \InvalidArgumentException( 'Value is above the Elementor control maximum.' ); }
 	}
-
-	private function assert_option( $value, array $options ): void {
-		if ( ! $options ) { return; }
-		$key = (string) $value;
-		if ( ! array_key_exists( $key, $options ) && ! array_key_exists( $value, $options ) ) { throw new \InvalidArgumentException( 'Value is not one of the Elementor control options.' ); }
-	}
+	private function assert_option( $value, array $options ): void { if ( ! $options ) { return; } $key = (string) $value; if ( ! array_key_exists( $key, $options ) && ! array_key_exists( $value, $options ) ) { throw new \InvalidArgumentException( 'Value is not one of the Elementor control options.' ); } }
 
 	private function safe_prerequisite_operations( array $compiled, array $skill, array $current, string $element_id ): array {
-		$condition = is_array( $skill['conditions']['condition'] ?? null ) ? $skill['conditions']['condition'] : [];
-		$operations = [];
+		$condition = is_array( $skill['conditions']['condition'] ?? null ) ? $skill['conditions']['condition'] : []; $operations = [];
 		foreach ( $condition as $key => $expected ) {
 			$key = (string) $key;
 			if ( str_ends_with( $key, '!' ) || is_array( $expected ) || ! $this->safe_enabler( $key ) ) { continue; }
@@ -347,61 +316,24 @@ final class SkillCompiler {
 		}
 		return $operations;
 	}
-
-	private function safe_enabler( string $key ): bool {
-		return (bool) preg_match( '/(?:_background|_border|_typography|_box_shadow_type|_popover|_css_filter)$/', $key );
-	}
-
-	private function find_skill( array $compiled, string $id ): ?array {
-		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $id === ( $skill['id'] ?? '' ) ) { return $skill; } }
-		return null;
-	}
-
-	private function find_role_skill( array $compiled, string $role ): ?array {
-		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $role === ( $skill['role'] ?? '' ) && 'read-only' !== ( $skill['mode'] ?? '' ) ) { return $skill; } }
-		return null;
-	}
-
-	private function find_setting_skill( array $compiled, string $setting ): ?array {
-		foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $setting === ( $skill['setting'] ?? '' ) && 'read-only' !== ( $skill['mode'] ?? '' ) ) { return $skill; } }
-		return null;
-	}
+	private function safe_enabler( string $key ): bool { return (bool) preg_match( '/(?:_background|_border|_typography|_box_shadow_type|_popover|_css_filter)$/', $key ); }
+	private function find_skill( array $compiled, string $id ): ?array { foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $id === ( $skill['id'] ?? '' ) ) { return $skill; } } return null; }
+	private function find_role_skill( array $compiled, string $role ): ?array { foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $role === ( $skill['role'] ?? '' ) && 'read-only' !== ( $skill['mode'] ?? '' ) ) { return $skill; } } return null; }
+	private function find_setting_skill( array $compiled, string $setting ): ?array { foreach ( (array) ( $compiled['skills'] ?? [] ) as $skill ) { if ( is_array( $skill ) && $setting === ( $skill['setting'] ?? '' ) && 'read-only' !== ( $skill['mode'] ?? '' ) ) { return $skill; } } return null; }
 
 	private function infer_role( string $setting, string $type ): string {
 		$key = strtolower( $setting );
 		$map = [
-			'/^padding$|_padding$/' => 'spacing.padding',
-			'/^margin$|_margin$/' => 'spacing.margin',
-			'/(?:^|_)min_height$/' => 'layout.min-height',
-			'/(?:^|_)(?:content_)?width$|_width$/' => 'layout.width',
-			'/(?:flex_)?gap|grid_gaps|space_between/' => 'layout.gap',
-			'/flex_direction|direction$/' => 'layout.direction',
-			'/justify_content|justify$/' => 'layout.justify',
-			'/align_items|align_self/' => 'layout.align',
-			'/background_color$|^background_color$/' => 'style.background-color',
-			'/border_radius|radius$/' => 'style.border-radius',
-			'/border_color$/' => 'style.border-color',
-			'/border_width$/' => 'style.border-width',
-			'/box_shadow/' => 'style.box-shadow',
-			'/opacity$/' => 'style.opacity',
-			'/font_size$/' => 'typography.font-size',
-			'/font_weight$/' => 'typography.font-weight',
-			'/line_height$/' => 'typography.line-height',
-			'/letter_spacing$/' => 'typography.letter-spacing',
-			'/(?:text|title|heading|typography)_color$|^color$/' => 'typography.color',
-			'/(?:text_)?align(?:ment)?$/' => 'typography.align',
-			'/html_tag$/' => 'content.html-tag',
-			'/(?:^|_)(?:title|text|editor|description|caption|button_text)$/' => 'content.text',
-			'/(?:^|_)(?:link|url)$/' => 'content.link',
-			'/^hide_(?:desktop|tablet|mobile)$/' => 'responsive.visibility',
-			'/(?:image|media)$/' => 'media.source',
-			'/object_fit/' => 'media.object-fit',
-			'/autoplay/' => 'media.autoplay',
-			'/(?:slides_per_view|slides_to_show|slides_count)/' => 'carousel.columns',
-			'/(?:columns|column_count)$/' => 'layout.columns',
-			'/(?:query|posts|source)$/' => 'query.source',
-			'/(?:form_fields|fields)$/' => 'form.fields',
-			'/(?:actions_after_submit|submit_actions)/' => 'form.actions',
+			'/^padding$|_padding$/' => 'spacing.padding', '/^margin$|_margin$/' => 'spacing.margin', '/(?:^|_)min_height$/' => 'layout.min-height',
+			'/(?:^|_)(?:content_)?width$|_width$/' => 'layout.width', '/(?:flex_)?gap|grid_gaps|space_between/' => 'layout.gap', '/flex_direction|direction$/' => 'layout.direction',
+			'/justify_content|justify$/' => 'layout.justify', '/align_items|align_self/' => 'layout.align', '/background_color$|^background_color$/' => 'style.background-color',
+			'/border_radius|radius$/' => 'style.border-radius', '/border_color$/' => 'style.border-color', '/border_width$/' => 'style.border-width', '/box_shadow/' => 'style.box-shadow',
+			'/opacity$/' => 'style.opacity', '/font_size$/' => 'typography.font-size', '/font_weight$/' => 'typography.font-weight', '/line_height$/' => 'typography.line-height',
+			'/letter_spacing$/' => 'typography.letter-spacing', '/(?:text|title|heading|typography)_color$|^color$/' => 'typography.color', '/(?:text_)?align(?:ment)?$/' => 'typography.align',
+			'/html_tag$/' => 'content.html-tag', '/(?:^|_)(?:title|text|editor|description|caption|button_text)$/' => 'content.text', '/(?:^|_)(?:link|url)$/' => 'content.link',
+			'/^hide_(?:desktop|tablet|mobile)$/' => 'responsive.visibility', '/(?:image|media)$/' => 'media.source', '/object_fit/' => 'media.object-fit', '/autoplay/' => 'media.autoplay',
+			'/(?:slides_per_view|slides_to_show|slides_count)/' => 'carousel.columns', '/(?:columns|column_count)$/' => 'layout.columns', '/(?:query|posts|source)$/' => 'query.source',
+			'/(?:form_fields|fields)$/' => 'form.fields', '/(?:actions_after_submit|submit_actions)/' => 'form.actions',
 		];
 		foreach ( $map as $pattern => $role ) { if ( preg_match( $pattern, $key ) ) { return $role; } }
 		if ( 'color' === $type ) { return 'style.color'; }
@@ -409,25 +341,16 @@ final class SkillCompiler {
 	}
 
 	private function infer_category( string $setting, string $type, string $role ): string {
-		if ( str_starts_with( $role, 'spacing.' ) ) { return 'Spacing'; }
-		if ( str_starts_with( $role, 'layout.' ) ) { return 'Layout'; }
-		if ( str_starts_with( $role, 'typography.' ) ) { return 'Typography'; }
-		if ( str_starts_with( $role, 'style.' ) ) { return 'Style'; }
-		if ( str_starts_with( $role, 'content.' ) ) { return 'Content'; }
-		if ( str_starts_with( $role, 'responsive.' ) ) { return 'Responsive'; }
-		if ( str_starts_with( $role, 'media.' ) ) { return 'Media'; }
-		if ( str_starts_with( $role, 'form.' ) ) { return 'Form'; }
-		if ( str_starts_with( $role, 'query.' ) ) { return 'Query'; }
-		if ( str_starts_with( $role, 'carousel.' ) ) { return 'Carousel'; }
+		if ( str_starts_with( $role, 'spacing.' ) ) { return 'Spacing'; } if ( str_starts_with( $role, 'layout.' ) ) { return 'Layout'; }
+		if ( str_starts_with( $role, 'typography.' ) ) { return 'Typography'; } if ( str_starts_with( $role, 'style.' ) ) { return 'Style'; }
+		if ( str_starts_with( $role, 'content.' ) ) { return 'Content'; } if ( str_starts_with( $role, 'responsive.' ) ) { return 'Responsive'; }
+		if ( str_starts_with( $role, 'media.' ) ) { return 'Media'; } if ( str_starts_with( $role, 'form.' ) ) { return 'Form'; }
+		if ( str_starts_with( $role, 'query.' ) ) { return 'Query'; } if ( str_starts_with( $role, 'carousel.' ) ) { return 'Carousel'; }
 		$key = strtolower( $setting . ' ' . $type );
-		if ( preg_match( '/motion|animation|transform|sticky/', $key ) ) { return 'Motion'; }
-		if ( preg_match( '/background|border|shadow|color|filter|opacity/', $key ) ) { return 'Style'; }
-		if ( preg_match( '/font|typography|letter|line_height/', $key ) ) { return 'Typography'; }
-		if ( preg_match( '/padding|margin/', $key ) ) { return 'Spacing'; }
-		if ( preg_match( '/width|height|flex|grid|align|justify|gap|position|offset|order/', $key ) ) { return 'Layout'; }
-		if ( preg_match( '/image|media|video|gallery/', $key ) ) { return 'Media'; }
-		if ( preg_match( '/form|field|submit|message|email|webhook/', $key ) ) { return 'Form'; }
-		if ( preg_match( '/query|taxonomy|pagination|posts|products/', $key ) ) { return 'Query'; }
+		if ( preg_match( '/motion|animation|transform|sticky/', $key ) ) { return 'Motion'; } if ( preg_match( '/background|border|shadow|color|filter|opacity/', $key ) ) { return 'Style'; }
+		if ( preg_match( '/font|typography|letter|line_height/', $key ) ) { return 'Typography'; } if ( preg_match( '/padding|margin/', $key ) ) { return 'Spacing'; }
+		if ( preg_match( '/width|height|flex|grid|align|justify|gap|position|offset|order/', $key ) ) { return 'Layout'; } if ( preg_match( '/image|media|video|gallery/', $key ) ) { return 'Media'; }
+		if ( preg_match( '/form|field|submit|message|email|webhook/', $key ) ) { return 'Form'; } if ( preg_match( '/query|taxonomy|pagination|posts|products/', $key ) ) { return 'Query'; }
 		return 'Advanced';
 	}
 
@@ -441,8 +364,7 @@ final class SkillCompiler {
 	}
 
 	private function normalize_command_text( string $value ): string {
-		$value = strtolower( $value );
-		$ascii = @iconv( 'UTF-8', 'ASCII//TRANSLIT//IGNORE', $value );
+		$value = strtolower( $value ); $ascii = @iconv( 'UTF-8', 'ASCII//TRANSLIT//IGNORE', $value );
 		if ( is_string( $ascii ) && '' !== $ascii ) { $value = strtolower( $ascii ); }
 		$value = preg_replace( '/[^a-z0-9#.%_\-\s]+/', ' ', $value );
 		return trim( preg_replace( '/\s+/', ' ', (string) $value ) );
