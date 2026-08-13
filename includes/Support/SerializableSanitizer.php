@@ -101,7 +101,7 @@ final class SerializableSanitizer {
 	private function isSensitiveKey( string $key ): bool {
 		if ( '' === $key ) { return false; }
 		return (bool) preg_match(
-			'/(?:secret|password|passwd|api[_-]?key|private[_-]?key|public[_-]?key|access[_-]?token|refresh[_-]?token|bearer|authorization|credential|consumer[_-]?(?:key|secret)|client[_-]?secret|app[_-]?secret|license[_-]?key|smtp[_-]?(?:pass|password)|webhook[_-]?secret|nonce)/i',
+			'/(?:secret|password|passwd|api[_-]?key|private[_-]?key|access[_-]?token|refresh[_-]?token|bearer|authorization|credential|consumer[_-]?(?:key|secret)|client[_-]?secret|app[_-]?secret|license[_-]?key|smtp[_-]?(?:pass|password)|webhook[_-]?secret|nonce)/i',
 			$key
 		);
 	}
@@ -121,6 +121,8 @@ final class SerializableSanitizer {
 	}
 
 	private function pathSegment( string $key ): string {
-		return preg_match( '/^[A-Za-z0-9_.:-]+$/', $key ) ? $key : json_encode( $key, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		if ( preg_match( '/^[A-Za-z0-9_.:-]+$/', $key ) ) { return $key; }
+		$encoded = json_encode( $key, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE );
+		return is_string( $encoded ) ? $encoded : rawurlencode( $key );
 	}
 }
