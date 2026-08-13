@@ -44,5 +44,7 @@ jobs:
         run: php tests/php/skill-compiler-test.php
       - name: Atomic widget skill binding tests
         run: php tests/php/skill-atomic-binding-test.php
+      - name: Widget skill runtime contract tests
+        run: php tests/php/widget-skill-runtime-contract-test.php
       - name: JavaScript quality
         run: npm run check
