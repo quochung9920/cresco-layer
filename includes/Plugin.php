@@ -16,6 +16,7 @@ use CrescoLayer\LocalAI\AdminIntegration as LocalAIAdminIntegration;
 use CrescoLayer\LocalAI\Analyzer as LocalAIAnalyzer;
 use CrescoLayer\LocalAI\ContextCompiler as LocalAIContextCompiler;
 use CrescoLayer\LocalAI\Manager as LocalAIManager;
+use CrescoLayer\LocalAI\PlanValidator as LocalAIPlanValidator;
 use CrescoLayer\LocalAI\ProviderManager as LocalAIProviderManager;
 use CrescoLayer\LocalAI\RESTController as LocalAIRESTController;
 use CrescoLayer\LocalAI\Settings as LocalAISettings;
@@ -61,7 +62,8 @@ final class Plugin {
 		$local_settings = new LocalAISettings();
 		$local_providers = new LocalAIProviderManager( $local_settings );
 		$local_context = new LocalAIContextCompiler( $skills );
-		$local_analyzer = new LocalAIAnalyzer( $local_context, $local_providers );
+		$local_plan_validator = new LocalAIPlanValidator( $skills );
+		$local_analyzer = new LocalAIAnalyzer( $local_context, $local_providers, $local_plan_validator );
 		$local_ai   = new LocalAIManager( $local_settings, $local_providers );
 		$applier    = new PatchApplier( $validator, $auditor );
 		$controller = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $skills, $applier, $auditor );
