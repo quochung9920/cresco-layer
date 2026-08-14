@@ -52,4 +52,13 @@ try {
 	fwrite( STDERR, "FAIL: invented skill ID was accepted.\n" ); exit( 1 );
 } catch ( InvalidArgumentException $expected ) {}
 
+// A local model call must never be allowed to consume the whole PHP execution budget: when the HTTP
+// timeout equals max_execution_time, PHP aborts with a fatal error and WordPress shows a bare
+// "critical error" page instead of a Cresco message.
+$provider_source = file_get_contents( dirname( __DIR__, 2 ) . '/includes/LocalAI/ProviderManager.php' );
+local_ai_assert( ! str_contains( $provider_source, '$config, 120 )' ), 'Chat must not use a hardcoded 120s timeout equal to the default max_execution_time.' );
+local_ai_assert( str_contains( $provider_source, 'chat_timeout()' ), 'Chat must derive its timeout from the runtime PHP execution budget.' );
+local_ai_assert( str_contains( $provider_source, 'TIME_LIMIT_HEADROOM' ), 'Chat timeout must reserve headroom below max_execution_time.' );
+local_ai_assert( str_contains( $provider_source, 'timed out' ), 'A slow local model must surface an actionable timeout message.' );
+
 echo "Local AI manager contract tests passed.\n";

@@ -2,6 +2,10 @@
 namespace CrescoLayer\LocalAI;
 
 final class ProviderManager {
+	private const PREFERRED_TIME_LIMIT = 300;
+	private const MAX_CHAT_TIMEOUT     = 240;
+	private const TIME_LIMIT_HEADROOM  = 25;
+
 	public function __construct( private Settings $settings ) {}
 
 	public function providers(): array {
@@ -63,7 +67,7 @@ final class ProviderManager {
 			$body = [ 'model' => $model, 'messages' => array_values( $messages ), 'temperature' => $temperature, 'max_tokens' => $max_tokens ];
 		}
 		$started = microtime( true );
-		$data = $this->request_json( 'POST', $this->url( $config, (string) $provider['chatPath'] ), $body, $config, 120 );
+		$data = $this->request_json( 'POST', $this->url( $config, (string) $provider['chatPath'] ), $body, $config, $this->chat_timeout() );
 		if ( 'ollama' === (string) $provider['apiStyle'] ) {
 			$content = (string) ( $data['message']['content'] ?? '' );
 			$returned_model = (string) ( $data['model'] ?? $model );
@@ -108,6 +112,21 @@ final class ProviderManager {
 		return [ 'provider' => (string) $config['provider'], 'apiStyle' => (string) $provider['apiStyle'], 'endpoint' => (string) $config['endpoint'], 'healthUrl' => $this->url( $config, (string) $provider['healthPath'] ), 'modelsUrl' => $this->url( $config, (string) $provider['modelsPath'] ), 'chatUrl' => $this->url( $config, (string) $provider['chatPath'] ), 'hasApiToken' => '' !== (string) ( $config['apiToken'] ?? '' ) ];
 	}
 
+	/**
+	 * A local model can generate for minutes on CPU. The HTTP timeout must stay strictly below the PHP
+	 * execution budget, otherwise PHP aborts with a fatal error before the timeout can be reported and
+	 * WordPress renders a bare "critical error" page instead of a Cresco message.
+	 */
+	private function chat_timeout(): int {
+		if ( function_exists( 'set_time_limit' ) ) {
+			// Also resets the elapsed clock, giving the model call a full budget. Ignored where forbidden.
+			set_time_limit( self::PREFERRED_TIME_LIMIT );
+		}
+		$limit = (int) ini_get( 'max_execution_time' );
+		if ( $limit <= 0 ) { return self::MAX_CHAT_TIMEOUT; }
+		return max( 15, min( self::MAX_CHAT_TIMEOUT, $limit - self::TIME_LIMIT_HEADROOM ) );
+	}
+
 	private function provider( string $provider ): array { $providers = $this->providers(); if ( ! isset( $providers[ $provider ] ) ) { throw new \InvalidArgumentException( 'Unsupported local AI provider.' ); } return $providers[ $provider ]; }
 	private function url( array $config, string $path ): string { return rtrim( (string) $config['endpoint'], '/' ) . '/' . ltrim( $path, '/' ); }
 
@@ -118,7 +137,16 @@ final class ProviderManager {
 		$args = [ 'method' => $method, 'timeout' => $timeout, 'redirection' => 0, 'limit_response_size' => 4194304, 'headers' => $headers ];
 		if ( null !== $body ) { $args['headers']['Content-Type'] = 'application/json'; $args['body'] = wp_json_encode( $body ); }
 		$response = wp_remote_request( $url, $args );
-		if ( is_wp_error( $response ) ) { throw new \RuntimeException( 'Local AI connection failed: ' . $response->get_error_message() ); }
+		if ( is_wp_error( $response ) ) {
+			$reason = $response->get_error_message();
+			if ( stripos( $reason, 'timed out' ) !== false || stripos( $reason, 'timeout' ) !== false ) {
+				throw new \RuntimeException( sprintf(
+					'The local model did not answer within %d seconds. A large model on CPU is often too slow for server-direct mode — switch Connection mode to Browser / Local Bridge (no PHP time limit), use a smaller/faster model, or lower Max output tokens.',
+					$timeout
+				) );
+			}
+			throw new \RuntimeException( 'Local AI connection failed: ' . $reason );
+		}
 		$status = (int) wp_remote_retrieve_response_code( $response );
 		$text = (string) wp_remote_retrieve_body( $response );
 		if ( $status < 200 || $status >= 300 ) { throw new \RuntimeException( 'Local AI endpoint returned HTTP ' . $status . '.' ); }
