@@ -48,5 +48,7 @@ jobs:
         run: php tests/php/widget-skill-runtime-contract-test.php
       - name: Local AI manager contract tests
         run: php tests/php/local-ai-contract-test.php
+      - name: Semantic Local AI context tests
+        run: php tests/php/semantic-ai-context-test.php
       - name: JavaScript quality
         run: npm run check
