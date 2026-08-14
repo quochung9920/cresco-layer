@@ -1,8 +1,8 @@
 {
   "name": "cresco-layer",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
-  "description": "Lossless scoped AI exchange, deterministic runtime widget skills, semantic local AI analysis and professional intelligence for Elementor and Elementor Pro.",
+  "description": "Lossless scoped AI exchange, deterministic runtime widget skills, task-retrieved semantic local AI analysis and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
     "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/skills.js && node --check assets/local-ai-admin.js && node --check assets/semantic-ai.js",
     "test:editor-bootstrap": "node tests/js/editor-bootstrap-test.mjs",
