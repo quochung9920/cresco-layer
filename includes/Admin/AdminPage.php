@@ -24,6 +24,7 @@ final class AdminPage {
 			'restRoot' => esc_url_raw( rest_url( 'cresco-layer/v1' ) ),
 			'documents' => $this->documents(),
 			'canManageSnapshot' => current_user_can( 'manage_options' ),
+			'elementorEditTemplate' => esc_url_raw( admin_url( 'post.php?post=__ID__&action=elementor' ) ),
 		] );
 		if ( current_user_can( 'manage_options' ) ) {
 			wp_add_inline_script( 'cresco-layer-admin', $this->snapshot_inline_script(), 'after' );
@@ -32,84 +33,150 @@ final class AdminPage {
 
 	public function render(): void {
 		if ( ! current_user_can( 'edit_posts' ) ) { return; }
+		$documents  = $this->documents();
+		$can_manage = current_user_can( 'manage_options' );
+		$elementor  = defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : null;
+		$pro        = defined( 'ELEMENTOR_PRO_VERSION' ) ? ELEMENTOR_PRO_VERSION : null;
 		?>
-		<div class="wrap cresco-layer-admin">
+		<div class="wrap cresco-layer-admin" id="cresco-layer-app">
 			<div class="cresco-layer-admin__hero">
-				<div>
+				<div class="cresco-layer-admin__hero-main">
 					<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Elementor intelligence layer', 'cresco-layer' ); ?></p>
 					<h1><?php echo esc_html__( 'Cresco Layer', 'cresco-layer' ); ?></h1>
-					<p><?php echo esc_html__( 'Export a context-resolved AI-safe Elementor package, inspect the live Elementor runtime, review a validated patch, then apply it through Elementor without giving an AI direct database access.', 'cresco-layer' ); ?></p>
+					<p class="cresco-layer-admin__lede"><?php echo esc_html__( 'Export a context-resolved AI-safe Elementor package, inspect the live Elementor runtime, review a validated patch, then apply it through Elementor without giving an AI direct database access.', 'cresco-layer' ); ?></p>
+					<div class="cresco-layer-hero-meta">
+						<span class="cresco-layer-chip cresco-layer-version">v<?php echo esc_html( CRESCO_LAYER_VERSION ); ?></span>
+						<span class="cresco-layer-chip <?php echo $elementor ? 'is-positive' : 'is-muted'; ?>">
+							<?php echo $elementor ? esc_html( sprintf( __( 'Elementor %s', 'cresco-layer' ), $elementor ) ) : esc_html__( 'Elementor not detected', 'cresco-layer' ); ?>
+						</span>
+						<span class="cresco-layer-chip <?php echo $pro ? 'is-positive' : 'is-muted'; ?>">
+							<?php echo $pro ? esc_html( sprintf( __( 'Pro %s', 'cresco-layer' ), $pro ) ) : esc_html__( 'Pro not detected', 'cresco-layer' ); ?>
+						</span>
+						<span class="cresco-layer-chip is-muted"><?php echo esc_html( sprintf( _n( '%d Elementor document', '%d Elementor documents', count( $documents ), 'cresco-layer' ), count( $documents ) ) ); ?></span>
+					</div>
 				</div>
-				<span class="cresco-layer-version">v<?php echo esc_html( CRESCO_LAYER_VERSION ); ?></span>
+				<div class="cresco-layer-admin__hero-side">
+					<button type="button" class="cresco-layer-theme-toggle" id="cresco-layer-theme-toggle" aria-pressed="false">
+						<span class="cresco-layer-theme-toggle__icon" aria-hidden="true"></span>
+						<span class="cresco-layer-theme-toggle__label"><?php echo esc_html__( 'Dark mode', 'cresco-layer' ); ?></span>
+					</button>
+				</div>
 			</div>
 
-			<div class="cresco-layer-grid">
-				<section class="cresco-layer-card">
-					<h2><?php echo esc_html__( '1. Choose document', 'cresco-layer' ); ?></h2>
-					<label for="cresco-layer-document"><?php echo esc_html__( 'Elementor document', 'cresco-layer' ); ?></label>
-					<select id="cresco-layer-document"></select>
-					<label for="cresco-layer-context-profile"><?php echo esc_html__( 'AI context profile', 'cresco-layer' ); ?></label>
-					<select id="cresco-layer-context-profile">
-						<option value="smart" selected><?php echo esc_html__( 'Smart — relevant controls + global context', 'cresco-layer' ); ?></option>
-						<option value="full"><?php echo esc_html__( 'Full — detailed controls for every registered type', 'cresco-layer' ); ?></option>
-					</select>
-					<div class="cresco-layer-actions">
-						<button class="button button-primary" id="cresco-layer-export"><?php echo esc_html__( 'Export for AI', 'cresco-layer' ); ?></button>
-						<button class="button" id="cresco-layer-audit"><?php echo esc_html__( 'Run audit', 'cresco-layer' ); ?></button>
-					</div>
-					<p class="description"><?php echo esc_html__( 'Smart is recommended: it keeps the full registered type index but expands only controls relevant to the task, plus Site Kit, breakpoints, Dynamic Tags and capability coverage. Use Full only when an AI must choose freely from every registered Elementor type.', 'cresco-layer' ); ?></p>
-				</section>
+			<ol class="cresco-layer-steps" aria-label="<?php echo esc_attr__( 'AI exchange workflow', 'cresco-layer' ); ?>">
+				<li class="cresco-layer-step"><span class="cresco-layer-step__num">1</span><span class="cresco-layer-step__text"><strong><?php echo esc_html__( 'Export', 'cresco-layer' ); ?></strong><small><?php echo esc_html__( 'Build an AI-safe package', 'cresco-layer' ); ?></small></span></li>
+				<li class="cresco-layer-step"><span class="cresco-layer-step__num">2</span><span class="cresco-layer-step__text"><strong><?php echo esc_html__( 'Hand to AI', 'cresco-layer' ); ?></strong><small><?php echo esc_html__( 'Any model, no DB access', 'cresco-layer' ); ?></small></span></li>
+				<li class="cresco-layer-step"><span class="cresco-layer-step__num">3</span><span class="cresco-layer-step__text"><strong><?php echo esc_html__( 'Validate', 'cresco-layer' ); ?></strong><small><?php echo esc_html__( 'Preview the returned patch', 'cresco-layer' ); ?></small></span></li>
+				<li class="cresco-layer-step"><span class="cresco-layer-step__num">4</span><span class="cresco-layer-step__text"><strong><?php echo esc_html__( 'Apply', 'cresco-layer' ); ?></strong><small><?php echo esc_html__( 'Through Elementor, never publish', 'cresco-layer' ); ?></small></span></li>
+			</ol>
 
-				<section class="cresco-layer-card">
-					<h2><?php echo esc_html__( '2. Import AI patch', 'cresco-layer' ); ?></h2>
-					<label for="cresco-layer-patch"><?php echo esc_html__( 'cresco-layer-patch/v1 JSON', 'cresco-layer' ); ?></label>
-					<textarea id="cresco-layer-patch" rows="18" spellcheck="false" placeholder='{"schema":"cresco-layer-patch/v1",...}'></textarea>
-					<div class="cresco-layer-actions">
-						<button class="button" id="cresco-layer-preview"><?php echo esc_html__( 'Validate & Preview', 'cresco-layer' ); ?></button>
-						<button class="button button-primary" id="cresco-layer-apply" disabled><?php echo esc_html__( 'Apply reviewed patch', 'cresco-layer' ); ?></button>
-					</div>
-					<p class="description"><?php echo esc_html__( 'Applying changes the Elementor document but does not publish it. Review the page in Elementor and use Elementor Update/Publish as normal.', 'cresco-layer' ); ?></p>
-				</section>
-			</div>
-
-			<section class="cresco-layer-card cresco-layer-card--catalog">
-				<div class="cresco-layer-result-head">
-					<div>
-						<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Live runtime inspector', 'cresco-layer' ); ?></p>
-						<h2><?php echo esc_html__( 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer' ); ?></h2>
-					</div>
-					<span id="cresco-layer-catalog-status" aria-live="polite"></span>
-				</div>
-				<p class="description"><?php echo esc_html__( 'Load the lightweight widget/element catalog first. Open any entry to fetch its controls on demand. Administrators can also download a full cresco-elementor-snapshot/v1 containing normalized and raw serializable Elementor Core/Pro settings, Site Kit data, features, breakpoints, Dynamic Tags, runtime modules, Elementor-owned documents/templates/popups/Theme Builder records and every registered widget/element capability.', 'cresco-layer' ); ?></p>
-				<div class="cresco-layer-catalog-toolbar">
-					<div class="cresco-layer-actions">
-						<button class="button button-primary" id="cresco-layer-catalog-load"><?php echo esc_html__( 'Load Elementor catalog', 'cresco-layer' ); ?></button>
-						<button class="button" id="cresco-layer-catalog-download" disabled><?php echo esc_html__( 'Download controls JSON', 'cresco-layer' ); ?></button>
-						<?php if ( current_user_can( 'manage_options' ) ) : ?>
-							<button class="button" id="cresco-layer-snapshot-download" disabled><?php echo esc_html__( 'Download full Elementor snapshot', 'cresco-layer' ); ?></button>
-						<?php endif; ?>
-					</div>
-					<label class="cresco-layer-catalog-search" for="cresco-layer-catalog-query">
-						<span class="screen-reader-text"><?php echo esc_html__( 'Search Elementor widgets and elements', 'cresco-layer' ); ?></span>
-						<input type="search" id="cresco-layer-catalog-query" placeholder="<?php echo esc_attr__( 'Search widget or element…', 'cresco-layer' ); ?>" disabled>
-					</label>
-				</div>
-				<?php if ( current_user_can( 'manage_options' ) ) : ?>
-					<p class="description"><?php echo esc_html__( 'Full snapshot export is administrator-only. Secrets, credentials, API keys, tokens, nonces and common token-bearing URL values are redacted; unsupported runtime objects/resources/callbacks are omitted and listed in the snapshot coverage report. Coverage is partial if any request or scanner reports a partial/failed result.', 'cresco-layer' ); ?></p>
+			<nav class="cresco-layer-tabs" role="tablist" aria-label="<?php echo esc_attr__( 'Cresco Layer sections', 'cresco-layer' ); ?>">
+				<button type="button" class="cresco-layer-tab is-active" role="tab" aria-selected="true" data-cresco-tab="exchange"><?php echo esc_html__( 'AI Exchange', 'cresco-layer' ); ?></button>
+				<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="inspector"><?php echo esc_html__( 'Runtime Inspector', 'cresco-layer' ); ?></button>
+				<?php if ( $can_manage ) : ?>
+					<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="local-ai"><?php echo esc_html__( 'Local AI', 'cresco-layer' ); ?></button>
 				<?php endif; ?>
-				<div id="cresco-layer-catalog-summary" class="cresco-layer-catalog-summary" hidden></div>
-				<div id="cresco-layer-catalog-result" class="cresco-layer-catalog-result">
-					<p><?php echo esc_html__( 'Catalog not loaded yet. Click “Load Elementor catalog” to inspect the current runtime configuration.', 'cresco-layer' ); ?></p>
-				</div>
-			</section>
+			</nav>
 
-			<section class="cresco-layer-card cresco-layer-card--result">
-				<div class="cresco-layer-result-head">
-					<h2><?php echo esc_html__( 'Review', 'cresco-layer' ); ?></h2>
-					<span id="cresco-layer-status" aria-live="polite"></span>
+			<div class="cresco-layer-tab-panel" data-cresco-tab-panel="exchange" role="tabpanel">
+				<div class="cresco-layer-grid">
+					<section class="cresco-layer-card">
+						<h2><?php echo esc_html__( '1. Choose document', 'cresco-layer' ); ?></h2>
+						<label for="cresco-layer-document"><?php echo esc_html__( 'Elementor document', 'cresco-layer' ); ?></label>
+						<select id="cresco-layer-document"></select>
+						<p class="cresco-layer-doc-link"><a id="cresco-layer-open-editor" href="#" target="_blank" rel="noopener" hidden><?php echo esc_html__( 'Open this document in Elementor ↗', 'cresco-layer' ); ?></a></p>
+						<label for="cresco-layer-context-profile"><?php echo esc_html__( 'AI context profile', 'cresco-layer' ); ?></label>
+						<select id="cresco-layer-context-profile">
+							<option value="smart" selected><?php echo esc_html__( 'Smart — relevant controls + global context', 'cresco-layer' ); ?></option>
+							<option value="full"><?php echo esc_html__( 'Full — detailed controls for every registered type', 'cresco-layer' ); ?></option>
+						</select>
+						<div class="cresco-layer-actions">
+							<button class="button button-primary" id="cresco-layer-export"><?php echo esc_html__( 'Export for AI', 'cresco-layer' ); ?></button>
+							<button class="button" id="cresco-layer-audit"><?php echo esc_html__( 'Run audit', 'cresco-layer' ); ?></button>
+						</div>
+						<p class="description"><?php echo esc_html__( 'Smart is recommended: it keeps the full registered type index but expands only controls relevant to the task, plus Site Kit, breakpoints, Dynamic Tags and capability coverage. Use Full only when an AI must choose freely from every registered Elementor type.', 'cresco-layer' ); ?></p>
+					</section>
+
+					<section class="cresco-layer-card">
+						<h2><?php echo esc_html__( '2. Import AI patch', 'cresco-layer' ); ?></h2>
+						<div class="cresco-layer-admin-drop" id="cresco-layer-patch-drop" role="button" tabindex="0" aria-label="<?php echo esc_attr__( 'Load a patch JSON file', 'cresco-layer' ); ?>">
+							<span class="cresco-layer-admin-drop__icon" aria-hidden="true">⇪</span>
+							<span class="cresco-layer-admin-drop__text"><strong><?php echo esc_html__( 'Drop a .json patch here', 'cresco-layer' ); ?></strong> <?php echo esc_html__( 'or click to browse', 'cresco-layer' ); ?></span>
+							<input type="file" id="cresco-layer-patch-file" accept=".json,application/json" hidden>
+						</div>
+						<label for="cresco-layer-patch"><?php echo esc_html__( 'cresco-layer-patch/v1 JSON', 'cresco-layer' ); ?></label>
+						<textarea id="cresco-layer-patch" rows="12" spellcheck="false" placeholder='{"schema":"cresco-layer-patch/v1",...}'></textarea>
+						<div class="cresco-layer-patch-meta">
+							<span class="cresco-layer-chip is-muted" id="cresco-layer-patch-state"><?php echo esc_html__( 'Empty', 'cresco-layer' ); ?></span>
+							<span class="cresco-layer-patch-hint" id="cresco-layer-patch-hint"><?php echo esc_html__( 'Tip: press Ctrl+Enter to validate', 'cresco-layer' ); ?></span>
+						</div>
+						<div class="cresco-layer-actions">
+							<button class="button" id="cresco-layer-preview"><?php echo esc_html__( 'Validate & Preview', 'cresco-layer' ); ?></button>
+							<button class="button button-primary" id="cresco-layer-apply" disabled><?php echo esc_html__( 'Apply reviewed patch', 'cresco-layer' ); ?></button>
+						</div>
+						<p class="description"><?php echo esc_html__( 'Applying changes the Elementor document but does not publish it. Review the page in Elementor and use Elementor Update/Publish as normal.', 'cresco-layer' ); ?></p>
+					</section>
 				</div>
-				<div id="cresco-layer-result" class="cresco-layer-result" aria-live="polite"><p><?php echo esc_html__( 'No audit or patch preview yet.', 'cresco-layer' ); ?></p></div>
-			</section>
+
+				<section class="cresco-layer-card cresco-layer-card--result">
+					<div class="cresco-layer-result-head">
+						<h2><?php echo esc_html__( 'Review', 'cresco-layer' ); ?></h2>
+						<span id="cresco-layer-status" aria-live="polite"></span>
+					</div>
+					<div id="cresco-layer-result" class="cresco-layer-result" aria-live="polite">
+						<div class="cresco-layer-empty">
+							<span class="cresco-layer-empty__icon" aria-hidden="true">◎</span>
+							<p><?php echo esc_html__( 'No audit or patch preview yet.', 'cresco-layer' ); ?></p>
+							<p class="description"><?php echo esc_html__( 'Run an audit or validate a patch to see scores, metrics and semantic warnings here.', 'cresco-layer' ); ?></p>
+						</div>
+					</div>
+				</section>
+			</div>
+
+			<div class="cresco-layer-tab-panel" data-cresco-tab-panel="inspector" role="tabpanel" hidden>
+				<section class="cresco-layer-card cresco-layer-card--catalog">
+					<div class="cresco-layer-result-head">
+						<div>
+							<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Live runtime inspector', 'cresco-layer' ); ?></p>
+							<h2><?php echo esc_html__( 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer' ); ?></h2>
+						</div>
+						<span id="cresco-layer-catalog-status" aria-live="polite"></span>
+					</div>
+					<p class="description"><?php echo esc_html__( 'Load the lightweight widget/element catalog first. Open any entry to fetch its controls on demand. Administrators can also download a full cresco-elementor-snapshot/v1 containing normalized and raw serializable Elementor Core/Pro settings, Site Kit data, features, breakpoints, Dynamic Tags, runtime modules, Elementor-owned documents/templates/popups/Theme Builder records and every registered widget/element capability.', 'cresco-layer' ); ?></p>
+					<div class="cresco-layer-catalog-toolbar">
+						<div class="cresco-layer-actions">
+							<button class="button button-primary" id="cresco-layer-catalog-load"><?php echo esc_html__( 'Load Elementor catalog', 'cresco-layer' ); ?></button>
+							<button class="button" id="cresco-layer-catalog-download" disabled><?php echo esc_html__( 'Download controls JSON', 'cresco-layer' ); ?></button>
+							<?php if ( $can_manage ) : ?>
+								<button class="button" id="cresco-layer-snapshot-download" disabled><?php echo esc_html__( 'Download full Elementor snapshot', 'cresco-layer' ); ?></button>
+							<?php endif; ?>
+						</div>
+						<label class="cresco-layer-catalog-search" for="cresco-layer-catalog-query">
+							<span class="screen-reader-text"><?php echo esc_html__( 'Search Elementor widgets and elements', 'cresco-layer' ); ?></span>
+							<input type="search" id="cresco-layer-catalog-query" placeholder="<?php echo esc_attr__( 'Search widget or element…', 'cresco-layer' ); ?>" disabled>
+						</label>
+					</div>
+					<?php if ( $can_manage ) : ?>
+						<p class="description"><?php echo esc_html__( 'Full snapshot export is administrator-only. Secrets, credentials, API keys, tokens, nonces and common token-bearing URL values are redacted; unsupported runtime objects/resources/callbacks are omitted and listed in the snapshot coverage report. Coverage is partial if any request or scanner reports a partial/failed result.', 'cresco-layer' ); ?></p>
+					<?php endif; ?>
+					<div id="cresco-layer-catalog-summary" class="cresco-layer-catalog-summary" hidden></div>
+					<div id="cresco-layer-catalog-result" class="cresco-layer-catalog-result">
+						<div class="cresco-layer-empty">
+							<span class="cresco-layer-empty__icon" aria-hidden="true">▤</span>
+							<p><?php echo esc_html__( 'Catalog not loaded yet.', 'cresco-layer' ); ?></p>
+							<p class="description"><?php echo esc_html__( 'Click “Load Elementor catalog” to inspect the current runtime configuration.', 'cresco-layer' ); ?></p>
+						</div>
+					</div>
+				</section>
+			</div>
+
+			<?php if ( $can_manage ) : ?>
+				<div class="cresco-layer-tab-panel" data-cresco-tab-panel="local-ai" role="tabpanel" hidden>
+					<div id="cresco-layer-local-ai-slot"></div>
+				</div>
+			<?php endif; ?>
+
+			<div class="cresco-layer-toasts" id="cresco-layer-toasts"></div>
 		</div>
 		<?php
 	}

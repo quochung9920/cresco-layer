@@ -21,6 +21,14 @@
 	var catalogSearchTimer=null;
 	var catalogDetailCache={};
 	var catalogDetailPromises={};
+	var app=document.getElementById('cresco-layer-app')||document.querySelector('.cresco-layer-admin');
+	var toasts=document.getElementById('cresco-layer-toasts');
+	var themeToggle=document.getElementById('cresco-layer-theme-toggle');
+	var patchDrop=document.getElementById('cresco-layer-patch-drop');
+	var patchFile=document.getElementById('cresco-layer-patch-file');
+	var patchState=document.getElementById('cresco-layer-patch-state');
+	var openEditorLink=document.getElementById('cresco-layer-open-editor');
+	var patchStateTimer=null;
 
 	(config.documents||[]).forEach(function(doc){
 		var option=document.createElement('option');
@@ -35,7 +43,17 @@
 		select.appendChild(empty);
 	}
 
-	function setStatus(text,tone){status.textContent=text||'';status.className=tone?'is-'+tone:'';}
+	function toast(text,tone){
+		if(!toasts||!text)return;
+		var item=document.createElement('div');
+		item.className='cresco-layer-toast'+(tone?' is-'+tone:'');
+		item.setAttribute('role','status');
+		item.textContent=text;
+		toasts.appendChild(item);
+		while(toasts.children.length>4)toasts.removeChild(toasts.firstChild);
+		setTimeout(function(){item.classList.add('is-leaving');setTimeout(function(){if(item.parentNode)item.parentNode.removeChild(item);},220);},tone==='error'?7000:4200);
+	}
+	function setStatus(text,tone){status.textContent=text||'';status.className=tone?'is-'+tone:'';if(tone==='success'||tone==='error')toast(text,tone);}
 	function setCatalogStatus(text,tone){if(!catalogStatus)return;catalogStatus.textContent=text||'';catalogStatus.className=tone?'is-'+tone:'';}
 	function endpoint(path){return String(config.restRoot||'').replace(/\/$/,'')+path;}
 	function cleanServerMessage(text,statusCode){
@@ -122,9 +140,15 @@
 		if(!catalogResult)return;clearNode(catalogResult);query=(query||'').trim();if(!query){var configGrid=document.createElement('div');configGrid.className='cresco-layer-catalog-config-grid';configGrid.appendChild(createJsonDetails('Active breakpoints',data.breakpoints||{},true));configGrid.appendChild(createJsonDetails('Active Kit / design system',data.activeKit||{},false));configGrid.appendChild(createJsonDetails('Catalog notes',data.notes||[],false));catalogResult.appendChild(configGrid);var topErrors=(data.scanErrors||[]);if(topErrors.length){var warning=document.createElement('ul');warning.className='cresco-layer-issues';topErrors.slice(0,20).forEach(function(issue){var li=document.createElement('li');li.className='is-warning';li.textContent=(issue.kind||'runtime')+(issue.name?' '+issue.name:'')+(issue.stage?' · '+issue.stage:'')+' · '+(issue.message||'Scan warning');warning.appendChild(li);});catalogResult.appendChild(warning);}}
 		catalogResult.appendChild(renderCatalogCollection('Element types','element',data.elements||{},query));catalogResult.appendChild(renderCatalogCollection('Widgets','widget',data.widgets||{},query));
 	}
+	function renderCatalogSkeleton(){
+		if(!catalogResult)return;clearNode(catalogResult);
+		var skeleton=document.createElement('div');skeleton.className='cresco-layer-skeleton';skeleton.setAttribute('aria-hidden','true');
+		for(var i=0;i<9;i++)skeleton.appendChild(document.createElement('span'));
+		catalogResult.appendChild(skeleton);
+	}
 	function loadCatalog(){
-		if(!catalogLoadButton)return;catalogLoadButton.disabled=true;catalogDetailCache={};catalogDetailPromises={};setCatalogStatus('Reading lightweight Elementor registry…','busy');
-		request('/elementor-catalog').then(function(data){catalogData=data;renderCatalogSummary(data);renderCatalog(data,catalogQuery?catalogQuery.value:'');if(catalogDownloadButton)catalogDownloadButton.disabled=false;if(catalogQuery)catalogQuery.disabled=false;catalogLoadButton.textContent='Refresh Elementor catalog';setCatalogStatus('Catalog loaded. Open a widget or element to load its controls on demand.','success');}).catch(function(error){setCatalogStatus(error&&error.message?error.message:String(error),'error');}).finally(function(){catalogLoadButton.disabled=false;});
+		if(!catalogLoadButton)return;catalogLoadButton.disabled=true;catalogDetailCache={};catalogDetailPromises={};setCatalogStatus('Reading lightweight Elementor registry…','busy');renderCatalogSkeleton();
+		request('/elementor-catalog').then(function(data){catalogData=data;renderCatalogSummary(data);renderCatalog(data,catalogQuery?catalogQuery.value:'');if(catalogDownloadButton)catalogDownloadButton.disabled=false;if(catalogQuery)catalogQuery.disabled=false;catalogLoadButton.textContent='Refresh Elementor catalog';setCatalogStatus('Catalog loaded. Open a widget or element to load its controls on demand.','success');}).catch(function(error){clearNode(catalogResult);var failed=document.createElement('p');failed.className='cresco-layer-catalog-load-error';failed.textContent='Could not load the Elementor catalog: '+(error&&error.message?error.message:String(error));catalogResult.appendChild(failed);setCatalogStatus(error&&error.message?error.message:String(error),'error');}).finally(function(){catalogLoadButton.disabled=false;});
 	}
 	function downloadFullCatalog(){
 		if(!catalogData||!catalogDownloadButton)return;catalogDownloadButton.disabled=true;catalogLoadButton.disabled=true;var items=[];Object.keys(catalogData.elements||{}).forEach(function(name){items.push({kind:'element',name:name});});Object.keys(catalogData.widgets||{}).forEach(function(name){items.push({kind:'widget',name:name});});var full=Object.assign({},catalogData,{elements:{},widgets:{},downloadErrors:[]});var chain=Promise.resolve();
@@ -145,4 +169,98 @@
 	if(catalogLoadButton)catalogLoadButton.addEventListener('click',loadCatalog);
 	if(catalogDownloadButton)catalogDownloadButton.addEventListener('click',downloadFullCatalog);
 	if(catalogQuery)catalogQuery.addEventListener('input',function(){clearTimeout(catalogSearchTimer);catalogSearchTimer=setTimeout(function(){if(catalogData)renderCatalog(catalogData,catalogQuery.value);},120);});
+
+	/* ---------- UI shell: tabs, theme, patch UX ---------- */
+
+	function initTabs(){
+		var tabs=Array.prototype.slice.call(document.querySelectorAll('[data-cresco-tab]'));
+		var panels=Array.prototype.slice.call(document.querySelectorAll('[data-cresco-tab-panel]'));
+		if(!tabs.length||!panels.length)return;
+		function activate(name,persist){
+			var known=tabs.some(function(tab){return tab.getAttribute('data-cresco-tab')===name;});
+			if(!known)name=tabs[0].getAttribute('data-cresco-tab');
+			tabs.forEach(function(tab){var active=tab.getAttribute('data-cresco-tab')===name;tab.classList.toggle('is-active',active);tab.setAttribute('aria-selected',active?'true':'false');});
+			panels.forEach(function(panel){panel.hidden=panel.getAttribute('data-cresco-tab-panel')!==name;});
+			if(persist){try{window.localStorage.setItem('crescoLayerAdminTab',name);}catch(e){}}
+		}
+		tabs.forEach(function(tab){tab.addEventListener('click',function(){activate(tab.getAttribute('data-cresco-tab'),true);});});
+		var saved='';
+		try{saved=window.localStorage.getItem('crescoLayerAdminTab')||'';}catch(e){}
+		activate(saved||'exchange',false);
+	}
+
+	function initTheme(){
+		if(!app)return;
+		function apply(dark,persist){
+			app.classList.toggle('is-dark',dark);
+			if(themeToggle){
+				themeToggle.setAttribute('aria-pressed',dark?'true':'false');
+				var label=themeToggle.querySelector('.cresco-layer-theme-toggle__label');
+				if(label)label.textContent=dark?'Light mode':'Dark mode';
+			}
+			if(persist){try{window.localStorage.setItem('crescoLayerAdminTheme',dark?'dark':'light');}catch(e){}}
+		}
+		var saved='';
+		try{saved=window.localStorage.getItem('crescoLayerAdminTheme')||'';}catch(e){}
+		apply(saved==='dark',false);
+		if(themeToggle)themeToggle.addEventListener('click',function(){apply(!app.classList.contains('is-dark'),true);});
+	}
+
+	function describePatch(text){
+		var trimmed=String(text||'').trim();
+		if(!trimmed)return{label:'Empty',tone:'is-muted'};
+		var parsed;
+		try{parsed=JSON.parse(trimmed);}catch(e){return{label:'Invalid JSON',tone:'is-invalid'};}
+		if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return{label:'Not a patch object',tone:'is-invalid'};
+		if(parsed.schema!=='cresco-layer-patch/v1')return{label:'Unexpected schema',tone:'is-warning'};
+		var ops=Array.isArray(parsed.operations)?parsed.operations.length:0;
+		return{label:'Valid JSON · '+ops+' operation'+(ops===1?'':'s'),tone:'is-valid'};
+	}
+	function updatePatchState(){
+		if(!patchState)return;
+		var described=describePatch(patch.value);
+		patchState.textContent=described.label;
+		patchState.className='cresco-layer-chip '+described.tone;
+	}
+	function loadPatchFile(file){
+		if(!file)return;
+		if(file.size>8*1024*1024){toast('Patch file is larger than 8 MB — that is not a Cresco patch.','error');return;}
+		var reader=new FileReader();
+		reader.onload=function(){
+			patch.value=String(reader.result||'');
+			patch.dispatchEvent(new Event('input',{bubbles:true}));
+			toast('Loaded '+file.name+' into the patch editor. Validate before applying.','info');
+		};
+		reader.onerror=function(){toast('Could not read '+file.name+'.','error');};
+		reader.readAsText(file);
+	}
+	function initPatchUX(){
+		patch.addEventListener('input',function(){clearTimeout(patchStateTimer);patchStateTimer=setTimeout(updatePatchState,140);});
+		updatePatchState();
+		patch.addEventListener('keydown',function(event){
+			if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();document.getElementById('cresco-layer-preview').click();}
+		});
+		if(!patchDrop||!patchFile)return;
+		patchDrop.addEventListener('click',function(){patchFile.click();});
+		patchDrop.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();patchFile.click();}});
+		patchFile.addEventListener('change',function(){loadPatchFile(patchFile.files&&patchFile.files[0]);patchFile.value='';});
+		['dragenter','dragover'].forEach(function(name){patchDrop.addEventListener(name,function(event){event.preventDefault();patchDrop.classList.add('is-dragging');});});
+		['dragleave','drop'].forEach(function(name){patchDrop.addEventListener(name,function(event){event.preventDefault();patchDrop.classList.remove('is-dragging');});});
+		patchDrop.addEventListener('drop',function(event){var file=event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0];loadPatchFile(file);});
+	}
+
+	function updateEditorLink(){
+		if(!openEditorLink)return;
+		var id=parseInt(select.value||'0',10);
+		var template=String(config.elementorEditTemplate||'');
+		if(!id||template.indexOf('__ID__')===-1){openEditorLink.hidden=true;return;}
+		openEditorLink.href=template.replace('__ID__',String(id));
+		openEditorLink.hidden=false;
+	}
+
+	initTabs();
+	initTheme();
+	initPatchUX();
+	updateEditorLink();
+	select.addEventListener('change',updateEditorLink);
 })();

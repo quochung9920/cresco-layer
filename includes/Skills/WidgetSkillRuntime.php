@@ -59,7 +59,7 @@ final class WidgetSkillRuntime {
 				$this->examples_from_skills( $semantic_skills )
 			) ) ),
 			'principles' => [
-				'No chatbot or LLM is involved in deterministic skill resolution.',
+				'No chatbot or LLM is involved in skill resolution.',
 				'Runtime control metadata is the source of truth; Cresco never invents an Elementor setting key.',
 				'Semantic Skill Identity V2 disambiguates target part, property and interaction state without replacing the native control binding.',
 				'Commands are parsed deterministically into skills and validated against the selected widget controls.',

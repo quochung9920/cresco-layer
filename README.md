@@ -259,6 +259,8 @@ For a new full-page reconstruction, AI can use `replace-document`; for normal da
 
 The existing **Elementor → Cresco Layer** screen remains available for document-level export, quality audit, runtime Elementor catalog inspection and patch preview/apply.
 
+The 0.10 admin experience is organized into three tabs — **AI Exchange**, **Runtime Inspector** and **Local AI** (administrators only) — on a token-driven design system with an optional dark mode. The active tab and theme are remembered per browser. The AI Exchange tab adds a four-step workflow strip, a drag-and-drop / file-picker loader for `cresco-layer-patch/v1` JSON, live patch validation (JSON syntax, schema and operation count are checked as you type), a direct “Open this document in Elementor” link, `Ctrl+Enter` to validate, toast notifications for results, and skeleton loading states in the runtime inspector.
+
 Cresco audits include design/accessibility/performance signals such as nesting, missing image alt text, multiple H1s, button naming, image sizing and local color proliferation.
 
 ## Existing Cresco Elementor extensions

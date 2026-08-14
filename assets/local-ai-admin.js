@@ -47,6 +47,8 @@
 			'<div class="cresco-layer-local-ai__footer"><div class="cresco-layer-actions"><button type="button" class="button button-primary" data-ai-action="save">Save configuration</button><button type="button" class="button" data-ai-action="diagnostics">Run diagnostics</button></div><span data-ai-save-status></span></div>' +
 			'<div class="cresco-layer-local-ai__diagnostics" data-ai-diagnostics hidden></div>';
 
+		var slot = document.getElementById('cresco-layer-local-ai-slot');
+		if (slot) { slot.appendChild(section); return section; }
 		var admin = document.querySelector('.cresco-layer-admin');
 		var hero = admin.querySelector('.cresco-layer-admin__hero');
 		if (hero && hero.nextSibling) admin.insertBefore(section, hero.nextSibling);

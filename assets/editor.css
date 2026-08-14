@@ -27,3 +27,22 @@
 .cresco-layer-editor-preview{display:grid;gap:9px;margin-top:12px;padding:12px;border:1px solid #383c42;border-radius:9px;background:#191b1e;color:#c9ccd1}.cresco-layer-preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.cresco-layer-preview-head strong{color:#fff}.cresco-layer-preview-head span{color:#8f949c;font-size:10px}.cresco-layer-preview-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.cresco-layer-preview-grid span{padding:7px;border-radius:7px;background:#2b2e33;font-size:10px}.cresco-layer-preview-grid b{display:block;color:#fff;font-size:13px}.cresco-layer-editor-preview p{margin:0;color:#9da2aa;font-size:10px}.cresco-layer-editor-preview em{color:#fdb022;font-size:10px;font-style:normal}
 .cresco-layer-editor-dialog button.cresco-layer-primary,.cresco-layer-editor-dialog button.cresco-layer-secondary{min-height:34px;padding:0 13px;border-radius:7px;font-weight:600;cursor:pointer}.cresco-layer-editor-dialog button.cresco-layer-primary{border:1px solid #d8a6ff;background:#d8a6ff;color:#171219}.cresco-layer-editor-dialog button.cresco-layer-primary:disabled,.cresco-layer-editor-dialog button.cresco-layer-secondary:disabled{cursor:not-allowed;opacity:.45}.cresco-layer-editor-dialog button.cresco-layer-secondary{border:1px solid #4c5159;background:#2a2d31;color:#fff}
 @media(max-width:720px){.cresco-layer-editor-tools{right:10px;bottom:10px}.cresco-layer-editor-tools button{padding:0 8px}.cresco-layer-editor-tools .cresco-layer-selection-tool{display:none}.cresco-layer-editor-modal{padding:10px}.cresco-layer-editor-dialog{width:100%;max-height:calc(100vh - 20px)}.cresco-layer-import-detection dl,.cresco-layer-preview-grid{grid-template-columns:1fr 1fr}.cresco-layer-preview-head{align-items:flex-start;flex-direction:column}.cresco-layer-editor-target{align-items:flex-start;flex-direction:column}}
+
+/* Modern polish layer */
+.cresco-layer-editor-tools{background:rgba(31,33,36,.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.cresco-layer-editor-tools button,.cresco-layer-editor-dialog button.cresco-layer-primary,.cresco-layer-editor-dialog button.cresco-layer-secondary{transition:background .15s ease,border-color .15s ease,color .15s ease,transform .12s ease}
+.cresco-layer-editor-tools button:active:not(:disabled),.cresco-layer-editor-dialog button.cresco-layer-primary:active:not(:disabled){transform:translateY(1px)}
+.cresco-layer-editor-dialog button.cresco-layer-primary:hover:not(:disabled){background:#e3baff}
+.cresco-layer-editor-dialog button.cresco-layer-secondary:hover:not(:disabled){border-color:#6d6576}
+.cresco-layer-editor-dialog button.cresco-layer-primary:focus-visible,.cresco-layer-editor-dialog button.cresco-layer-secondary:focus-visible,.cresco-layer-editor-close:focus-visible{outline:2px solid rgba(216,166,255,.55);outline-offset:2px}
+.cresco-layer-editor-close:hover{color:#fff}
+.cresco-layer-editor-toast{animation:cresco-editor-toast-in .22s cubic-bezier(.21,1.02,.73,1)}
+@keyframes cresco-editor-toast-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.cresco-layer-editor-modal__backdrop{animation:cresco-editor-fade .18s ease}
+@keyframes cresco-editor-fade{from{opacity:0}to{opacity:1}}
+.cresco-layer-editor-dialog{animation:cresco-editor-pop .2s cubic-bezier(.2,.9,.35,1.1)}
+@keyframes cresco-editor-pop{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+.cresco-layer-editor-dialog::-webkit-scrollbar{width:10px}
+.cresco-layer-editor-dialog::-webkit-scrollbar-thumb{border:3px solid #202226;border-radius:999px;background:#4a5059}
+.cresco-layer-scope-card,.cresco-layer-drop-zone,.cresco-layer-selection-chip{transition:border-color .15s ease,background .15s ease}
+@media(prefers-reduced-motion:reduce){.cresco-layer-editor-toast,.cresco-layer-editor-modal__backdrop,.cresco-layer-editor-dialog{animation:none}.cresco-layer-editor-tools button,.cresco-layer-editor-dialog button.cresco-layer-primary,.cresco-layer-editor-dialog button.cresco-layer-secondary,.cresco-layer-scope-card,.cresco-layer-drop-zone,.cresco-layer-selection-chip{transition:none}}
