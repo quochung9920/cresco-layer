@@ -4,7 +4,7 @@
   "private": true,
   "description": "Lossless scoped AI exchange, deterministic runtime widget skills, task-retrieved semantic local AI analysis and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
-    "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/skills.js && node --check assets/local-ai-admin.js && node --check assets/semantic-ai.js",
+    "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/skills.js && node --check assets/skills-accuracy.js && node --check assets/local-ai-admin.js && node --check assets/semantic-ai.js",
     "test:editor-bootstrap": "node tests/js/editor-bootstrap-test.mjs",
     "test:editor-live-apply": "node tests/js/editor-live-apply-test.mjs",
     "test:editor-ai-ux": "node tests/js/editor-ai-ux-contract-test.mjs",
