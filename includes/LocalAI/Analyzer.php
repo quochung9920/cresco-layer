@@ -17,8 +17,10 @@ final class Analyzer {
 			'contextWindow' => (int) ( $settings['contextWindow'] ?? 32768 ),
 		] );
 		$available = array_values( array_filter( array_map( static fn( array $skill ): string => (string) ( $skill['skillId'] ?? '' ), (array) ( $context['availableSkills'] ?? [] ) ) ) );
+		$schema_json = wp_json_encode( PlannerContract::json_schema(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+		$system = PlannerContract::system_prompt() . "\nExact planning JSON Schema:\n" . ( is_string( $schema_json ) ? $schema_json : '{}' );
 		$messages = [
-			[ 'role' => 'system', 'content' => PlannerContract::system_prompt() ],
+			[ 'role' => 'system', 'content' => $system ],
 			[ 'role' => 'user', 'content' => "Cresco Semantic Context:\n" . wp_json_encode( $context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ],
 		];
 		return [
