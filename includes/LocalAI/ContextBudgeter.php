@@ -10,6 +10,16 @@ final class ContextBudgeter {
 		if ( $before > $max_chars ) {
 			$trimmed = true;
 			$context['availableSkills'] = array_slice( (array) ( $context['availableSkills'] ?? [] ), 0, 72 );
+			$kept_skill_ids = array_values( array_filter( array_map(
+				static fn( array $skill ): string => (string) ( $skill['skillId'] ?? '' ),
+				(array) $context['availableSkills']
+			) ) );
+			if ( isset( $context['effectiveState'] ) ) {
+				$context['effectiveState'] = array_intersect_key(
+					(array) $context['effectiveState'],
+					array_fill_keys( $kept_skill_ids, true )
+				);
+			}
 			if ( isset( $context['contextGraph']['siblings'] ) ) { $context['contextGraph']['siblings'] = array_slice( (array) $context['contextGraph']['siblings'], 0, 12 ); }
 			if ( isset( $context['contextGraph']['children'] ) ) { $context['contextGraph']['children'] = array_slice( (array) $context['contextGraph']['children'], 0, 20 ); }
 			if ( isset( $context['expertCard']['designRules'] ) ) { $context['expertCard']['designRules'] = array_slice( (array) $context['expertCard']['designRules'], 0, 10 ); }
