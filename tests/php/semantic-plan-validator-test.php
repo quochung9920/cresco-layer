@@ -17,15 +17,9 @@ namespace CrescoLayer\Skills {
 			$id = (string) ( $request['skillId'] ?? '' );
 			$params = is_array( $request['params'] ?? null ) ? $request['params'] : [];
 			$device = (string) ( $params['device'] ?? 'desktop' );
-			if ( 'control.expert' === $id ) {
-				return $this->resolution( $element_id, $id, 'expert_setting', 'before', 'after', 'expert', $device );
-			}
-			if ( 'control.global' === $id ) {
-				return $this->resolution( $element_id, $id, 'global_color', '#635BFF', '#7C3AED', 'safe', $device );
-			}
-			if ( 'control.noop' === $id ) {
-				return $this->resolution( $element_id, $id, 'color', '#111111', '#111111', 'safe', $device );
-			}
+			if ( 'control.expert' === $id ) { return $this->resolution( $element_id, $id, 'expert_setting', 'before', 'after', 'expert', $device ); }
+			if ( 'control.global' === $id ) { return $this->resolution( $element_id, $id, 'global_color', '#635BFF', '#7C3AED', 'safe', $device ); }
+			if ( 'control.noop' === $id ) { return $this->resolution( $element_id, $id, 'color', '#111111', '#111111', 'safe', $device ); }
 			$setting = 'mobile' === $device ? 'padding_mobile' : 'padding';
 			$before = 'mobile' === $device ? null : [ 'unit' => 'px', 'top' => '24', 'right' => '24', 'bottom' => '24', 'left' => '24', 'isLinked' => true ];
 			$after = [ 'unit' => 'px', 'top' => (string) ( $params['value'] ?? 20 ), 'right' => (string) ( $params['value'] ?? 20 ), 'bottom' => (string) ( $params['value'] ?? 20 ), 'left' => (string) ( $params['value'] ?? 20 ), 'isLinked' => true ];
@@ -47,6 +41,7 @@ namespace CrescoLayer\Skills {
 }
 
 namespace {
+	if ( ! function_exists( 'wp_json_encode' ) ) { function wp_json_encode( $value, $flags = 0 ) { return json_encode( $value, $flags ); } }
 	require_once dirname( __DIR__, 2 ) . '/includes/LocalAI/PlanValidator.php';
 
 	use CrescoLayer\LocalAI\PlanValidator;
