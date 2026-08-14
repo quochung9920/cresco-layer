@@ -50,5 +50,7 @@ jobs:
         run: php tests/php/local-ai-contract-test.php
       - name: Semantic Local AI context tests
         run: php tests/php/semantic-ai-context-test.php
+      - name: Semantic Local AI plan validation tests
+        run: php tests/php/semantic-plan-validator-test.php
       - name: JavaScript quality
         run: npm run check
