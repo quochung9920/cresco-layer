@@ -1,16 +1,17 @@
 {
   "name": "cresco-layer",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
-  "description": "Lossless scoped AI exchange, deterministic runtime widget skills, local AI analysis and professional intelligence for Elementor and Elementor Pro.",
+  "description": "Lossless scoped AI exchange, deterministic runtime widget skills, semantic local AI analysis and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
-    "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/skills.js && node --check assets/local-ai-admin.js",
+    "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/skills.js && node --check assets/local-ai-admin.js && node --check assets/semantic-ai.js",
     "test:editor-bootstrap": "node tests/js/editor-bootstrap-test.mjs",
     "test:editor-live-apply": "node tests/js/editor-live-apply-test.mjs",
     "test:editor-ai-ux": "node tests/js/editor-ai-ux-contract-test.mjs",
     "test:editor-skills": "node tests/js/editor-skills-contract-test.mjs",
     "test:local-ai-admin": "node tests/js/local-ai-admin-contract-test.mjs",
-    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:editor-skills && npm run test:local-ai-admin"
+    "test:semantic-ai": "node tests/js/semantic-ai-contract-test.mjs",
+    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:editor-skills && npm run test:local-ai-admin && npm run test:semantic-ai"
   },
   "engines": {
     "node": ">=20"
