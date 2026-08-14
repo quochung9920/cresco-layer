@@ -107,7 +107,11 @@ final class Analyzer {
 		$accepted = false;
 		$reason = 'accepted';
 		$runtime_validation = [ 'validated' => false, 'skipped' => true, 'reason' => 'not-eligible' ];
-		$evidence_validation = $this->evidence_validator->validate( (array) ( $plan['analysis']['evidence'] ?? [] ), (array) ( $prepared['context'] ?? [] ) );
+		try {
+			$evidence_validation = $this->evidence_validator->validate( (array) ( $plan['analysis']['evidence'] ?? [] ), (array) ( $prepared['context'] ?? [] ) );
+		} catch ( \Throwable $error ) {
+			$evidence_validation = [ 'version' => EvidenceValidator::VERSION, 'valid' => false, 'passed' => 0, 'total' => count( (array) ( $plan['analysis']['evidence'] ?? [] ) ), 'score' => 0.0, 'items' => [], 'error' => $error->getMessage() ];
+		}
 
 		if ( $has_questions ) { $reason = 'clarification-required'; }
 		elseif ( ! $has_skills ) { $reason = 'no-effective-plan'; }
