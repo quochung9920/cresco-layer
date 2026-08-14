@@ -30,6 +30,8 @@
 	var openEditorLink=document.getElementById('cresco-layer-open-editor');
 	var patchStateTimer=null;
 	var copyInstructionsButton=document.getElementById('cresco-layer-copy-instructions');
+	var copyPackageButton=document.getElementById('cresco-layer-copy-package');
+	var exportedPackage=null;
 	var historyRefreshButton=document.getElementById('cresco-layer-history-refresh');
 	var historyResult=document.getElementById('cresco-layer-history-result');
 	var historyStatus=document.getElementById('cresco-layer-history-status');
@@ -191,7 +193,7 @@
 	function busy(text){setStatus(text,'busy');}
 	function failure(error){setStatus(error&&error.message?error.message:String(error),'error');}
 
-	document.getElementById('cresco-layer-export').addEventListener('click',function(){try{var id=documentId();var profile=selectedContextProfile();busy('Building '+profile+' context AI-safe package…');request('/documents/'+id+'/export?scope=document&context='+encodeURIComponent(profile)).then(function(data){downloadJson('cresco-layer-'+id+'-'+profile+'-ai-package.json',data);exportedInstructions=typeof data.instructions==='string'?data.instructions:'';if(copyInstructionsButton)copyInstructionsButton.disabled=!exportedInstructions;renderAudit(data.audit||{});var stats=(data.contextResolver&&data.contextResolver.stats)||{};setStatus('AI package exported · '+profile+' context · '+(stats.detailedWidgets||0)+' widget types + '+(stats.detailedElements||0)+' element types expanded.','success');}).catch(failure);}catch(e){failure(e);}});
+	document.getElementById('cresco-layer-export').addEventListener('click',function(){try{var id=documentId();var profile=selectedContextProfile();busy('Building '+profile+' context AI-safe package…');request('/documents/'+id+'/export?scope=document&context='+encodeURIComponent(profile)).then(function(data){downloadJson('cresco-layer-'+id+'-'+profile+'-ai-package.json',data);exportedInstructions=typeof data.instructions==='string'?data.instructions:'';exportedPackage=data;if(copyInstructionsButton)copyInstructionsButton.disabled=!exportedInstructions;if(copyPackageButton)copyPackageButton.disabled=false;renderAudit(data.audit||{});var stats=(data.contextResolver&&data.contextResolver.stats)||{};setStatus('AI package exported · '+profile+' context · '+(stats.detailedWidgets||0)+' widget types + '+(stats.detailedElements||0)+' element types expanded.','success');}).catch(failure);}catch(e){failure(e);}});
 	document.getElementById('cresco-layer-audit').addEventListener('click',function(){try{var id=documentId();busy('Auditing…');request('/documents/'+id+'/audit').then(function(data){renderAudit(data);setStatus('Audit complete.','success');}).catch(failure);}catch(e){failure(e);}});
 	document.getElementById('cresco-layer-preview').addEventListener('click',function(){try{var id=documentId();var item=parsePatch();applyButton.disabled=true;previewedText='';busy('Validating patch…');request('/documents/'+id+'/preview',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderPreview(data);previewedText=item.text;applyButton.disabled=false;setStatus('Patch is valid. Review before applying.','success');}).catch(failure);}catch(e){failure(e);}});
 	applyButton.addEventListener('click',function(){try{var id=documentId();var item=parsePatch();if(!previewedText||item.text!==previewedText){applyButton.disabled=true;throw new Error('Patch changed after preview. Validate it again before applying.');}if(!window.confirm('Apply this reviewed patch to the Elementor document? It will not publish the page.'))return;busy('Applying through Elementor…');applyButton.disabled=true;request('/documents/'+id+'/apply',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderAudit(data.audit||{});previewedText='';loadHistory();setStatus(data.verification&&data.verification.verified===false?'Patch saved, but verification found mismatched operations. Review before publishing.':'Patch applied and saved to Elementor working data. Review, then Update/Publish when ready.',data.verification&&data.verification.verified===false?'error':'success');}).catch(function(error){applyButton.disabled=false;failure(error);});}catch(e){failure(e);}});
@@ -309,6 +311,12 @@
 			copyText(exportedInstructions).then(function(){toast('AI instructions copied. Paste them into your AI chat with the package.','success');}).catch(function(error){setStatus(error.message,'error');});
 		});
 	}
+	if(copyPackageButton){
+		copyPackageButton.addEventListener('click',function(){
+			if(!exportedPackage){setStatus('Export a package first.','error');return;}
+			copyText(JSON.stringify(exportedPackage,null,2)).then(function(){toast('AI package copied to clipboard.','success');}).catch(function(error){setStatus(error.message,'error');});
+		});
+	}
 
 	/* ---------- Patch history & rollback ---------- */
 
@@ -380,5 +388,5 @@
 	initTheme();
 	initPatchUX();
 	updateEditorLink();
-	select.addEventListener('change',function(){updateEditorLink();exportedInstructions='';if(copyInstructionsButton)copyInstructionsButton.disabled=true;});
+	select.addEventListener('change',function(){updateEditorLink();exportedInstructions='';exportedPackage=null;if(copyInstructionsButton)copyInstructionsButton.disabled=true;if(copyPackageButton)copyPackageButton.disabled=true;});
 })();

@@ -16,4 +16,14 @@ assert.match(source, /patchTargetCheck/, 'Import must verify the current Element
 assert.match(source, /Copy diagnostics/, 'Persistent validation errors should expose copyable diagnostics.');
 assert.match(source, /cresco-ai-input-post/, 'AI input downloads should use an unmistakable filename prefix.');
 
+// Handing work to an AI and getting it back must not depend on the filesystem: a user pasting into a
+// web chat needs clipboard delivery, and a user on a locked-down browser needs the file path.
+assert.match(source, /id="cresco-layer-export-copy"/, 'Export must offer clipboard delivery of the package.');
+assert.match(source, /id="cresco-layer-export-instructions"/, 'Export must offer clipboard delivery of the AI briefing.');
+assert.match(source, /delivery === 'instructions'/, 'Export delivery modes must be handled explicitly.');
+assert.match(source, /id="cresco-layer-paste-clipboard"/, 'Import must offer a one-click clipboard paste.');
+assert.match(source, /navigator\.clipboard\.readText/, 'Clipboard import must read the clipboard when permitted.');
+assert.match(source, /openPasteFallback/, 'Blocked clipboard access must fall back to the manual paste box.');
+assert.match(source, /execCommand\('copy'\)/, 'Clipboard writes need a fallback for browsers without the async API.');
+
 console.log('Cresco Layer editor AI UX contract test passed.');

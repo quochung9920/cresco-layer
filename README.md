@@ -153,7 +153,7 @@ The guard validates, where runtime metadata is available:
 - native control existence;
 - responsive suffix support;
 - select/choose options;
-- units and numeric ranges;
+- units and numeric ranges, enforced only against the unit actually being written — Elementor declares ranges per unit but offers more units than it defines ranges for, so a value such as `50vw` is never judged against the `px` bounds, and the `custom` unit carries raw CSS that no numeric bound applies to;
 - no-op operations against current persisted values;
 - lossless handling of global references and unknown persisted settings;
 - custom CSS patterns that are likely visual no-ops.
@@ -179,6 +179,16 @@ Requested Elementor values are actually present after save
 ```
 
 The final visual review and Update/Publish decision still belongs to the user in Elementor.
+
+## Getting packages in and out
+
+Neither direction depends on the filesystem, because pasting into a web chat is often faster than downloading and re-uploading a file.
+
+Export offers three deliveries: **Download file** writes the `.json`, **Copy package** puts the whole package on the clipboard, and **Copy instructions** copies only the scope-aware briefing so it can be pasted ahead of the package.
+
+Import accepts a dropped file, a file picker, **Paste from clipboard**, or manual paste into the JSON box. Every route runs the same detection, so scope, target and operation count are reported before validation regardless of how the patch arrived.
+
+Clipboard access needs permission and is blocked in some browser contexts. When a read is refused, Cresco opens the manual paste box and says so, rather than failing silently; when a write is refused, it points back to the file route.
 
 ## Patch history and rollback
 

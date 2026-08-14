@@ -497,22 +497,56 @@ final class SemanticPatchGuard {
 			$unit = isset( $value['unit'] ) ? (string) $value['unit'] : '';
 		}
 		if ( null !== $number ) {
-			$range = is_array( $control['range'] ?? null ) ? $control['range'] : [];
-			$active_range = [];
-			if ( $range ) {
-				if ( $unit && isset( $range[ $unit ] ) && is_array( $range[ $unit ] ) ) { $active_range = $range[ $unit ]; }
-				elseif ( isset( $range['px'] ) && is_array( $range['px'] ) ) { $active_range = $range['px']; }
-				elseif ( isset( $range['min'] ) || isset( $range['max'] ) ) { $active_range = $range; }
-			}
-			$min = $active_range['min'] ?? ( $control['min'] ?? null );
-			$max = $active_range['max'] ?? ( $control['max'] ?? null );
+			[ $min, $max ] = $this->active_bounds( $control, $unit );
+			$shown = $number . ( '' !== $unit ? $unit : '' );
 			if ( is_numeric( $min ) && $number < (float) $min ) {
-				$this->add_issue( $issues, $item, 'error', 'value-below-range', 'Value for Elementor control ' . $setting . ' is below its supported minimum.', $index, $element_id, $setting );
+				$this->add_issue( $issues, $item, 'error', 'value-below-range', 'Value ' . $shown . ' for Elementor control ' . $setting . ' is below its supported minimum of ' . $min . ( '' !== $unit ? $unit : '' ) . '.', $index, $element_id, $setting );
 			}
 			if ( is_numeric( $max ) && $number > (float) $max ) {
-				$this->add_issue( $issues, $item, 'error', 'value-above-range', 'Value for Elementor control ' . $setting . ' exceeds its supported maximum.', $index, $element_id, $setting );
+				$this->add_issue( $issues, $item, 'error', 'value-above-range', 'Value ' . $shown . ' for Elementor control ' . $setting . ' exceeds its supported maximum of ' . $max . ( '' !== $unit ? $unit : '' ) . '.', $index, $element_id, $setting );
 			}
 		}
+	}
+
+	/**
+	 * Resolve the numeric bounds that actually apply to the unit being written.
+	 *
+	 * Elementor declares ranges per unit, but a control usually offers more units in size_units than it
+	 * defines ranges for. Borrowing another unit's bounds compares unlike quantities — 50vw against a
+	 * px minimum of 500, for example — and rejects a perfectly valid patch. When no range exists for
+	 * the unit in play, there is nothing to enforce, so enforce nothing.
+	 *
+	 * @return array{0:mixed,1:mixed} [ min, max ]; null entries mean "unbounded".
+	 */
+	private function active_bounds( array $control, string $unit ): array {
+		// Elementor's "custom" unit carries a raw CSS string; numeric bounds are meaningless for it.
+		if ( 'custom' === $unit ) { return [ null, null ]; }
+
+		$range = is_array( $control['range'] ?? null ) ? $control['range'] : [];
+		$per_unit = [];
+		foreach ( $range as $key => $candidate ) {
+			if ( is_string( $key ) && is_array( $candidate ) && ( isset( $candidate['min'] ) || isset( $candidate['max'] ) ) ) {
+				$per_unit[ $key ] = $candidate;
+			}
+		}
+
+		if ( $per_unit ) {
+			if ( '' !== $unit ) {
+				// No declared range for this unit: never fall back to a different unit's bounds.
+				if ( ! isset( $per_unit[ $unit ] ) ) { return [ null, null ]; }
+				$active = $per_unit[ $unit ];
+			} elseif ( isset( $per_unit['px'] ) ) {
+				$active = $per_unit['px'];  // A bare number means px in Elementor.
+			} else {
+				return [ null, null ];
+			}
+			return [ $active['min'] ?? null, $active['max'] ?? null ];
+		}
+
+		if ( isset( $range['min'] ) || isset( $range['max'] ) ) {
+			return [ $range['min'] ?? null, $range['max'] ?? null ];
+		}
+		return [ $control['min'] ?? null, $control['max'] ?? null ];
 	}
 
 	private function analyze_custom_css( string $css, array $element, array $catalog, int $index, string $element_id, string $setting, array &$issues, array &$item ): void {

@@ -46,3 +46,4 @@
 .cresco-layer-editor-dialog::-webkit-scrollbar-thumb{border:3px solid #202226;border-radius:999px;background:#4a5059}
 .cresco-layer-scope-card,.cresco-layer-drop-zone,.cresco-layer-selection-chip{transition:border-color .15s ease,background .15s ease}
 @media(prefers-reduced-motion:reduce){.cresco-layer-editor-toast,.cresco-layer-editor-modal__backdrop,.cresco-layer-editor-dialog{animation:none}.cresco-layer-editor-tools button,.cresco-layer-editor-dialog button.cresco-layer-primary,.cresco-layer-editor-dialog button.cresco-layer-secondary,.cresco-layer-scope-card,.cresco-layer-drop-zone,.cresco-layer-selection-chip{transition:none}}
+.cresco-layer-drop-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}

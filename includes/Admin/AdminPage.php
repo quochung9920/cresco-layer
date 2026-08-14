@@ -95,6 +95,7 @@ final class AdminPage {
 						<div class="cresco-layer-actions">
 							<button class="button button-primary" id="cresco-layer-export"><?php echo esc_html__( 'Export for AI', 'cresco-layer' ); ?></button>
 							<button class="button" id="cresco-layer-audit"><?php echo esc_html__( 'Run audit', 'cresco-layer' ); ?></button>
+							<button class="button" id="cresco-layer-copy-package" disabled><?php echo esc_html__( 'Copy package', 'cresco-layer' ); ?></button>
 							<button class="button" id="cresco-layer-copy-instructions" disabled><?php echo esc_html__( 'Copy AI instructions', 'cresco-layer' ); ?></button>
 						</div>
 						<p class="description"><?php echo esc_html__( 'After exporting, use “Copy AI instructions” to put the scope-aware briefing on your clipboard and paste it into your AI chat together with the downloaded package.', 'cresco-layer' ); ?></p>

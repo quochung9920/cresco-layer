@@ -309,7 +309,31 @@
 		return 'cresco-ai-input-post' + pid + '-' + target + '-' + mode + '.json';
 	}
 
-	function exportScope(mode) {
+	function copyToClipboard(text) {
+		if (window.navigator && window.navigator.clipboard && typeof window.navigator.clipboard.writeText === 'function') {
+			return window.navigator.clipboard.writeText(text);
+		}
+		return new Promise(function (resolve, reject) {
+			var area = document.createElement('textarea');
+			area.value = text;
+			area.setAttribute('readonly', '');
+			area.style.position = 'fixed';
+			area.style.opacity = '0';
+			document.body.appendChild(area);
+			area.select();
+			var ok = false;
+			try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+			area.remove();
+			ok ? resolve() : reject(new Error('This browser blocked clipboard access. Use "Download file" instead.'));
+		});
+	}
+
+	/**
+	 * delivery: 'download' writes a .json file, 'clipboard' copies the package, 'instructions' copies
+	 * only the scope-aware AI briefing so it can be pasted ahead of the package.
+	 */
+	function exportScope(mode, delivery) {
+		delivery = delivery || 'download';
 		try {
 			var ids = selectedIdsForMode(mode);
 			var pid = postId();
@@ -318,12 +342,35 @@
 			toast('Building AI package for ' + (mode === 'widget' ? 'this element' : mode === 'subtree' ? 'this section' : (ids.length + ' selected elements')) + '…', 'busy');
 			request('/documents/' + pid + '/export?scope=' + encodeURIComponent(mode) + '&selected=' + encodeURIComponent(ids.join(',')))
 				.then(function (data) {
-					download(exportFilename(pid, mode, ids), data);
-					closeExportModal();
-					toast('AI package exported. Send this input file to your AI, then import the returned Cresco patch.', 'success');
+					if (delivery === 'download') {
+						download(exportFilename(pid, mode, ids), data);
+						closeExportModal();
+						toast('AI package exported. Send this input file to your AI, then import the returned Cresco patch.', 'success');
+						return;
+					}
+					if (delivery === 'instructions') {
+						var briefing = typeof data.instructions === 'string' ? data.instructions : '';
+						if (!briefing) throw new Error('This package did not include AI instructions.');
+						return copyToClipboard(briefing).then(function () {
+							toast('AI instructions copied. Paste them into your AI chat, then paste or attach the package.', 'success');
+						});
+					}
+					return copyToClipboard(JSON.stringify(data, null, 2)).then(function () {
+						closeExportModal();
+						toast('AI package copied to clipboard. Paste it into your AI chat, then import the returned Cresco patch.', 'success');
+					});
 				})
 				.catch(function (error) { showExportError(error.message); toast(error.message, 'error'); });
 		} catch (error) { showExportError(error.message); toast(error.message, 'error'); }
+	}
+
+	/** Clipboard reads need permission and are blocked in some contexts; fall back to a visible textarea. */
+	function openPasteFallback(message) {
+		var details = document.querySelector('#cresco-layer-editor-modal .cresco-layer-paste-fallback');
+		if (details) details.open = true;
+		var textarea = document.getElementById('cresco-layer-editor-patch');
+		if (textarea) textarea.focus();
+		toast(message, 'info');
 	}
 
 	function closeExportModal() {
@@ -349,7 +396,7 @@
 			'</div>' +
 			'<div class="cresco-layer-selection-panel" id="cresco-layer-selection-panel"><div class="cresco-layer-selection-panel__head"><strong>AI selection</strong><span id="cresco-layer-selection-summary">0 elements</span></div><div id="cresco-layer-selection-chips" class="cresco-layer-selection-chips"></div><div class="cresco-layer-selection-actions"><button type="button" class="cresco-layer-secondary" id="cresco-layer-selection-add">Add current element</button><button type="button" class="cresco-layer-link-button" id="cresco-layer-selection-clear">Clear</button></div><p class="cresco-layer-editor-help">Tip: right-click any Elementor element and use <strong>Cresco · Add/remove AI selection</strong> to build a non-contiguous selection quickly.</p></div>' +
 			'<div id="cresco-layer-export-error" class="cresco-layer-editor-error" hidden></div>' +
-			'<footer><button type="button" class="cresco-layer-secondary" data-cresco-export-close>Cancel</button><button type="button" class="cresco-layer-primary" id="cresco-layer-export-run">Export AI input</button></footer></section>';
+			'<footer><button type="button" class="cresco-layer-secondary" data-cresco-export-close>Cancel</button><button type="button" class="cresco-layer-secondary" id="cresco-layer-export-instructions">Copy instructions</button><button type="button" class="cresco-layer-secondary" id="cresco-layer-export-copy">Copy package</button><button type="button" class="cresco-layer-primary" id="cresco-layer-export-run">Download file</button></footer></section>';
 		document.body.appendChild(box);
 		Array.prototype.forEach.call(box.querySelectorAll('[data-cresco-export-close]'), function (button) { button.addEventListener('click', closeExportModal); });
 		Array.prototype.forEach.call(box.querySelectorAll('input[name="cresco-export-scope"]'), function (input) {
@@ -367,7 +414,11 @@
 		var clear = box.querySelector('#cresco-layer-selection-clear');
 		if (clear) clear.addEventListener('click', clearSelection);
 		var run = box.querySelector('#cresco-layer-export-run');
-		if (run) run.addEventListener('click', function () { exportScope(exportMode); });
+		if (run) run.addEventListener('click', function () { exportScope(exportMode, 'download'); });
+		var copy = box.querySelector('#cresco-layer-export-copy');
+		if (copy) copy.addEventListener('click', function () { exportScope(exportMode, 'clipboard'); });
+		var brief = box.querySelector('#cresco-layer-export-instructions');
+		if (brief) brief.addEventListener('click', function () { exportScope(exportMode, 'instructions'); });
 		return box;
 	}
 
@@ -629,7 +680,7 @@
 			'<section class="cresco-layer-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="cresco-layer-dialog-title">' +
 			'<header><div><span class="cresco-layer-editor-eyebrow">Cresco AI</span><h2 id="cresco-layer-dialog-title">Import AI result</h2><p class="cresco-layer-editor-subtitle">Drop the JSON returned by the AI. Cresco will detect the scope and target automatically.</p></div><button type="button" class="cresco-layer-editor-close" data-cresco-close aria-label="Close">×</button></header>' +
 			'<div class="cresco-layer-import-body">' +
-			'<div id="cresco-layer-drop-zone" class="cresco-layer-drop-zone" tabindex="0" role="button" aria-label="Choose Cresco AI result JSON"><input id="cresco-layer-patch-file" type="file" accept="application/json,.json" hidden><strong>Drop Cresco AI result here</strong><span>or</span><button type="button" class="cresco-layer-secondary" id="cresco-layer-choose-file">Choose JSON file</button><small>Expected: <code>cresco-layer-patch/v1</code></small></div>' +
+			'<div id="cresco-layer-drop-zone" class="cresco-layer-drop-zone" tabindex="0" role="button" aria-label="Choose Cresco AI result JSON"><input id="cresco-layer-patch-file" type="file" accept="application/json,.json" hidden><strong>Drop Cresco AI result here</strong><span>or</span><span class="cresco-layer-drop-actions"><button type="button" class="cresco-layer-secondary" id="cresco-layer-choose-file">Choose JSON file</button><button type="button" class="cresco-layer-secondary" id="cresco-layer-paste-clipboard">Paste from clipboard</button></span><small>Expected: <code>cresco-layer-patch/v1</code></small></div>' +
 			'<div id="cresco-layer-import-detection" class="cresco-layer-import-detection is-neutral"><strong>No AI result loaded yet.</strong><span>Choose the patch file downloaded from your AI conversation.</span></div>' +
 			'<details class="cresco-layer-paste-fallback"><summary>Paste JSON manually</summary><textarea id="cresco-layer-editor-patch" rows="12" spellcheck="false" placeholder="{&quot;schema&quot;:&quot;cresco-layer-patch/v1&quot;,...}"></textarea></details>' +
 			'<div id="cresco-layer-editor-error" class="cresco-layer-editor-error" hidden><strong>Validation failed</strong><p></p><button type="button" class="cresco-layer-link-button" id="cresco-layer-copy-diagnostics">Copy diagnostics</button></div>' +
@@ -641,8 +692,22 @@
 		var choose = box.querySelector('#cresco-layer-choose-file');
 		var input = box.querySelector('#cresco-layer-patch-file');
 		var drop = box.querySelector('#cresco-layer-drop-zone');
+		var pasteButton = box.querySelector('#cresco-layer-paste-clipboard');
 		if (choose && input) choose.addEventListener('click', function () { input.click(); });
-		if (drop && input) drop.addEventListener('click', function (event) { if (event.target !== choose && event.target !== input) input.click(); });
+		if (pasteButton) pasteButton.addEventListener('click', function (event) {
+			event.stopPropagation();
+			if (!window.navigator || !navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+				openPasteFallback('This browser cannot read the clipboard directly. Paste the JSON here instead.');
+				return;
+			}
+			navigator.clipboard.readText().then(function (text) {
+				if (!String(text || '').trim()) { openPasteFallback('The clipboard is empty. Paste the JSON here instead.'); return; }
+				setPatchText(text, 'Clipboard', true);
+			}).catch(function () {
+				openPasteFallback('Clipboard access was blocked. Paste the JSON here instead.');
+			});
+		});
+		if (drop && input) drop.addEventListener('click', function (event) { if (event.target !== choose && event.target !== input && event.target !== pasteButton) input.click(); });
 		if (drop) drop.addEventListener('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (input) input.click(); } });
 		if (input) input.addEventListener('change', function () { if (input.files && input.files[0]) readPatchFile(input.files[0]); });
 		if (drop) {
