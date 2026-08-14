@@ -46,6 +46,35 @@ final class ProviderManager {
 		return [ 'browserRequired' => false, 'provider' => (string) $config['provider'], 'models' => $this->normalize_models( (string) $config['provider'], $data ) ];
 	}
 
+	public function chat( array $messages ): array {
+		$config = $this->settings->get( true );
+		if ( 'browser' === (string) $config['connectionMode'] ) { throw new \RuntimeException( 'Browser Local AI inference must run in the browser on this computer.' ); }
+		if ( empty( $config['enabled'] ) ) { throw new \RuntimeException( 'Local AI is disabled.' ); }
+		$model = trim( (string) ( $config['analysisModel'] ?? '' ) );
+		if ( '' === $model ) { throw new \RuntimeException( 'No Local AI analysis model is selected.' ); }
+		$provider_id = (string) $config['provider'];
+		$provider = $this->provider( $provider_id );
+		$temperature = (float) ( $config['temperature'] ?? 0.2 );
+		$max_tokens = (int) ( $config['maxOutputTokens'] ?? 4096 );
+		$context_window = (int) ( $config['contextWindow'] ?? 32768 );
+		if ( 'ollama' === (string) $provider['apiStyle'] ) {
+			$body = [ 'model' => $model, 'messages' => array_values( $messages ), 'stream' => false, 'format' => 'json', 'options' => [ 'temperature' => $temperature, 'num_ctx' => $context_window, 'num_predict' => $max_tokens ] ];
+		} else {
+			$body = [ 'model' => $model, 'messages' => array_values( $messages ), 'temperature' => $temperature, 'max_tokens' => $max_tokens ];
+		}
+		$started = microtime( true );
+		$data = $this->request_json( 'POST', $this->url( $config, (string) $provider['chatPath'] ), $body, $config, 120 );
+		if ( 'ollama' === (string) $provider['apiStyle'] ) {
+			$content = (string) ( $data['message']['content'] ?? '' );
+			$returned_model = (string) ( $data['model'] ?? $model );
+		} else {
+			$content = (string) ( $data['choices'][0]['message']['content'] ?? '' );
+			$returned_model = (string) ( $data['model'] ?? $model );
+		}
+		if ( '' === trim( $content ) ) { throw new \RuntimeException( 'Local AI returned an empty planning response.' ); }
+		return [ 'provider' => $provider_id, 'model' => $returned_model, 'content' => $content, 'latencyMs' => (int) round( ( microtime( true ) - $started ) * 1000 ) ];
+	}
+
 	public function diagnostics(): array {
 		$config = $this->settings->get();
 		$checks = [
@@ -82,11 +111,11 @@ final class ProviderManager {
 	private function provider( string $provider ): array { $providers = $this->providers(); if ( ! isset( $providers[ $provider ] ) ) { throw new \InvalidArgumentException( 'Unsupported local AI provider.' ); } return $providers[ $provider ]; }
 	private function url( array $config, string $path ): string { return rtrim( (string) $config['endpoint'], '/' ) . '/' . ltrim( $path, '/' ); }
 
-	private function request_json( string $method, string $url, ?array $body, array $config ): array {
+	private function request_json( string $method, string $url, ?array $body, array $config, int $timeout = 8 ): array {
 		$headers = [ 'Accept' => 'application/json' ];
 		$token = trim( (string) ( $config['apiToken'] ?? '' ) );
 		if ( '' !== $token ) { $headers['Authorization'] = 'Bearer ' . $token; }
-		$args = [ 'method' => $method, 'timeout' => 8, 'redirection' => 0, 'limit_response_size' => 2097152, 'headers' => $headers ];
+		$args = [ 'method' => $method, 'timeout' => $timeout, 'redirection' => 0, 'limit_response_size' => 4194304, 'headers' => $headers ];
 		if ( null !== $body ) { $args['headers']['Content-Type'] = 'application/json'; $args['body'] = wp_json_encode( $body ); }
 		$response = wp_remote_request( $url, $args );
 		if ( is_wp_error( $response ) ) { throw new \RuntimeException( 'Local AI connection failed: ' . $response->get_error_message() ); }
