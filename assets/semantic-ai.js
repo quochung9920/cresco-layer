@@ -57,6 +57,45 @@
 		node.className = 'cresco-layer-skill-status is-' + (tone || 'info');
 		node.textContent = message || '';
 	}
+	function findElementNode(id) {
+		if (!validId(id)) return null;
+		var selector = '[data-id="' + String(id).replace(/"/g, '') + '"]';
+		try { var own = document.querySelector(selector); if (own) return own; } catch (e) {}
+		try {
+			var frames = document.querySelectorAll('iframe');
+			for (var i = 0; i < frames.length; i++) {
+				var doc = frames[i].contentDocument;
+				var node = doc && doc.querySelector ? doc.querySelector(selector) : null;
+				if (node) return node;
+			}
+		} catch (e2) {}
+		return null;
+	}
+	function renderObservation(id) {
+		var node = findElementNode(id);
+		if (!node || !node.getBoundingClientRect) return { viewport: {}, selected: {}, children: [] };
+		try {
+			var doc = node.ownerDocument || document;
+			var win = doc.defaultView || window;
+			var rect = node.getBoundingClientRect();
+			var style = win.getComputedStyle ? win.getComputedStyle(node) : null;
+			var selected = { width: round(rect.width), height: round(rect.height), top: round(rect.top), left: round(rect.left) };
+			if (style) {
+				['display', 'position', 'flexDirection', 'flexWrap', 'justifyContent', 'alignItems', 'gap', 'padding', 'margin', 'fontSize', 'lineHeight', 'overflowX', 'overflowY', 'color', 'backgroundColor'].forEach(function (key) { selected[key] = style[key] || ''; });
+			}
+			var children = [];
+			Array.prototype.slice.call(node.children || [], 0, 12).forEach(function (child) {
+				var childId = child.getAttribute && child.getAttribute('data-id');
+				if (!validId(childId) || !child.getBoundingClientRect) return;
+				var childRect = child.getBoundingClientRect();
+				children.push({ id: childId, width: round(childRect.width), height: round(childRect.height) });
+			});
+			return { viewport: { width: round(win.innerWidth || 0), height: round(win.innerHeight || 0), devicePixelRatio: round(win.devicePixelRatio || 1) }, selected: selected, children: children };
+		} catch (e) { return { viewport: {}, selected: {}, children: [] }; }
+	}
+	function round(value) { return Math.round((parseFloat(value) || 0) * 100) / 100; }
+	function stable(value) { try { return JSON.stringify(value); } catch (e) { return String(value); } }
+	function valuesEqual(a, b) { return stable(a) === stable(b); }
 
 	function mount() {
 		if (mounted) return true;
@@ -78,7 +117,7 @@
 		var meta = document.createElement('div');
 		meta.className = 'cresco-layer-ai-meta';
 		meta.innerHTML = local.enabled && local.analysisModel
-			? '<span>Local AI · ' + escapeHtml(local.analysisModel) + '</span><span>AI analyzes → Skills execute</span>'
+			? '<span>Local AI · ' + escapeHtml(local.analysisModel) + '</span><span>AI analyzes → evidence → Skills execute</span>'
 			: '<span>Local AI is not configured.</span><a href="' + escapeHtml((cfg.adminUrl || '') + '#cresco-layer-local-ai') + '">Configure in Cresco Layer</a>';
 		row.parentNode.appendChild(meta);
 
@@ -102,22 +141,24 @@
 		if (!task) { setStatus('Describe the result you want, for example “tối ưu section này cho mobile”.', 'error'); return; }
 		pending = null;
 		renderPreview(null);
-		setStatus('Building a semantic widget context for Local AI…', 'busy');
-		var body = { task: task, liveSettings: liveSettings(id) };
+		setStatus('Building task-specific semantic context and render observations…', 'busy');
+		var observation = renderObservation(id);
+		var body = { task: task, liveSettings: liveSettings(id), renderObservation: observation };
 		request('/documents/' + pid + '/local-ai/' + encodeURIComponent(id) + '/analyze', { method: 'POST', body: JSON.stringify(body) }).then(function (result) {
 			if (!result.browserRequired) return result;
 			setStatus('Running the local model in this browser…', 'busy');
 			return browserInfer(result).then(function (plan) {
-				return request('/documents/' + pid + '/local-ai/' + encodeURIComponent(id) + '/validate', { method: 'POST', body: JSON.stringify({ task: task, liveSettings: liveSettings(id), plan: plan }) });
+				return request('/documents/' + pid + '/local-ai/' + encodeURIComponent(id) + '/validate', { method: 'POST', body: JSON.stringify({ task: task, liveSettings: liveSettings(id), renderObservation: renderObservation(id), plan: plan }) });
 			});
 		}).then(function (result) {
 			if (selectedId() !== id) throw new Error('Selection changed while Local AI was analyzing. Run the analysis again for the current widget.');
-			pending = { result: result, elementId: id, task: task };
+			pending = { result: result, elementId: id, task: task, baselineRender: observation };
 			renderPreview(result);
 			var decision = result.decision || {};
-			if (decision.accepted) setStatus('Local AI plan validated against this widget’s exact skill registry. Review before applying.', 'success');
+			if (decision.accepted) setStatus('Plan passed evidence, semantic-confidence and exact runtime validation. Review before applying.', 'success');
 			else if (decision.reason === 'clarification-required') setStatus('Local AI needs clarification before it can build a safe plan.', 'warning');
-			else if (decision.reason === 'below-confidence-threshold') setStatus('Local AI confidence is below the configured threshold. Nothing will be applied.', 'warning');
+			else if (decision.reason === 'evidence-validation-failed') setStatus('AI diagnosis referenced evidence that Cresco could not verify. Nothing will be applied.', 'error');
+			else if (decision.reason === 'below-semantic-confidence-threshold') setStatus('Combined semantic confidence is below the configured threshold. Nothing will be applied.', 'warning');
 			else setStatus('Local AI did not produce an executable plan.', 'warning');
 		}).catch(function (error) {
 			pending = null;
@@ -162,17 +203,25 @@
 		var plan = result.plan;
 		var decision = result.decision || {};
 		var analysis = plan.analysis || {};
-		var evidence = (analysis.evidence || []).map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('');
+		var validationItems = result.evidenceValidation && result.evidenceValidation.items || [];
+		var evidence = (analysis.evidence || []).map(function (item, index) {
+			var checked = validationItems[index] || {};
+			var mark = checked.valid === false ? '×' : '✓';
+			return '<li><b>' + mark + '</b> ' + escapeHtml(item.statement || '') + '<code>' + escapeHtml(item.factId || '') + ' ' + escapeHtml(item.operator || '') + ' ' + escapeHtml(stable(item.value)) + '</code></li>';
+		}).join('');
 		var skills = (plan.requestedSkills || []).map(function (item) {
 			return '<li><strong>' + escapeHtml(item.skillId) + '</strong><span>' + escapeHtml(item.reason || '') + '</span><code>' + escapeHtml(JSON.stringify(item.params || {})) + '</code></li>';
 		}).join('');
 		var questions = (plan.questions || []).map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('');
+		var finalConfidence = decision.confidence == null ? (plan.confidence || 0) : decision.confidence;
+		var components = decision.confidenceComponents || {};
 		node.hidden = false;
-		node.innerHTML = '<header><div><span>Semantic Local AI</span><h3>' + escapeHtml(plan.summary || plan.intent) + '</h3></div><b class="' + (decision.accepted ? 'is-accepted' : 'is-blocked') + '">' + Math.round((plan.confidence || 0) * 100) + '%</b></header>' +
+		node.innerHTML = '<header><div><span>Semantic Local AI · Accuracy Core</span><h3>' + escapeHtml(plan.summary || plan.intent) + '</h3></div><b class="' + (decision.accepted ? 'is-accepted' : 'is-blocked') + '">' + Math.round(finalConfidence * 100) + '%</b></header>' +
 			'<div class="cresco-layer-ai-diagnosis"><strong>Diagnosis</strong><p>' + escapeHtml(analysis.problem || '') + '</p>' + (evidence ? '<ul>' + evidence + '</ul>' : '') + '</div>' +
+			'<div class="cresco-layer-ai-diagnosis"><strong>Confidence</strong><p>AI ' + Math.round((decision.aiConfidence || 0) * 100) + '% · evidence ' + Math.round((decision.evidenceScore || 0) * 100) + '% · retrieval ' + Math.round((components.skillRetrievalMatch || 0) * 100) + '% · runtime ' + Math.round((components.runtimeValidation || 0) * 100) + '%</p></div>' +
 			(skills ? '<div class="cresco-layer-ai-plan"><strong>Validated skill plan</strong><ol>' + skills + '</ol></div>' : '') +
 			(questions ? '<div class="cresco-layer-ai-questions"><strong>Clarification needed</strong><ul>' + questions + '</ul></div>' : '') +
-			'<footer><span>' + escapeHtml(decision.reason || '') + ' · threshold ' + Math.round((decision.minimumConfidence || 0) * 100) + '%</span>' + (decision.accepted ? '<button type="button" data-cresco-ai-apply>Apply validated plan</button>' : '') + '</footer>';
+			'<footer><span>' + escapeHtml(decision.reason || '') + ' · semantic threshold ' + Math.round((decision.minimumConfidence || 0) * 100) + '%</span>' + (decision.accepted ? '<button type="button" data-cresco-ai-apply>Apply validated plan</button>' : '') + '</footer>';
 		var apply = node.querySelector('[data-cresco-ai-apply]');
 		if (apply) apply.addEventListener('click', applyPending);
 	}
@@ -196,11 +245,22 @@
 			});
 		});
 		chain.then(function () {
-			applyBatch(id, resolutions, 'Cresco Local AI · ' + (pending.result.plan.intent || 'Validated plan'));
-			setStatus('Applied the validated Local AI plan through native Elementor controls. Undo is available in Elementor history.', 'success');
-			pending = null;
-			renderPreview(null);
-			if (window.CrescoLayerSkills && typeof window.CrescoLayerSkills.refresh === 'function') setTimeout(function () { window.CrescoLayerSkills.refresh(); }, 250);
+			var transaction = applyBatch(id, resolutions, 'Cresco Local AI · ' + (pending.result.plan.intent || 'Validated plan'));
+			setStatus('Applied. Verifying Elementor model read-back and rendered effect…', 'busy');
+			setTimeout(function () {
+				var verification = verifyApplied(id, resolutions, transaction.beforeSettings, pending && pending.baselineRender ? pending.baselineRender : transaction.beforeRender);
+				if (!verification.modelVerified) {
+					rollbackTouched(id, transaction.beforeSettings, transaction.touched);
+					setStatus('Post-apply verification failed; Cresco rolled the affected settings back.', 'error');
+				} else if (verification.visualExpected && !verification.renderChanged) {
+					setStatus('Elementor model verification passed, but no measurable render change was observed on the selected element. Review the canvas before saving.', 'warning');
+				} else {
+					setStatus('Applied and verified: Elementor model read-back passed' + (verification.renderChanged ? ' and the rendered element changed.' : '.'), 'success');
+				}
+				pending = null;
+				renderPreview(null);
+				if (window.CrescoLayerSkills && typeof window.CrescoLayerSkills.refresh === 'function') setTimeout(function () { window.CrescoLayerSkills.refresh(); }, 180);
+			}, 180);
 		}).catch(function (error) { setStatus(error.message, 'error'); });
 	}
 
@@ -209,6 +269,7 @@
 		var e = editorApi();
 		if (!container || !e) throw new Error('Elementor live settings API is unavailable.');
 		var before = liveSettings(id);
+		var beforeRender = renderObservation(id);
 		var touched = {};
 		(resolutions || []).forEach(function (resolution) {
 			(resolution.operations || []).forEach(function (operation) {
@@ -228,13 +289,47 @@
 			});
 			try { if (elementor.saver && typeof elementor.saver.setFlagEditorChange === 'function') elementor.saver.setFlagEditorChange(true); } catch (flagError) {}
 		} catch (error) {
-			Object.keys(touched).forEach(function (setting) {
-				try { var rollback = {}; rollback[setting] = Object.prototype.hasOwnProperty.call(before, setting) ? before[setting] : undefined; e.run('document/elements/settings', { container: container, settings: rollback, options: { external: true } }); } catch (rollbackError) {}
-			});
+			rollbackTouched(id, before, touched);
 			throw error;
 		} finally {
 			try { if (history != null && typeof e.internal === 'function') e.internal('document/history/end-log', { id: history }); } catch (endError) {}
 		}
+		return { beforeSettings: before, beforeRender: beforeRender, touched: touched };
+	}
+
+	function verifyApplied(id, resolutions, beforeSettings, beforeRender) {
+		var current = liveSettings(id);
+		var modelVerified = true;
+		var visualExpected = false;
+		(resolutions || []).forEach(function (resolution) {
+			var role = String(resolution.role || '');
+			if (/^(layout|spacing|style|typography)\./.test(role)) visualExpected = true;
+			(resolution.operations || []).forEach(function (operation) {
+				if (operation.operation === 'remove-setting') {
+					if (Object.prototype.hasOwnProperty.call(current, operation.setting) && current[operation.setting] != null && current[operation.setting] !== '') modelVerified = false;
+				} else if (!Object.prototype.hasOwnProperty.call(current, operation.setting) || !valuesEqual(current[operation.setting], operation.value)) {
+					modelVerified = false;
+				}
+			});
+		});
+		var afterRender = renderObservation(id);
+		var beforeSelected = beforeRender && beforeRender.selected || {};
+		var afterSelected = afterRender && afterRender.selected || {};
+		var renderChanged = !valuesEqual(beforeSelected, afterSelected);
+		return { modelVerified: modelVerified, renderChanged: renderChanged, visualExpected: visualExpected, beforeSettings: beforeSettings, afterSettings: current, beforeRender: beforeRender, afterRender: afterRender };
+	}
+
+	function rollbackTouched(id, before, touched) {
+		var container = getContainer(id);
+		var e = editorApi();
+		if (!container || !e) return;
+		Object.keys(touched || {}).forEach(function (setting) {
+			try {
+				var rollback = {};
+				rollback[setting] = Object.prototype.hasOwnProperty.call(before || {}, setting) ? before[setting] : undefined;
+				e.run('document/elements/settings', { container: container, settings: rollback, options: { external: true } });
+			} catch (rollbackError) {}
+		});
 	}
 
 	function boot() {
