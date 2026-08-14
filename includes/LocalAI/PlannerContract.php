@@ -34,6 +34,7 @@ final class PlannerContract {
 			'You may only request a skill whose exact skillId appears in availableSkills. Do not infer a missing skill from its label.',
 			'Use each available skill input.kind to construct params: dimensions accepts optional device plus value/all or top/right/bottom/left and an allowed unit; slider/size accepts optional device plus value and an allowed unit; number accepts value as a number; switcher accepts value as a boolean or enabled/disabled value; select/choose/select2 must use an exact value from input.options; url accepts value as a URL string; structured expert skills use value as the requested array/object.',
 			'When a skill is responsive, use only a device listed in that skill devices array. Use only units, ranges and option values advertised in that skill input metadata.',
+			'The same skillId may appear more than once only when separate parameter sets are genuinely required, for example desktop and mobile values. Avoid duplicate equivalent steps.',
 			'If input.optionsTruncated is true and the required option is not shown, do not guess it; ask for clarification or return no executable skill.',
 			'Do not output CSS, JavaScript, Elementor setting names or database operations.',
 			'Preserve dynamic bindings, global references, IDs and scope unless the context explicitly permits otherwise.',
@@ -97,14 +98,11 @@ final class PlannerContract {
 		$available = array_fill_keys( array_map( 'strval', $available_skill_ids ), true );
 		$requested = (array) ( $plan['requestedSkills'] ?? [] );
 		if ( count( $requested ) > 16 ) { throw new \InvalidArgumentException( 'Local AI plan requests too many skills.' ); }
-		$seen = [];
 		$clean_requested = [];
 		foreach ( $requested as $item ) {
 			if ( ! is_array( $item ) ) { throw new \InvalidArgumentException( 'Local AI plan skill entry is invalid.' ); }
 			$id = trim( (string) ( $item['skillId'] ?? '' ) );
 			if ( '' === $id || ! isset( $available[ $id ] ) ) { throw new \InvalidArgumentException( 'Local AI requested a skill that is not available for the selected Elementor context.' ); }
-			if ( isset( $seen[ $id ] ) ) { throw new \InvalidArgumentException( 'Local AI requested the same skill more than once.' ); }
-			$seen[ $id ] = true;
 			if ( ! is_array( $item['params'] ?? null ) ) { throw new \InvalidArgumentException( 'Local AI skill params must be an object.' ); }
 			$reason = trim( (string) ( $item['reason'] ?? '' ) );
 			if ( '' === $reason ) { throw new \InvalidArgumentException( 'Every requested Local AI skill must include a reason.' ); }
