@@ -24,12 +24,14 @@ local_ai_assert( PlannerContract::SCHEMA === $descriptor['schema'], 'Planning co
 local_ai_assert( 'Cresco Skill Runtime only' === $descriptor['executionAuthority'], 'Local AI must not own execution authority.' );
 local_ai_assert( in_array( 'invent-elementor-setting', $descriptor['forbidden'], true ), 'Planning contract must forbid invented Elementor settings.' );
 local_ai_assert( in_array( 'direct-document-write', $descriptor['forbidden'], true ), 'Planning contract must forbid direct document writes.' );
+local_ai_assert( in_array( 'detach-dynamic-binding', $descriptor['forbidden'], true ), 'Planning contract must preserve dynamic bindings.' );
 
 $plan = PlannerContract::validate( [
 	'schema' => PlannerContract::SCHEMA,
 	'intent' => 'improve-card-spacing',
 	'confidence' => 0.94,
 	'summary' => 'Increase card breathing room.',
+	'analysis' => [ 'problem' => 'Card spacing is dense.', 'evidence' => [ 'Mobile padding is 8px.' ] ],
 	'requestedSkills' => [ [ 'skillId' => 'control.padding', 'params' => [ 'value' => '24px' ], 'reason' => 'More spacing' ] ],
 	'questions' => [],
 ], [ 'control.padding' ] );
@@ -41,7 +43,8 @@ try {
 		'intent' => 'unsafe',
 		'confidence' => 0.9,
 		'summary' => '',
-		'requestedSkills' => [ [ 'skillId' => 'invented.setting', 'params' => [], 'reason' => '' ] ],
+		'analysis' => [ 'problem' => 'Unsafe guess', 'evidence' => [ 'No valid skill exists.' ] ],
+		'requestedSkills' => [ [ 'skillId' => 'invented.setting', 'params' => [], 'reason' => 'Guess' ] ],
 		'questions' => [],
 	], [ 'control.padding' ] );
 	fwrite( STDERR, "FAIL: invented skill ID was accepted.\n" ); exit( 1 );
