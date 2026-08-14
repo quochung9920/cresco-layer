@@ -17,4 +17,13 @@ assert.match(source, /rollbackTouched/, 'Batch apply must roll back when model r
 assert.match(source, /document\/elements\/settings/, 'Validated Local AI plans must execute through Elementor native settings commands.');
 assert.doesNotMatch(source, /custom_css|insert-element|replace-element/, 'Local AI widget analysis must not bypass native widget skills with structural/CSS mutation.');
 
+// Elementor V4/Atomic stopped filling the legacy Marionette selection channel, and the editing canvas
+// lives in an iframe. Without an iframe-aware fallback the AI button reports "no element selected"
+// even while the skill palette has already resolved the same element.
+assert.match(source, /frames\[i\]\.contentDocument/, 'Local AI selection resolution must look inside the Elementor preview iframe, not only the top document.');
+assert.match(source, /CrescoLayerSkills/, 'Local AI must reuse the skill palette selection resolver so both agree on the selected element.');
+
+const skills = fs.readFileSync(new URL('../../assets/skills.js', import.meta.url), 'utf8');
+assert.match(skills, /api\.selectedId\s*=\s*selectedId/, 'The skill palette must export its selection resolver as the shared source of truth.');
+
 console.log('Semantic Local AI editor contract test passed.');

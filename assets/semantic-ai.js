@@ -24,7 +24,14 @@
 	function postId() {
 		var id = parseInt(cfg.postId || 0, 10);
 		if (id) return id;
-		try { return parseInt(window.elementor.config.document.id || 0, 10) || 0; } catch (e) { return 0; }
+		try {
+			id = parseInt(window.elementor.config.document.id || 0, 10);
+			if (id) return id;
+		} catch (e) {}
+		try {
+			var params = new URLSearchParams(window.location.search || '');
+			return parseInt(params.get('post') || params.get('post_id') || 0, 10) || 0;
+		} catch (e2) { return 0; }
 	}
 	function modelId(model) {
 		if (!model) return '';
@@ -32,16 +39,57 @@
 		if (!id && typeof model.get === 'function') id = model.get('id') || '';
 		return validId(id) ? String(id) : '';
 	}
+	function idFromNode(node) {
+		if (!node || !node.getAttribute) return '';
+		var keys = ['data-id', 'data-e-id', 'data-element-id'];
+		for (var i = 0; i < keys.length; i++) {
+			var value = node.getAttribute(keys[i]);
+			if (validId(value)) return String(value);
+		}
+		return '';
+	}
+	function selectedFromDom(doc) {
+		if (!doc || !doc.querySelector) return '';
+		var selectors = [
+			'.elementor-element.elementor-selected[data-id]',
+			'.elementor-element.elementor-element-edit-mode[data-id]',
+			'[data-id][aria-selected="true"]', '[data-e-id][aria-selected="true"]', '[data-element-id][aria-selected="true"]'
+		];
+		for (var i = 0; i < selectors.length; i++) {
+			try {
+				var id = idFromNode(doc.querySelector(selectors[i]));
+				if (id) return id;
+			} catch (e) {}
+		}
+		return '';
+	}
 	function selectedId() {
+		// Elementor V4/Atomic no longer fills the legacy Marionette channel reliably, so fall back the
+		// same way the skill palette does: top document first, then every preview iframe.
+		try {
+			var shared = window.CrescoLayerSkills;
+			if (shared && typeof shared.selectedId === 'function') {
+				var sharedId = shared.selectedId();
+				if (validId(sharedId)) return String(sharedId);
+			}
+		} catch (e) {}
 		try {
 			if (window.elementor && elementor.channels && elementor.channels.editor) {
 				var selected = elementor.channels.editor.request('selectedElement');
 				var id = modelId(selected && (selected.model || selected));
 				if (id) return id;
 			}
-		} catch (e) {}
-		var node = document.querySelector('.elementor-element.elementor-selected[data-id],[data-id][aria-selected="true"]');
-		return node && validId(node.getAttribute('data-id')) ? node.getAttribute('data-id') : '';
+		} catch (e2) {}
+		var domId = selectedFromDom(document);
+		if (domId) return domId;
+		try {
+			var frames = document.querySelectorAll('iframe');
+			for (var i = 0; i < frames.length; i++) {
+				domId = selectedFromDom(frames[i].contentDocument);
+				if (domId) return domId;
+			}
+		} catch (e3) {}
+		return '';
 	}
 	function editorApi() { return window.$e && typeof window.$e.run === 'function' ? window.$e : null; }
 	function getContainer(id) {
@@ -137,7 +185,8 @@
 		var pid = postId();
 		var input = document.querySelector('#cresco-layer-skills-panel [data-cresco-skill-command]');
 		var task = String(input && input.value || '').trim();
-		if (!id || !pid) { setStatus('Select a widget before using Local AI.', 'error'); return; }
+		if (!id) { setStatus('Cresco could not read the selected Elementor element. Click the element on the canvas again, then retry.', 'error'); return; }
+		if (!pid) { setStatus('Cresco could not determine the Elementor document ID. Reload the editor and retry.', 'error'); return; }
 		if (!task) { setStatus('Describe the result you want, for example “tối ưu section này cho mobile”.', 'error'); return; }
 		pending = null;
 		renderPreview(null);

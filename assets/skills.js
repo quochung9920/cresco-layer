@@ -493,6 +493,7 @@
 	api.open = openPanel;
 	api.close = closePanel;
 	api.refresh = function () { var id = selectedId(); if (id) loadProfile(id, true); };
+	api.selectedId = selectedId;
 
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
 	else boot();
