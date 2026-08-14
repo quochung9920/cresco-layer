@@ -18,6 +18,7 @@ final class PlanValidator {
 		$risk_order = [ 'safe' => 0, 'conditional' => 1, 'expert' => 2, 'structural' => 3, 'external' => 4 ];
 		$max_risk = 'safe';
 		$operation_count = 0;
+		$planned_values = [];
 
 		foreach ( (array) ( $plan['requestedSkills'] ?? [] ) as $index => $item ) {
 			if ( ! is_array( $item ) ) { throw new \InvalidArgumentException( 'Local AI plan contains an invalid skill step.' ); }
@@ -36,6 +37,11 @@ final class PlanValidator {
 				throw new \InvalidArgumentException( 'Local AI cannot execute ' . $risk . ' skills. Use the explicit expert/manual workflow for this change.' );
 			}
 
+			$preview = is_array( $resolution['preview'] ?? null ) ? $resolution['preview'] : [];
+			if ( array_key_exists( 'before', $preview ) && array_key_exists( 'after', $preview ) && $preview['before'] == $preview['after'] && empty( $preview['prerequisites'] ) ) {
+				throw new \InvalidArgumentException( 'Local AI step ' . ( $index + 1 ) . ' is a no-op because the requested value is already effective.' );
+			}
+
 			$operations = (array) ( $resolution['operations'] ?? [] );
 			if ( ! $operations ) { throw new \InvalidArgumentException( 'Local AI skill resolution produced no Elementor operations.' ); }
 			foreach ( $operations as $operation ) {
@@ -44,6 +50,12 @@ final class PlanValidator {
 				$setting = (string) ( $operation['setting'] ?? '' );
 				if ( $this->is_bound( $setting, $globals ) ) { throw new \InvalidArgumentException( 'Local AI will not override a setting that is bound to an Elementor Global value.' ); }
 				if ( $this->is_bound( $setting, $dynamic ) ) { throw new \InvalidArgumentException( 'Local AI will not override a setting that is bound to an Elementor Dynamic Tag.' ); }
+				$next_value = 'remove-setting' === (string) $operation['operation'] ? null : ( $operation['value'] ?? null );
+				$signature = wp_json_encode( $next_value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+				if ( array_key_exists( $setting, $planned_values ) && $planned_values[ $setting ] !== $signature ) {
+					throw new \InvalidArgumentException( 'Local AI plan contains conflicting values for the same Elementor setting.' );
+				}
+				$planned_values[ $setting ] = $signature;
 			}
 
 			if ( ( $risk_order[ $risk ] ?? 99 ) > ( $risk_order[ $max_risk ] ?? 0 ) ) { $max_risk = $risk; }
@@ -55,7 +67,7 @@ final class PlanValidator {
 				'device' => (string) ( $resolution['device'] ?? 'desktop' ),
 				'risk' => $risk,
 				'reason' => (string) ( $item['reason'] ?? '' ),
-				'preview' => is_array( $resolution['preview'] ?? null ) ? $resolution['preview'] : [],
+				'preview' => $preview,
 				'operationCount' => count( $operations ),
 			];
 		}
