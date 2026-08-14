@@ -18,6 +18,7 @@ final class EvidenceValidator {
 			$actual_record = is_array( $facts[ $fact_id ] ) && array_key_exists( 'value', $facts[ $fact_id ] ) ? $facts[ $fact_id ] : [ 'value' => $facts[ $fact_id ] ];
 			$actual = $actual_record['value'] ?? null;
 			$expected = $item['value'] ?? null;
+			if ( 'exists' === $operator && ! is_bool( $expected ) ) { throw new \InvalidArgumentException( 'Local AI exists evidence requires a boolean value.' ); }
 			$ok = $this->compare( $actual, $expected, $operator );
 			if ( $ok ) { $passed++; }
 			$results[] = [
@@ -42,7 +43,7 @@ final class EvidenceValidator {
 	}
 
 	private function compare( $actual, $expected, string $operator ): bool {
-		if ( 'exists' === $operator ) { return (bool) $expected === ( null !== $actual ); }
+		if ( 'exists' === $operator ) { return $expected === ( null !== $actual ); }
 		if ( 'contains' === $operator ) {
 			if ( is_array( $actual ) ) { return in_array( $expected, $actual, true ); }
 			return str_contains( strtolower( (string) $actual ), strtolower( (string) $expected ) );
