@@ -41,16 +41,24 @@ $card = WidgetExpertRegistry::for( 'element', 'container', [] );
 semantic_assert( 'layout' === $card['family'], 'Container should resolve to the layout expert family.' );
 semantic_assert( in_array( 'incorrect mobile stacking', $card['commonProblems'], true ), 'Layout expert card is missing responsive diagnostics.' );
 
+$skills = [];
+$effective = [];
+for ( $i = 0; $i < 150; $i++ ) {
+	$id = 'control.skill-' . $i;
+	$skills[] = [ 'skillId' => $id, 'description' => str_repeat( 'x', 800 ), 'input' => [ 'options' => array_fill( 0, 100, 'value' ) ] ];
+	$effective[ $id ] = [ 'value' => str_repeat( 'z', 500 ) ];
+}
 $large = [
-	'availableSkills' => array_fill( 0, 150, [ 'skillId' => 'control.example', 'description' => str_repeat( 'x', 800 ), 'input' => [ 'options' => array_fill( 0, 100, 'value' ) ] ] ),
+	'availableSkills' => $skills,
 	'contextGraph' => [ 'siblings' => array_fill( 0, 40, [ 'id' => 'x' ] ), 'children' => array_fill( 0, 50, [ 'id' => 'y' ] ) ],
 	'expertCard' => [ 'designRules' => array_fill( 0, 30, 'rule' ), 'commonProblems' => array_fill( 0, 30, 'problem' ) ],
-	'effectiveState' => array_fill( 0, 120, [ 'value' => str_repeat( 'z', 500 ) ] ),
+	'effectiveState' => $effective,
 ];
 $budgeted = ( new ContextBudgeter() )->budget( $large, 2048 );
 semantic_assert( true === $budgeted['contextBudget']['trimmed'], 'Oversized semantic context should be trimmed.' );
 semantic_assert( count( $budgeted['availableSkills'] ) <= 72, 'Skill budget was not enforced.' );
 semantic_assert( count( $budgeted['contextGraph']['siblings'] ) <= 12, 'Sibling budget was not enforced.' );
+semantic_assert( count( $budgeted['effectiveState'] ) <= count( $budgeted['availableSkills'] ), 'Effective state must stay aligned with the retained skills.' );
 
 $plan = PlannerContract::validate( [
 	'schema' => PlannerContract::SCHEMA,
@@ -63,6 +71,20 @@ $plan = PlannerContract::validate( [
 ], [ 'control.padding' ] );
 semantic_assert( 0.94 === $plan['confidence'], 'Validated semantic plan confidence changed.' );
 semantic_assert( 'The mobile spacing is too dense.' === $plan['analysis']['problem'], 'Plan diagnosis was not preserved.' );
+
+$responsive_plan = PlannerContract::validate( [
+	'schema' => PlannerContract::SCHEMA,
+	'intent' => 'balance-responsive-padding',
+	'confidence' => 0.96,
+	'summary' => 'Use distinct desktop and mobile padding.',
+	'analysis' => [ 'problem' => 'One spacing value is not appropriate for both breakpoints.', 'evidence' => [ 'The skill advertises both desktop and mobile devices.' ] ],
+	'requestedSkills' => [
+		[ 'skillId' => 'control.padding', 'params' => [ 'device' => 'desktop', 'value' => '40px' ], 'reason' => 'Keep generous desktop spacing.' ],
+		[ 'skillId' => 'control.padding', 'params' => [ 'device' => 'mobile', 'value' => '20px' ], 'reason' => 'Reduce mobile spacing.' ],
+	],
+	'questions' => [],
+], [ 'control.padding' ] );
+semantic_assert( 2 === count( $responsive_plan['requestedSkills'] ), 'A responsive skill must be reusable for different devices in one plan.' );
 
 try {
 	PlannerContract::validate( [
