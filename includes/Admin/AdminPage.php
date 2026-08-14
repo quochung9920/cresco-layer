@@ -73,6 +73,9 @@ final class AdminPage {
 
 			<nav class="cresco-layer-tabs" role="tablist" aria-label="<?php echo esc_attr__( 'Cresco Layer sections', 'cresco-layer' ); ?>">
 				<button type="button" class="cresco-layer-tab is-active" role="tab" aria-selected="true" data-cresco-tab="exchange"><?php echo esc_html__( 'AI Exchange', 'cresco-layer' ); ?></button>
+				<?php if ( $can_manage ) : ?>
+					<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="standard"><?php echo esc_html__( 'Design Standard', 'cresco-layer' ); ?></button>
+				<?php endif; ?>
 				<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="history"><?php echo esc_html__( 'History', 'cresco-layer' ); ?></button>
 				<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="inspector"><?php echo esc_html__( 'Runtime Inspector', 'cresco-layer' ); ?></button>
 				<?php if ( $can_manage ) : ?>
@@ -137,6 +140,42 @@ final class AdminPage {
 					</div>
 				</section>
 			</div>
+
+			<?php if ( $can_manage ) : ?>
+				<div class="cresco-layer-tab-panel" data-cresco-tab-panel="standard" role="tabpanel" hidden>
+					<section class="cresco-layer-card">
+						<div class="cresco-layer-result-head">
+							<div>
+								<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Global design system', 'cresco-layer' ); ?></p>
+								<h2><?php echo esc_html__( 'Design Standard for Site Settings', 'cresco-layer' ); ?></h2>
+							</div>
+							<span id="cresco-layer-standard-status" aria-live="polite"></span>
+						</div>
+						<p class="description"><?php echo esc_html__( 'Measures the active Elementor Kit — Global Colors, Global Fonts, Typography, Layout — against standards that can be checked objectively, then proposes concrete fixes. Brand colours keep their hue: a failing colour only moves in lightness until it clears WCAG AA contrast. Changes are written through the same validated patch path as an AI patch, so they appear in History and can be rolled back.', 'cresco-layer' ); ?></p>
+
+						<nav class="cresco-layer-subtabs" role="tablist">
+							<button type="button" class="cresco-layer-subtab is-active" data-cresco-standard="audit"><?php echo esc_html__( 'Audit', 'cresco-layer' ); ?></button>
+							<button type="button" class="cresco-layer-subtab" data-cresco-standard="fluid"><?php echo esc_html__( 'Fluid clamp()', 'cresco-layer' ); ?></button>
+							<button type="button" class="cresco-layer-subtab" data-cresco-standard="preset"><?php echo esc_html__( 'Presets', 'cresco-layer' ); ?></button>
+						</nav>
+
+						<div class="cresco-layer-actions">
+							<button class="button button-primary" id="cresco-layer-standard-run"><?php echo esc_html__( 'Scan Kit', 'cresco-layer' ); ?></button>
+							<button class="button" id="cresco-layer-standard-preview" disabled><?php echo esc_html__( 'Preview changes', 'cresco-layer' ); ?></button>
+							<button class="button button-primary" id="cresco-layer-standard-apply" disabled><?php echo esc_html__( 'Apply to Kit', 'cresco-layer' ); ?></button>
+						</div>
+						<p class="description"><?php echo esc_html__( 'Applying writes Elementor working data for the Kit. Open Elementor → Site Settings and use its own Save to make it live.', 'cresco-layer' ); ?></p>
+
+						<div id="cresco-layer-standard-result" class="cresco-layer-standard-result">
+							<div class="cresco-layer-empty">
+								<span class="cresco-layer-empty__icon" aria-hidden="true">◈</span>
+								<p><?php echo esc_html__( 'Kit not scanned yet.', 'cresco-layer' ); ?></p>
+								<p class="description"><?php echo esc_html__( 'Click “Scan Kit” to measure the current Site Settings.', 'cresco-layer' ); ?></p>
+							</div>
+						</div>
+					</section>
+				</div>
+			<?php endif; ?>
 
 			<div class="cresco-layer-tab-panel" data-cresco-tab-panel="history" role="tabpanel" hidden>
 				<section class="cresco-layer-card">

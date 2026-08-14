@@ -7,6 +7,7 @@ use CrescoLayer\AI\PatchApplier;
 use CrescoLayer\AI\PatchValidator;
 use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
+use CrescoLayer\DesignSystem\StandardController;
 use CrescoLayer\Elementor\ConfigurationCatalog;
 use CrescoLayer\Elementor\DynamicTagRegistry;
 use CrescoLayer\Elementor\ProRegistry;
@@ -68,10 +69,12 @@ final class Plugin {
 		$applier    = new PatchApplier( $validator, $auditor );
 		$controller = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $skills, $applier, $auditor );
 		$local_rest = new LocalAIRESTController( $local_ai, $local_analyzer );
+		$standard   = new StandardController( $applier );
 		$admin      = new AdminPage();
 
 		add_action( 'rest_api_init', [ $controller, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $local_rest, 'register_routes' ] );
+		add_action( 'rest_api_init', [ $standard, 'register_routes' ] );
 		add_action( 'admin_menu', [ $admin, 'register_menu' ] );
 		add_action( 'admin_enqueue_scripts', [ $admin, 'enqueue_assets' ] );
 		( new LocalAIAdminIntegration() )->register_hooks();

@@ -180,6 +180,52 @@ Requested Elementor values are actually present after save
 
 The final visual review and Update/Publish decision still belongs to the user in Elementor.
 
+## Design Standard for Site Settings
+
+The **Design Standard** tab measures the active Elementor Kit — Global Colors, Global Fonts, Typography, Layout — and proposes concrete fixes.
+
+The Kit is an Elementor Document, and its values live in the same `_elementor_page_settings` meta the AI patch pipeline already writes. Every proposal is therefore emitted as ordinary `update-page-setting` operations and applied through the existing path: validation, semantic guard, before/after diff, patch history and one-click rollback all apply to Site Settings without a second write path existing anywhere in the plugin.
+
+Applying writes Elementor working data for the Kit. Use Elementor's own Site Settings save to make it live.
+
+### Audit
+
+Findings come from what can be measured, not from taste:
+
+- WCAG AA contrast of every global colour against the page background;
+- body text below a comfortable reading size;
+- a type scale too flat to read as a hierarchy;
+- content container wide enough to hurt line length;
+- missing global colours or typography.
+
+Brand colours are preserved. A failing colour is moved only in lightness until it clears AA, so the hue survives; when no same-hue value can reach AA, Cresco says so instead of inventing a replacement. Background tokens are exempt, since a surface is not foreground text.
+
+### Fluid clamp()
+
+Per-device font sizes leave visible jumps at each breakpoint and say nothing about the widths in between. This converts them to `clamp()` built from the site's **real** breakpoints rather than assumed ones.
+
+The middle term is always `rem + vw`, never bare `vw`, so browser zoom and user font-size preferences keep working. Values are written with Elementor's `custom` unit, which renders the expression verbatim. A device override that the fluid value replaces is removed, because it would otherwise win at that breakpoint and defeat the change.
+
+Controls that do not accept the `custom` unit are reported as skipped rather than silently ignored.
+
+### Presets
+
+Named baselines — Editorial, SaaS, Commerce — set measurable structure only: type scale, container width, radii. A preset never rewrites brand colours, so applying one cannot silently rebrand a site.
+
+Every preset setting is checked against the live Kit controls first. Kit control names differ between Elementor versions, and a setting key is never invented; anything the running Elementor does not register is reported as unsupported.
+
+Runtime endpoints:
+
+```text
+GET  /wp-json/cresco-layer/v1/design-standard
+GET  /wp-json/cresco-layer/v1/design-standard/fluid
+GET  /wp-json/cresco-layer/v1/design-standard/presets
+POST /wp-json/cresco-layer/v1/design-standard/preview
+POST /wp-json/cresco-layer/v1/design-standard/apply
+```
+
+Site Settings are global, so these routes require `manage_options`.
+
 ## Getting packages in and out
 
 Neither direction depends on the filesystem, because pasting into a web chat is often faster than downloading and re-uploading a file.

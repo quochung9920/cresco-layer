@@ -16,6 +16,17 @@ final class PatchApplier {
 
 	public function history(): PatchHistory { return $this->history; }
 
+	/**
+	 * Checksum of the document a patch would actually be applied to.
+	 *
+	 * Callers that build a patch server-side need the same value load_document() computes — the
+	 * working document, which may be an autosave — otherwise the freshness guard rejects their own
+	 * freshly built patch.
+	 */
+	public function current_checksum( int $post_id ): string {
+		return $this->load_document( $post_id )[4];
+	}
+
 	public function preview( int $post_id, array $raw_patch, ?array $expected_scope = null ): array {
 		$patch = $this->validator->validate( $raw_patch, $post_id );
 		[ $main_document, $working_document, $elements, $settings, $current_checksum ] = $this->load_document( $post_id );

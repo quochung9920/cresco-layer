@@ -276,6 +276,42 @@
 .cresco-layer-diff__new { color:var(--cl-success); background:var(--cl-success-soft); }
 .cresco-layer-diff tr.is-noop .cresco-layer-diff__old, .cresco-layer-diff tr.is-noop .cresco-layer-diff__new { color:var(--cl-text-3); background:var(--cl-surface-2); }
 
+/* ---------- Design standard ---------- */
+
+.cresco-layer-subtabs { display:flex; flex-wrap:wrap; gap:4px; margin:16px 0 4px; padding:4px; border:1px solid var(--cl-border); border-radius:10px; background:var(--cl-surface-2); width:fit-content; }
+.cresco-layer-subtab { min-height:30px; padding:0 13px; border:0; border-radius:7px; background:transparent; color:var(--cl-text-2); font-size:12px; font-weight:600; cursor:pointer; }
+.cresco-layer-subtab:hover { color:var(--cl-text); }
+.cresco-layer-subtab:focus-visible { outline:2px solid var(--cl-accent); outline-offset:1px; }
+.cresco-layer-subtab.is-active { background:var(--cl-surface); color:var(--cl-accent-strong); box-shadow:var(--cl-shadow-s); }
+
+.cresco-layer-standard-result { margin-top:16px; }
+.cresco-layer-standard-result h3 { margin:18px 0 8px; font-size:13px; text-transform:capitalize; }
+.cresco-layer-standard-result .cresco-layer-issues li { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+
+.cresco-layer-swatch-pair { display:inline-flex; align-items:center; gap:7px; }
+.cresco-layer-swatch-pair i { color:var(--cl-text-3); font-style:normal; }
+.cresco-layer-swatch {
+	display:inline-flex; align-items:center; gap:6px; padding:3px 9px 3px 3px;
+	border:1px solid var(--cl-border-strong); border-radius:999px;
+	background:var(--cl-surface); color:var(--cl-text-2);
+	font:600 10px/1 var(--cl-font-mono); text-transform:uppercase;
+}
+.cresco-layer-swatch::before { content:''; width:14px; height:14px; border-radius:999px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.15); background:inherit; }
+
+.cresco-layer-preset-list { display:grid; gap:9px; margin-top:14px; }
+.cresco-layer-preset {
+	display:flex; align-items:flex-start; gap:11px; padding:14px 15px;
+	border:1px solid var(--cl-border); border-radius:var(--cl-radius-m);
+	background:var(--cl-surface); cursor:pointer;
+}
+.cresco-layer-preset:hover { border-color:var(--cl-accent); }
+.cresco-layer-preset:has(input:checked) { border-color:var(--cl-accent); background:var(--cl-accent-soft); box-shadow:inset 0 0 0 1px var(--cl-accent-border); }
+.cresco-layer-preset input { margin:3px 0 0; accent-color:var(--cl-accent); }
+.cresco-layer-preset > span { display:grid; gap:3px; min-width:0; }
+.cresco-layer-preset strong { color:var(--cl-text); font-size:13px; }
+.cresco-layer-preset small { color:var(--cl-text-3); font-size:11px; line-height:1.5; }
+.cresco-layer-preset code { color:var(--cl-text-2); font:11px/1.4 var(--cl-font-mono); }
+
 /* ---------- Patch history ---------- */
 
 .cresco-layer-history-list { display:grid; gap:8px; margin-top:14px; }

@@ -384,6 +384,179 @@
 	}
 	if(historyRefreshButton)historyRefreshButton.addEventListener('click',loadHistory);
 
+	/* ---------- Design standard (Kit / Site Settings) ---------- */
+
+	var standardResult=document.getElementById('cresco-layer-standard-result');
+	var standardStatus=document.getElementById('cresco-layer-standard-status');
+	var standardRun=document.getElementById('cresco-layer-standard-run');
+	var standardPreview=document.getElementById('cresco-layer-standard-preview');
+	var standardApply=document.getElementById('cresco-layer-standard-apply');
+	var standardMode='audit';
+	var standardPreset='';
+	var standardPlan=null;
+
+	function setStandardStatus(text,tone){if(!standardStatus)return;standardStatus.textContent=text||'';standardStatus.className=tone?'is-'+tone:'';}
+	function standardReady(ready){
+		if(standardPreview)standardPreview.disabled=!ready;
+		if(standardApply)standardApply.disabled=!ready;
+	}
+	function severityTone(severity){
+		if(severity==='error')return 'error';
+		if(severity==='warning')return 'warning';
+		if(severity==='pass')return 'success';
+		return 'neutral';
+	}
+	function renderFindings(data){
+		clearNode(standardResult);
+		if(data.available===false){
+			var bad=document.createElement('p');bad.className='cresco-layer-catalog-load-error';
+			bad.textContent=data.message||'Elementor has no readable active Kit.';
+			standardResult.appendChild(bad);return;
+		}
+		var score=data.score||{};var counts=score.counts||{};
+		var grid=document.createElement('div');grid.className='cresco-layer-score-grid cresco-layer-score-grid--catalog';
+		[['Standard score',score.value==null?'—':score.value+'/100'],['Passing',counts.pass||0],['Warnings',counts.warning||0],['Failures',counts.error||0]].forEach(function(item){
+			var card=document.createElement('div');card.className='cresco-layer-score';
+			var v=document.createElement('strong');v.textContent=String(item[1]);
+			var l=document.createElement('span');l.textContent=item[0];
+			card.appendChild(v);card.appendChild(l);grid.appendChild(card);
+		});
+		standardResult.appendChild(grid);
+
+		var groups={};
+		(data.findings||[]).forEach(function(f){(groups[f.group]=groups[f.group]||[]).push(f);});
+		Object.keys(groups).forEach(function(group){
+			var head=document.createElement('h3');head.textContent=group.charAt(0).toUpperCase()+group.slice(1);
+			standardResult.appendChild(head);
+			var list=document.createElement('ul');list.className='cresco-layer-issues';
+			groups[group].forEach(function(f){
+				var li=document.createElement('li');
+				li.className=f.severity==='pass'?'':'is-'+(f.severity==='error'?'error':'warning');
+				var text=document.createElement('span');text.textContent=f.message;
+				li.appendChild(text);
+				if(f.data&&f.data.suggested){
+					var swatch=document.createElement('span');swatch.className='cresco-layer-swatch-pair';
+					swatch.appendChild(colorChip(f.data.current));
+					var arrow=document.createElement('i');arrow.textContent='→';swatch.appendChild(arrow);
+					swatch.appendChild(colorChip(f.data.suggested));
+					li.appendChild(swatch);
+				}
+				list.appendChild(li);
+			});
+			standardResult.appendChild(list);
+		});
+		var ops=(data.proposedOperations||[]).length;
+		var note=document.createElement('p');note.className='description';
+		note.textContent=ops?ops+' change(s) proposed. Preview shows the exact before/after before anything is written.':'No automatic fix is available for the findings above.';
+		standardResult.appendChild(note);
+		standardReady(ops>0);
+	}
+	function colorChip(value){
+		var chip=document.createElement('b');chip.className='cresco-layer-swatch';
+		if(/^#[0-9a-f]{3,8}$/i.test(String(value||'')))chip.style.background=value;
+		chip.textContent=String(value||'');
+		return chip;
+	}
+	function renderFluid(data){
+		clearNode(standardResult);
+		if(data.available===false){var bad=document.createElement('p');bad.className='cresco-layer-catalog-load-error';bad.textContent='Elementor has no readable active Kit.';standardResult.appendChild(bad);return;}
+		var range=data.viewportRange||{};
+		var intro=document.createElement('p');intro.className='description';
+		intro.textContent='Fluid range built from this site\'s real breakpoints: '+Math.round(range.min||0)+'px → '+Math.round(range.max||0)+'px.';
+		standardResult.appendChild(intro);
+		var items=data.items||[];
+		if(!items.length){
+			var none=document.createElement('p');none.textContent='No Kit font size is a good candidate for a fluid range right now.';standardResult.appendChild(none);
+		}else{
+			var wrap=document.createElement('div');wrap.className='cresco-layer-diff-wrap';
+			var table=document.createElement('table');table.className='cresco-layer-diff';
+			var head=document.createElement('thead');head.innerHTML='<tr><th>Setting</th><th>Range</th><th>clamp()</th></tr>';table.appendChild(head);
+			var body=document.createElement('tbody');
+			items.forEach(function(item){
+				var row=document.createElement('tr');
+				var s=document.createElement('td');s.className='cresco-layer-diff__setting';s.textContent=item.setting;
+				var r=document.createElement('td');r.textContent=item.minPx+'px → '+item.maxPx+'px'+(item.mobileDerived?' (mobile derived)':'');
+				var e=document.createElement('td');e.className='cresco-layer-diff__new';e.textContent=item.expression;
+				row.appendChild(s);row.appendChild(r);row.appendChild(e);body.appendChild(row);
+			});
+			table.appendChild(body);wrap.appendChild(table);standardResult.appendChild(wrap);
+		}
+		(data.skipped||[]).forEach(function(skip){
+			var p=document.createElement('p');p.className='description';p.textContent='Skipped '+skip.setting+': '+skip.reason;standardResult.appendChild(p);
+		});
+		standardReady((data.operations||[]).length>0);
+	}
+	function renderPresets(data){
+		clearNode(standardResult);
+		var intro=document.createElement('p');intro.className='description';
+		intro.textContent='Presets set measurable structure only — type scale, container width, radii. Brand colours are never touched.';
+		standardResult.appendChild(intro);
+		var list=document.createElement('div');list.className='cresco-layer-preset-list';
+		(data.presets||[]).forEach(function(preset){
+			var card=document.createElement('label');card.className='cresco-layer-preset';
+			var radio=document.createElement('input');radio.type='radio';radio.name='cresco-preset';radio.value=preset.id;
+			radio.checked=standardPreset===preset.id;
+			radio.addEventListener('change',function(){standardPreset=preset.id;standardReady(true);});
+			var main=document.createElement('span');
+			var title=document.createElement('strong');title.textContent=preset.label;
+			var desc=document.createElement('small');desc.textContent=preset.description;
+			var scale=document.createElement('code');scale.textContent='base '+preset.baseFontPx+'px · ratio '+preset.scaleRatio+' · container '+preset.containerPx+'px';
+			main.appendChild(title);main.appendChild(desc);main.appendChild(scale);
+			card.appendChild(radio);card.appendChild(main);list.appendChild(card);
+		});
+		standardResult.appendChild(list);
+		standardReady(!!standardPreset);
+	}
+	function runStandard(){
+		if(!standardResult)return;
+		standardReady(false);standardPlan=null;
+		setStandardStatus('Reading the active Elementor Kit…','busy');
+		var path=standardMode==='fluid'?'/design-standard/fluid':(standardMode==='preset'?'/design-standard/presets':'/design-standard');
+		request(path).then(function(data){
+			standardPlan=data;
+			if(standardMode==='fluid')renderFluid(data);
+			else if(standardMode==='preset')renderPresets(data);
+			else renderFindings(data);
+			setStandardStatus('Kit scanned.','success');
+		}).catch(function(error){setStandardStatus(error&&error.message?error.message:String(error),'error');});
+	}
+	function standardBody(){
+		var body={source:standardMode==='preset'?'preset':standardMode};
+		if(standardMode==='preset')body.preset=standardPreset;
+		body.label='Cresco design standard · '+standardMode;
+		return body;
+	}
+	function previewStandard(){
+		setStandardStatus('Validating proposed Kit changes…','busy');
+		request('/design-standard/preview',{method:'POST',body:JSON.stringify(standardBody())}).then(function(data){
+			document.querySelector('[data-cresco-tab="exchange"]').click();
+			renderPreview(data);
+			setStatus('Design standard preview ready. Review the diff, then Apply to Kit.','success');
+			setStandardStatus('Preview ready — see the Review panel in AI Exchange.','success');
+		}).catch(function(error){setStandardStatus(error&&error.message?error.message:String(error),'error');});
+	}
+	function applyStandard(){
+		if(!window.confirm('Apply these changes to the Elementor Site Settings Kit?\n\nThis writes Elementor working data and does not publish. It is recorded in History and can be rolled back.'))return;
+		setStandardStatus('Applying through Elementor…','busy');
+		if(standardApply)standardApply.disabled=true;
+		request('/design-standard/apply',{method:'POST',body:JSON.stringify(standardBody())}).then(function(data){
+			toast('Kit updated. Open Elementor → Site Settings and use its own Save to publish.','success');
+			setStandardStatus('Applied. Recorded in History.','success');
+			loadHistory();
+		}).catch(function(error){if(standardApply)standardApply.disabled=false;setStandardStatus(error&&error.message?error.message:String(error),'error');});
+	}
+	Array.prototype.forEach.call(document.querySelectorAll('[data-cresco-standard]'),function(button){
+		button.addEventListener('click',function(){
+			standardMode=button.getAttribute('data-cresco-standard');
+			Array.prototype.forEach.call(document.querySelectorAll('[data-cresco-standard]'),function(other){other.classList.toggle('is-active',other===button);});
+			standardReady(false);
+			runStandard();
+		});
+	});
+	if(standardRun)standardRun.addEventListener('click',runStandard);
+	if(standardPreview)standardPreview.addEventListener('click',previewStandard);
+	if(standardApply)standardApply.addEventListener('click',applyStandard);
+
 	initTabs();
 	initTheme();
 	initPatchUX();

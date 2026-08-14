@@ -74,6 +74,14 @@ $required = [
 		'restorable', 'unset( $entry[\'snapshot\'] )',
 	],
 	'includes/AI/Diff.php' => [ 'SerializableSanitizer', 'MAX_DETAILS', 'MAX_VALUE_LENGTH', 'oldValue', 'newValue' ],
+	'includes/DesignSystem/ContrastRatio.php' => [ 'AA_NORMAL = 4.5', 'luminance', 'adjust_for', '0.2126', '0.04045' ],
+	'includes/DesignSystem/FluidScale.php' => [ 'clamp(', 'viewport_range', 'modular_scale', 'observed_ratio', 'ROOT_PX' ],
+	'includes/DesignSystem/KitReader.php' => [ 'get_active_kit', 'extends KitSource', 'get_breakpoints_config', 'get_settings_for_display' ],
+	'includes/DesignSystem/KitSource.php' => [ 'has_control', 'supports_custom_unit', 'system_colors', 'system_typography', 'font_size_controls' ],
+	'includes/DesignSystem/StandardAuditor.php' => [ 'cresco-design-standard/v1', 'update-page-setting', 'ContrastRatio::passes', 'proposedOperations' ],
+	'includes/DesignSystem/FluidPlanner.php' => [ 'cresco-fluid-typography/v1', "'unit' => 'custom'", 'remove-page-setting', 'supports_custom_unit' ],
+	'includes/DesignSystem/Presets.php' => [ 'cresco-design-preset/v1', 'has_control', 'preservesBrandColors' ],
+	'includes/DesignSystem/StandardController.php' => [ 'cresco-layer-patch/v1', 'current_checksum', 'manage_options', '/design-standard', 'publishReminder' ],
 ];
 foreach ( $required as $relative => $tokens ) {
 	$path = $root . '/' . $relative;
