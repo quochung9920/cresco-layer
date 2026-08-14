@@ -23,6 +23,7 @@ $descriptor = PlannerContract::descriptor();
 local_ai_assert( PlannerContract::SCHEMA === $descriptor['schema'], 'Planning contract schema mismatch.' );
 local_ai_assert( 'Cresco Skill Runtime only' === $descriptor['executionAuthority'], 'Local AI must not own execution authority.' );
 local_ai_assert( in_array( 'invent-elementor-setting', $descriptor['forbidden'], true ), 'Planning contract must forbid invented Elementor settings.' );
+local_ai_assert( in_array( 'invent-evidence-fact', $descriptor['forbidden'], true ), 'Planning contract must forbid invented evidence facts.' );
 local_ai_assert( in_array( 'direct-document-write', $descriptor['forbidden'], true ), 'Planning contract must forbid direct document writes.' );
 local_ai_assert( in_array( 'detach-dynamic-binding', $descriptor['forbidden'], true ), 'Planning contract must preserve dynamic bindings.' );
 
@@ -31,11 +32,12 @@ $plan = PlannerContract::validate( [
 	'intent' => 'improve-card-spacing',
 	'confidence' => 0.94,
 	'summary' => 'Increase card breathing room.',
-	'analysis' => [ 'problem' => 'Card spacing is dense.', 'evidence' => [ 'Mobile padding is 8px.' ] ],
+	'analysis' => [ 'problem' => 'Card spacing is dense.', 'evidence' => [ [ 'factId' => 'skill.s01.mobile.effective', 'operator' => 'eq', 'value' => '8px', 'statement' => 'Mobile padding is 8px.' ] ] ],
 	'requestedSkills' => [ [ 'skillId' => 'control.padding', 'params' => [ 'value' => '24px' ], 'reason' => 'More spacing' ] ],
 	'questions' => [],
 ], [ 'control.padding' ] );
 local_ai_assert( 0.94 === $plan['confidence'], 'Valid local AI plan was not preserved.' );
+local_ai_assert( 'skill.s01.mobile.effective' === $plan['analysis']['evidence'][0]['factId'], 'Evidence fact reference was not preserved.' );
 
 try {
 	PlannerContract::validate( [
@@ -43,7 +45,7 @@ try {
 		'intent' => 'unsafe',
 		'confidence' => 0.9,
 		'summary' => '',
-		'analysis' => [ 'problem' => 'Unsafe guess', 'evidence' => [ 'No valid skill exists.' ] ],
+		'analysis' => [ 'problem' => 'Unsafe guess', 'evidence' => [ [ 'factId' => 'missing.fact', 'operator' => 'eq', 'value' => true, 'statement' => 'No valid skill exists.' ] ] ],
 		'requestedSkills' => [ [ 'skillId' => 'invented.setting', 'params' => [], 'reason' => 'Guess' ] ],
 		'questions' => [],
 	], [ 'control.padding' ] );

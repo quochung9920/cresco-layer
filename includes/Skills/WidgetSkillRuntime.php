@@ -26,6 +26,10 @@ final class WidgetSkillRuntime {
 			$context['breakpoints'],
 			$context['knowledge']
 		);
+		$semantic_skills = array_map(
+			static fn( array $skill ): array => SemanticIdentity::enrich( $skill, $context['element'] ),
+			(array) $compiled['skills']
+		);
 
 		$result = [
 			'schema' => SkillCompiler::SCHEMA,
@@ -45,17 +49,19 @@ final class WidgetSkillRuntime {
 				'controlCount' => $compiled['controlCount'],
 				'skillCount' => $compiled['skillCount'],
 				'executableSkillCount' => $compiled['executableSkillCount'],
+				'semanticIdentityVersion' => SemanticIdentity::VERSION,
 			],
 			'categories' => $compiled['categories'],
 			'roles' => $compiled['roles'],
-			'skills' => $compiled['skills'],
+			'skills' => $semantic_skills,
 			'commandExamples' => array_values( array_unique( array_merge(
 				(array) ( $context['knowledge']['commandExamples'] ?? [] ),
-				$this->examples_from_skills( $compiled['skills'] )
+				$this->examples_from_skills( $semantic_skills )
 			) ) ),
 			'principles' => [
-				'No chatbot or LLM is involved in skill resolution.',
+				'No chatbot or LLM is involved in deterministic skill resolution.',
 				'Runtime control metadata is the source of truth; Cresco never invents an Elementor setting key.',
+				'Semantic Skill Identity V2 disambiguates target part, property and interaction state without replacing the native control binding.',
 				'Commands are parsed deterministically into skills and validated against the selected widget controls.',
 				'Elementor remains the owner of live editor history, rendering and persistence.',
 			],
@@ -88,6 +94,15 @@ final class WidgetSkillRuntime {
 			if ( preg_match( '/(?:secret|password|passwd|api[_-]?key|private[_-]?key|access[_-]?token|refresh[_-]?token|authorization|nonce|smtp[_-]?pass|webhook[_-]?secret)/i', $key ) ) {
 				throw new \InvalidArgumentException( 'Sensitive Elementor settings cannot be modified by a generic Cresco skill.' );
 			}
+		}
+		foreach ( (array) $compiled['skills'] as $raw_skill ) {
+			if ( (string) ( $raw_skill['id'] ?? '' ) !== (string) ( $resolution['skillId'] ?? '' ) ) { continue; }
+			$semantic = SemanticIdentity::enrich( $raw_skill, $context['element'] );
+			$resolution['semanticId'] = (string) ( $semantic['semanticId'] ?? '' );
+			$resolution['displayLabel'] = (string) ( $semantic['displayLabel'] ?? $resolution['label'] ?? '' );
+			$resolution['targetPart'] = (string) ( $semantic['targetPart'] ?? '' );
+			$resolution['state'] = (string) ( $semantic['state'] ?? 'normal' );
+			break;
 		}
 		$resolution['element'] = $context['element'];
 		$resolution['runtimeValidated'] = true;

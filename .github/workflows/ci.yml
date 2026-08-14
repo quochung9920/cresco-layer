@@ -54,5 +54,7 @@ jobs:
         run: php tests/php/semantic-ai-context-test.php
       - name: Semantic Local AI plan validation tests
         run: php tests/php/semantic-plan-validator-test.php
+      - name: Accuracy Core tests
+        run: php tests/php/accuracy-core-test.php
       - name: JavaScript quality
         run: npm run check

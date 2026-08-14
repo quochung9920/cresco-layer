@@ -2,7 +2,19 @@
 namespace CrescoLayer\LocalAI;
 
 final class Analyzer {
-	public function __construct( private ContextCompiler $context, private ProviderManager $providers, private PlanValidator $plan_validator ) {}
+	private EvidenceValidator $evidence_validator;
+	private ConfidenceScorer $confidence_scorer;
+
+	public function __construct(
+		private ContextCompiler $context,
+		private ProviderManager $providers,
+		private PlanValidator $plan_validator,
+		?EvidenceValidator $evidence_validator = null,
+		?ConfidenceScorer $confidence_scorer = null
+	) {
+		$this->evidence_validator = $evidence_validator ?? new EvidenceValidator();
+		$this->confidence_scorer = $confidence_scorer ?? new ConfidenceScorer();
+	}
 
 	public function prepare( int $post_id, string $element_id, array $input ): array {
 		$config = $this->providers->summary();
@@ -13,8 +25,10 @@ final class Analyzer {
 		$task = $this->task( $input );
 		$context = $this->context->compile( $post_id, $element_id, $task, [
 			'liveSettings' => is_array( $input['liveSettings'] ?? null ) ? $input['liveSettings'] : [],
+			'renderObservation' => is_array( $input['renderObservation'] ?? null ) ? $input['renderObservation'] : [],
 			'includeNeighborContext' => ! empty( $settings['includeNeighborContext'] ),
 			'contextWindow' => (int) ( $settings['contextWindow'] ?? 32768 ),
+			'skillLimit' => 18,
 		] );
 		$available = array_values( array_filter( array_map( static fn( array $skill ): string => (string) ( $skill['skillId'] ?? '' ), (array) ( $context['availableSkills'] ?? [] ) ) ) );
 		$schema_json = wp_json_encode( PlannerContract::json_schema(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
@@ -24,7 +38,7 @@ final class Analyzer {
 			[ 'role' => 'user', 'content' => "Cresco Semantic Context:\n" . wp_json_encode( $context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ],
 		];
 		return [
-			'schema' => 'cresco-layer-local-ai-prepared/v1',
+			'schema' => 'cresco-layer-local-ai-prepared/v2',
 			'browserRequired' => 'browser' === (string) ( $settings['connectionMode'] ?? 'browser' ),
 			'descriptor' => $this->providers->browser_descriptor(),
 			'model' => $model,
@@ -52,10 +66,12 @@ final class Analyzer {
 		$plan = $this->decode_plan( (string) ( $inference['content'] ?? '' ) );
 		$validated = $this->validate_against_prepared( $plan, $prepared, $post_id, $element_id, $input );
 		return [
-			'schema' => 'cresco-layer-local-ai-analysis/v1',
+			'schema' => 'cresco-layer-local-ai-analysis/v2',
 			'browserRequired' => false,
 			'plan' => $validated['plan'],
 			'decision' => $validated['decision'],
+			'evidenceValidation' => $validated['evidenceValidation'],
+			'confidence' => $validated['confidence'],
 			'runtimeValidation' => $validated['runtimeValidation'],
 			'inference' => [
 				'provider' => (string) ( $inference['provider'] ?? '' ),
@@ -72,10 +88,12 @@ final class Analyzer {
 		if ( ! $plan ) { throw new \InvalidArgumentException( 'Browser Local AI response must contain a plan object.' ); }
 		$validated = $this->validate_against_prepared( $plan, $prepared, $post_id, $element_id, $input );
 		return [
-			'schema' => 'cresco-layer-local-ai-analysis/v1',
+			'schema' => 'cresco-layer-local-ai-analysis/v2',
 			'browserRequired' => false,
 			'plan' => $validated['plan'],
 			'decision' => $validated['decision'],
+			'evidenceValidation' => $validated['evidenceValidation'],
+			'confidence' => $validated['confidence'],
 			'runtimeValidation' => $validated['runtimeValidation'],
 			'context' => $prepared['context'],
 		];
@@ -89,10 +107,15 @@ final class Analyzer {
 		$accepted = false;
 		$reason = 'accepted';
 		$runtime_validation = [ 'validated' => false, 'skipped' => true, 'reason' => 'not-eligible' ];
+		try {
+			$evidence_validation = $this->evidence_validator->validate( (array) ( $plan['analysis']['evidence'] ?? [] ), (array) ( $prepared['context'] ?? [] ) );
+		} catch ( \Throwable $error ) {
+			$evidence_validation = [ 'version' => EvidenceValidator::VERSION, 'valid' => false, 'passed' => 0, 'total' => count( (array) ( $plan['analysis']['evidence'] ?? [] ) ), 'score' => 0.0, 'items' => [], 'error' => $error->getMessage() ];
+		}
 
 		if ( $has_questions ) { $reason = 'clarification-required'; }
 		elseif ( ! $has_skills ) { $reason = 'no-effective-plan'; }
-		elseif ( $plan['confidence'] < $minimum ) { $reason = 'below-confidence-threshold'; }
+		elseif ( empty( $evidence_validation['valid'] ) ) { $reason = 'evidence-validation-failed'; }
 		else {
 			try {
 				$runtime_validation = $this->plan_validator->validate(
@@ -101,21 +124,29 @@ final class Analyzer {
 					$plan,
 					is_array( $input['liveSettings'] ?? null ) ? $input['liveSettings'] : []
 				);
-				$accepted = true;
 			} catch ( \Throwable $error ) {
 				$reason = 'runtime-validation-failed';
 				$runtime_validation = [ 'validated' => false, 'skipped' => false, 'error' => $error->getMessage() ];
 			}
 		}
 
+		$confidence = $this->confidence_scorer->score( $plan, (array) ( $prepared['context'] ?? [] ), $evidence_validation, $runtime_validation );
+		if ( 'accepted' === $reason && (float) ( $confidence['final'] ?? 0.0 ) < $minimum ) { $reason = 'below-semantic-confidence-threshold'; }
+		if ( 'accepted' === $reason && ! empty( $runtime_validation['validated'] ) ) { $accepted = true; }
+
 		return [
 			'plan' => $plan,
+			'evidenceValidation' => $evidence_validation,
+			'confidence' => $confidence,
 			'runtimeValidation' => $runtime_validation,
 			'decision' => [
 				'accepted' => $accepted,
 				'reason' => $reason,
 				'minimumConfidence' => $minimum,
-				'confidence' => $plan['confidence'],
+				'aiConfidence' => $plan['confidence'],
+				'confidence' => (float) ( $confidence['final'] ?? 0.0 ),
+				'confidenceComponents' => $confidence['components'] ?? [],
+				'evidenceScore' => (float) ( $evidence_validation['score'] ?? 0.0 ),
 				'requirePreview' => ! empty( $prepared['requirePreview'] ),
 				'maxRisk' => (string) ( $runtime_validation['maxRisk'] ?? '' ),
 			],

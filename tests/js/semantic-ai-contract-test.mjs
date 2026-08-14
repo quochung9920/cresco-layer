@@ -7,9 +7,13 @@ assert.match(source, /Analyze AI/, 'Cresco Skills must expose Local AI analysis 
 assert.match(source, /\/local-ai\/.*\/analyze/, 'Selected-widget Local AI analyze route is not wired.');
 assert.match(source, /\/local-ai\/.*\/validate/, 'Browser inference must return to Cresco for server-side plan validation.');
 assert.match(source, /format:\s*'json'/, 'Ollama browser inference must request JSON output.');
+assert.match(source, /renderObservation/, 'Local AI must receive a bounded browser render observation.');
+assert.match(source, /evidenceScore/, 'Machine-verifiable evidence score must be surfaced in the editor.');
+assert.match(source, /confidenceComponents/, 'Combined semantic confidence components must be surfaced.');
 assert.match(source, /requestedSkills/, 'Validated semantic skill plans are not rendered/applied.');
 assert.match(source, /Selection changed/, 'AI analysis must be invalidated when Elementor selection changes.');
-assert.match(source, /rollback/, 'Batch apply must have rollback behavior for partial failures.');
+assert.match(source, /verifyApplied/, 'AI apply must perform post-apply model/render verification.');
+assert.match(source, /rollbackTouched/, 'Batch apply must roll back when model read-back verification fails.');
 assert.match(source, /document\/elements\/settings/, 'Validated Local AI plans must execute through Elementor native settings commands.');
 assert.doesNotMatch(source, /custom_css|insert-element|replace-element/, 'Local AI widget analysis must not bypass native widget skills with structural/CSS mutation.');
 
