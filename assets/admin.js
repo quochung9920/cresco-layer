@@ -29,6 +29,11 @@
 	var patchState=document.getElementById('cresco-layer-patch-state');
 	var openEditorLink=document.getElementById('cresco-layer-open-editor');
 	var patchStateTimer=null;
+	var copyInstructionsButton=document.getElementById('cresco-layer-copy-instructions');
+	var historyRefreshButton=document.getElementById('cresco-layer-history-refresh');
+	var historyResult=document.getElementById('cresco-layer-history-result');
+	var historyStatus=document.getElementById('cresco-layer-history-status');
+	var exportedInstructions='';
 
 	(config.documents||[]).forEach(function(doc){
 		var option=document.createElement('option');
@@ -101,6 +106,32 @@
 		if(semantic.warnings&&semantic.warnings.length){var warningTitle=document.createElement('h3');warningTitle.textContent='Semantic warnings · '+semantic.warnings.length;result.appendChild(warningTitle);var warnings=document.createElement('ul');warnings.className='cresco-layer-issues';semantic.warnings.forEach(function(issue){var li=document.createElement('li');li.className='is-warning';li.textContent=(issue.elementId?'#'+issue.elementId+' · ':'')+(issue.setting?issue.setting+' · ':'')+(issue.message||issue.code||'Warning');warnings.appendChild(li);});result.appendChild(warnings);}
 		var checksum=document.createElement('p');checksum.className='description';checksum.textContent='Candidate checksum: '+(data.candidateChecksum||'');result.appendChild(checksum);
 		var compare=document.createElement('div');compare.className='cresco-layer-audit-compare';var before=document.createElement('div');before.textContent='Accessibility before: '+((data.auditBefore&&data.auditBefore.scores&&data.auditBefore.scores.accessibility)||0);var after=document.createElement('div');after.textContent='Accessibility after: '+((data.auditAfter&&data.auditAfter.scores&&data.auditAfter.scores.accessibility)||0);compare.appendChild(before);compare.appendChild(after);result.appendChild(compare);
+		renderDiffDetails(data.diffDetails);
+	}
+
+	function renderDiffDetails(details){
+		var items=(details&&details.items)||[];
+		if(!items.length)return;
+		var heading=document.createElement('h3');heading.textContent='Changed settings · '+items.length;result.appendChild(heading);
+		var table=document.createElement('table');table.className='cresco-layer-diff';
+		var head=document.createElement('thead');head.innerHTML='<tr><th>Element</th><th>Setting</th><th>Before</th><th>After</th></tr>';table.appendChild(head);
+		var body=document.createElement('tbody');
+		items.forEach(function(item){
+			var row=document.createElement('tr');
+			if(!item.changed)row.className='is-noop';
+			var target=document.createElement('td');
+			var type=document.createElement('strong');type.textContent=item.widgetType||item.operation||'';
+			var id=document.createElement('small');id.textContent=item.elementId?'#'+item.elementId:'';
+			target.appendChild(type);target.appendChild(id);
+			var setting=document.createElement('td');setting.className='cresco-layer-diff__setting';setting.textContent=item.setting||item.operation||'';
+			var oldCell=document.createElement('td');oldCell.className='cresco-layer-diff__old';oldCell.textContent=item.oldValue==null?'—':item.oldValue;
+			var newCell=document.createElement('td');newCell.className='cresco-layer-diff__new';newCell.textContent=item.newValue==null?'—':item.newValue;
+			row.appendChild(target);row.appendChild(setting);row.appendChild(oldCell);row.appendChild(newCell);
+			body.appendChild(row);
+		});
+		table.appendChild(body);
+		var wrap=document.createElement('div');wrap.className='cresco-layer-diff-wrap';wrap.appendChild(table);result.appendChild(wrap);
+		if(details.truncated){var note=document.createElement('p');note.className='description';note.textContent='Showing the first '+items.length+' of '+details.total+' operations.';result.appendChild(note);}
 	}
 
 	function renderCatalogSummary(data){
@@ -160,10 +191,10 @@
 	function busy(text){setStatus(text,'busy');}
 	function failure(error){setStatus(error&&error.message?error.message:String(error),'error');}
 
-	document.getElementById('cresco-layer-export').addEventListener('click',function(){try{var id=documentId();var profile=selectedContextProfile();busy('Building '+profile+' context AI-safe package…');request('/documents/'+id+'/export?scope=document&context='+encodeURIComponent(profile)).then(function(data){downloadJson('cresco-layer-'+id+'-'+profile+'-ai-package.json',data);renderAudit(data.audit||{});var stats=(data.contextResolver&&data.contextResolver.stats)||{};setStatus('AI package exported · '+profile+' context · '+(stats.detailedWidgets||0)+' widget types + '+(stats.detailedElements||0)+' element types expanded.','success');}).catch(failure);}catch(e){failure(e);}});
+	document.getElementById('cresco-layer-export').addEventListener('click',function(){try{var id=documentId();var profile=selectedContextProfile();busy('Building '+profile+' context AI-safe package…');request('/documents/'+id+'/export?scope=document&context='+encodeURIComponent(profile)).then(function(data){downloadJson('cresco-layer-'+id+'-'+profile+'-ai-package.json',data);exportedInstructions=typeof data.instructions==='string'?data.instructions:'';if(copyInstructionsButton)copyInstructionsButton.disabled=!exportedInstructions;renderAudit(data.audit||{});var stats=(data.contextResolver&&data.contextResolver.stats)||{};setStatus('AI package exported · '+profile+' context · '+(stats.detailedWidgets||0)+' widget types + '+(stats.detailedElements||0)+' element types expanded.','success');}).catch(failure);}catch(e){failure(e);}});
 	document.getElementById('cresco-layer-audit').addEventListener('click',function(){try{var id=documentId();busy('Auditing…');request('/documents/'+id+'/audit').then(function(data){renderAudit(data);setStatus('Audit complete.','success');}).catch(failure);}catch(e){failure(e);}});
 	document.getElementById('cresco-layer-preview').addEventListener('click',function(){try{var id=documentId();var item=parsePatch();applyButton.disabled=true;previewedText='';busy('Validating patch…');request('/documents/'+id+'/preview',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderPreview(data);previewedText=item.text;applyButton.disabled=false;setStatus('Patch is valid. Review before applying.','success');}).catch(failure);}catch(e){failure(e);}});
-	applyButton.addEventListener('click',function(){try{var id=documentId();var item=parsePatch();if(!previewedText||item.text!==previewedText){applyButton.disabled=true;throw new Error('Patch changed after preview. Validate it again before applying.');}if(!window.confirm('Apply this reviewed patch to the Elementor document? It will not publish the page.'))return;busy('Applying through Elementor…');applyButton.disabled=true;request('/documents/'+id+'/apply',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderAudit(data.audit||{});previewedText='';setStatus(data.verification&&data.verification.verified===false?'Patch saved, but verification found mismatched operations. Review before publishing.':'Patch applied and saved to Elementor working data. Review, then Update/Publish when ready.',data.verification&&data.verification.verified===false?'error':'success');}).catch(function(error){applyButton.disabled=false;failure(error);});}catch(e){failure(e);}});
+	applyButton.addEventListener('click',function(){try{var id=documentId();var item=parsePatch();if(!previewedText||item.text!==previewedText){applyButton.disabled=true;throw new Error('Patch changed after preview. Validate it again before applying.');}if(!window.confirm('Apply this reviewed patch to the Elementor document? It will not publish the page.'))return;busy('Applying through Elementor…');applyButton.disabled=true;request('/documents/'+id+'/apply',{method:'POST',body:JSON.stringify({patch:item.parsed})}).then(function(data){renderAudit(data.audit||{});previewedText='';loadHistory();setStatus(data.verification&&data.verification.verified===false?'Patch saved, but verification found mismatched operations. Review before publishing.':'Patch applied and saved to Elementor working data. Review, then Update/Publish when ready.',data.verification&&data.verification.verified===false?'error':'success');}).catch(function(error){applyButton.disabled=false;failure(error);});}catch(e){failure(e);}});
 	patch.addEventListener('input',function(){if(patch.value.trim()!==previewedText)applyButton.disabled=true;});
 
 	if(catalogLoadButton)catalogLoadButton.addEventListener('click',loadCatalog);
@@ -258,9 +289,96 @@
 		openEditorLink.hidden=false;
 	}
 
+	/* ---------- AI instructions clipboard ---------- */
+
+	function copyText(text){
+		if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(text);
+		return new Promise(function(resolve,reject){
+			var area=document.createElement('textarea');
+			area.value=text;area.setAttribute('readonly','');area.style.position='fixed';area.style.opacity='0';
+			document.body.appendChild(area);area.select();
+			var ok=false;
+			try{ok=document.execCommand('copy');}catch(e){ok=false;}
+			area.remove();
+			ok?resolve():reject(new Error('Clipboard is unavailable in this browser. Open the exported package and copy its "instructions" field.'));
+		});
+	}
+	if(copyInstructionsButton){
+		copyInstructionsButton.addEventListener('click',function(){
+			if(!exportedInstructions){setStatus('Export a package first — the briefing is generated for the exported scope.','error');return;}
+			copyText(exportedInstructions).then(function(){toast('AI instructions copied. Paste them into your AI chat with the package.','success');}).catch(function(error){setStatus(error.message,'error');});
+		});
+	}
+
+	/* ---------- Patch history & rollback ---------- */
+
+	function setHistoryStatus(text,tone){if(!historyStatus)return;historyStatus.textContent=text||'';historyStatus.className=tone?'is-'+tone:'';}
+	function historyEmpty(title,detail){
+		var box=document.createElement('div');box.className='cresco-layer-empty';
+		var icon=document.createElement('span');icon.className='cresco-layer-empty__icon';icon.setAttribute('aria-hidden','true');icon.textContent='⟲';
+		var head=document.createElement('p');head.textContent=title;
+		var sub=document.createElement('p');sub.className='description';sub.textContent=detail;
+		box.appendChild(icon);box.appendChild(head);box.appendChild(sub);return box;
+	}
+	function formatTime(value){
+		if(!value)return '';
+		var date=new Date(value);
+		return isNaN(date.getTime())?String(value):date.toLocaleString();
+	}
+	function renderHistory(entries){
+		if(!historyResult)return;clearNode(historyResult);
+		if(!entries.length){historyResult.appendChild(historyEmpty('No Cresco changes recorded for this document.','History starts filling as soon as you apply a patch.'));return;}
+		var list=document.createElement('div');list.className='cresco-layer-history-list';
+		entries.forEach(function(entry){
+			var row=document.createElement('article');row.className='cresco-layer-history-entry'+(entry.kind==='rollback'?' is-rollback':'');
+			var main=document.createElement('div');main.className='cresco-layer-history-entry__main';
+			var title=document.createElement('strong');title.textContent=entry.label||'(no label)';
+			var meta=document.createElement('span');
+			meta.textContent=[formatTime(entry.appliedAt),entry.userName||('user #'+entry.userId),entry.operations+' operation'+(entry.operations===1?'':'s'),entry.storage].filter(Boolean).join(' · ');
+			main.appendChild(title);main.appendChild(meta);
+			var badges=document.createElement('div');badges.className='cresco-layer-history-entry__badges';
+			badges.appendChild(badge(entry.kind==='rollback'?'rollback':'patch',entry.kind==='rollback'?'info':'neutral'));
+			if(entry.scope&&entry.scope.mode)badges.appendChild(badge(entry.scope.mode,'neutral'));
+			badges.appendChild(badge(entry.restorable?'restorable':'audit only',entry.restorable?'success':'neutral'));
+			var actions=document.createElement('div');actions.className='cresco-layer-history-entry__actions';
+			var button=document.createElement('button');button.className='button';button.textContent='Roll back to this point';
+			button.disabled=!entry.restorable;
+			if(!entry.restorable)button.title='This entry kept only its audit record because the snapshot exceeded the storage budget.';
+			button.addEventListener('click',function(){rollback(entry,button);});
+			actions.appendChild(button);
+			row.appendChild(main);row.appendChild(badges);row.appendChild(actions);
+			list.appendChild(row);
+		});
+		historyResult.appendChild(list);
+	}
+	function loadHistory(){
+		if(!historyResult)return;
+		var id;
+		try{id=documentId();}catch(e){clearNode(historyResult);historyResult.appendChild(historyEmpty('Choose an Elementor document first.','Pick one in the AI Exchange tab, then refresh.'));setHistoryStatus('','');return;}
+		setHistoryStatus('Loading history…','busy');
+		request('/documents/'+id+'/history').then(function(data){
+			renderHistory((data&&data.entries)||[]);
+			setHistoryStatus('History loaded.','success');
+		}).catch(function(error){setHistoryStatus(error&&error.message?error.message:String(error),'error');});
+	}
+	function rollback(entry,button){
+		var id;
+		try{id=documentId();}catch(e){setHistoryStatus(e.message,'error');return;}
+		if(!window.confirm('Restore the Elementor document to the state before "'+(entry.label||'this change')+'"?\n\nThis writes to Elementor working data and does not publish. The rollback itself is recorded, so it can be undone.'))return;
+		button.disabled=true;
+		setHistoryStatus('Restoring through Elementor…','busy');
+		request('/documents/'+id+'/history/'+encodeURIComponent(entry.id)+'/rollback',{method:'POST',body:'{}'}).then(function(data){
+			toast(data&&data.verified===false?'Restored, but the saved checksum did not match the snapshot. Review in Elementor.':'Document restored. Review it in Elementor, then Update/Publish when ready.',data&&data.verified===false?'error':'success');
+			setHistoryStatus('Rollback complete.','success');
+			if(data&&data.audit)renderAudit(data.audit);
+			loadHistory();
+		}).catch(function(error){button.disabled=false;setHistoryStatus(error&&error.message?error.message:String(error),'error');});
+	}
+	if(historyRefreshButton)historyRefreshButton.addEventListener('click',loadHistory);
+
 	initTabs();
 	initTheme();
 	initPatchUX();
 	updateEditorLink();
-	select.addEventListener('change',updateEditorLink);
+	select.addEventListener('change',function(){updateEditorLink();exportedInstructions='';if(copyInstructionsButton)copyInstructionsButton.disabled=true;});
 })();

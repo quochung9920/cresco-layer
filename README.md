@@ -180,6 +180,29 @@ Requested Elementor values are actually present after save
 
 The final visual review and Update/Publish decision still belongs to the user in Elementor.
 
+## Patch history and rollback
+
+Every applied patch stores the Elementor working document exactly as it was beforehand, so an AI change can be undone without digging through WordPress revisions.
+
+The **History** tab lists each applied patch and rollback with its time, author, operation count, scope and storage target. Restoring writes the recorded snapshot back through Elementor's Document API — it never publishes — and the rollback is itself recorded, so it can be undone in turn.
+
+The store is bounded twice, by entry count and by total bytes. When a document snapshot is too large to keep, the entry is still recorded for the audit trail but marked as not restorable, rather than growing the post meta row until the database refuses the write.
+
+Runtime endpoints:
+
+```text
+GET  /wp-json/cresco-layer/v1/documents/<id>/history
+POST /wp-json/cresco-layer/v1/documents/<id>/history/<entry>/rollback
+```
+
+## Settings diff preview
+
+Counting operations tells a reviewer how much changes, not what changes. Patch preview therefore resolves each operation against the current document and returns per-setting before/after values in `diffDetails`, rendered as a colour-coded table.
+
+Values pass through the same secret-redaction policy used everywhere else, because a patch can carry a credential-like key that must not be echoed back into the browser. Output is bounded in both row count and value length.
+
+Operations that write a value identical to the current one are shown as no-ops rather than changes.
+
 ## Lossless round trip
 
 Cresco preserves unknown safe Elementor fields during lossless operations.
@@ -259,7 +282,7 @@ For a new full-page reconstruction, AI can use `replace-document`; for normal da
 
 The existing **Elementor → Cresco Layer** screen remains available for document-level export, quality audit, runtime Elementor catalog inspection and patch preview/apply.
 
-The 0.10 admin experience is organized into three tabs — **AI Exchange**, **Runtime Inspector** and **Local AI** (administrators only) — on a token-driven design system with an optional dark mode. The active tab and theme are remembered per browser. The AI Exchange tab adds a four-step workflow strip, a drag-and-drop / file-picker loader for `cresco-layer-patch/v1` JSON, live patch validation (JSON syntax, schema and operation count are checked as you type), a direct “Open this document in Elementor” link, `Ctrl+Enter` to validate, toast notifications for results, and skeleton loading states in the runtime inspector.
+The 0.10 admin experience is organized into four tabs — **AI Exchange**, **History**, **Runtime Inspector** and **Local AI** (administrators only) — on a token-driven design system with an optional dark mode. The active tab and theme are remembered per browser. The AI Exchange tab adds a four-step workflow strip, a drag-and-drop / file-picker loader for `cresco-layer-patch/v1` JSON, live patch validation (JSON syntax, schema and operation count are checked as you type), a direct “Open this document in Elementor” link, `Ctrl+Enter` to validate, a **Copy AI instructions** button that puts the exported package's scope-aware briefing on the clipboard, toast notifications for results, and skeleton loading states in the runtime inspector.
 
 Cresco audits include design/accessibility/performance signals such as nesting, missing image alt text, multiple H1s, button naming, image sizing and local color proliferation.
 

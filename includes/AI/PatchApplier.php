@@ -7,10 +7,14 @@ use Elementor\Plugin as ElementorPlugin;
 
 final class PatchApplier {
 	private ElementLocator $locator;
+	private PatchHistory $history;
 
-	public function __construct( private PatchValidator $validator, private Auditor $auditor, ?ElementLocator $locator = null ) {
+	public function __construct( private PatchValidator $validator, private Auditor $auditor, ?ElementLocator $locator = null, ?PatchHistory $history = null ) {
 		$this->locator = $locator ?? new ElementLocator();
+		$this->history = $history ?? new PatchHistory();
 	}
+
+	public function history(): PatchHistory { return $this->history; }
 
 	public function preview( int $post_id, array $raw_patch, ?array $expected_scope = null ): array {
 		$patch = $this->validator->validate( $raw_patch, $post_id );
@@ -28,6 +32,7 @@ final class PatchApplier {
 			'scope' => $patch['scope'] ?? null,
 			'staleDocumentButScopeUnchanged' => $freshness['staleDocumentButScopeUnchanged'],
 			'diff' => Diff::summarize( $patch['operations'] ),
+			'diffDetails' => Diff::details( $patch['operations'], $elements, $settings ),
 			'auditBefore' => $this->auditor->audit_elements( $elements ),
 			'auditAfter' => $this->auditor->audit_elements( $candidate_elements ),
 			'willUseAutosave' => $this->should_use_autosave( $main_document, $working_document ),
@@ -67,6 +72,16 @@ final class PatchApplier {
 			'storage' => $is_autosave ? 'elementor-autosave' : 'draft-document',
 			'applied_at' => gmdate( 'c' ),
 		] );
+		// $elements/$settings are the pre-patch working document, so this entry can restore it later.
+		$history_id = $this->history->record( $post_id, [
+			'label' => $patch['label'],
+			'kind' => 'patch',
+			'operations' => count( $patch['operations'] ),
+			'scope' => $patch['scope'] ?? null,
+			'storage' => $is_autosave ? 'elementor-autosave' : 'draft-document',
+			'baseChecksum' => $current_checksum,
+			'savedChecksum' => $saved_checksum,
+		], $elements, $settings );
 		$this->auditor->invalidate_post_cache( $post_id );
 		do_action( 'cresco_layer/ai_patch_applied', $post_id, $patch, $saved_checksum, $target );
 
@@ -77,6 +92,60 @@ final class PatchApplier {
 			'scope' => $patch['scope'] ?? null,
 			'staleDocumentButScopeUnchanged' => $freshness['staleDocumentButScopeUnchanged'],
 			'diff' => Diff::summarize( $patch['operations'] ),
+			'audit' => $this->auditor->audit_elements( $saved_elements ),
+			'historyId' => $history_id,
+		];
+	}
+
+	/**
+	 * Restore a recorded pre-patch snapshot through Elementor's Document API. The restore is itself
+	 * recorded, so undoing a rollback is just another rollback rather than a dead end.
+	 */
+	public function rollback( int $post_id, string $entry_id ): array {
+		$entry = $this->history->get( $post_id, $entry_id );
+		if ( ! $entry ) { throw new \RuntimeException( 'That Cresco history entry no longer exists.' ); }
+		if ( empty( $entry['restorable'] ) || ! is_array( $entry['snapshot'] ?? null ) ) {
+			throw new \RuntimeException( 'This history entry kept only its audit record because the document snapshot exceeded the storage budget. It cannot be restored.' );
+		}
+
+		$restore_elements = (array) ( $entry['snapshot']['elements'] ?? [] );
+		$restore_settings = (array) ( $entry['snapshot']['settings'] ?? [] );
+
+		[ $main_document, $working_document, $elements, $settings, $current_checksum ] = $this->load_document( $post_id );
+
+		$target = $this->save_target( $main_document, $working_document );
+		$result = $target->save( [ 'elements' => $restore_elements, 'settings' => $restore_settings ] );
+		if ( false === $result ) { throw new \RuntimeException( 'Elementor rejected the rollback save.' ); }
+
+		$target_post = method_exists( $target, 'get_post' ) ? $target->get_post() : null;
+		$target_id = $target_post ? (int) $target_post->ID : $post_id;
+		$reloaded = ElementorPlugin::instance()->documents->get( $target_id, false );
+		$saved_elements = $reloaded ? (array) $reloaded->get_elements_data() : $restore_elements;
+		$saved_settings = get_post_meta( $target_id, '_elementor_page_settings', true );
+		$saved_settings = is_array( $saved_settings ) ? $saved_settings : $restore_settings;
+		$saved_checksum = DocumentChecksum::hash( $saved_elements, $saved_settings );
+		$is_autosave = $target_id !== $post_id;
+
+		$history_id = $this->history->record( $post_id, [
+			'label' => sprintf( 'Rollback of: %s', (string) ( $entry['label'] ?? '' ) ),
+			'kind' => 'rollback',
+			'operations' => 0,
+			'scope' => $entry['scope'] ?? null,
+			'storage' => $is_autosave ? 'elementor-autosave' : 'draft-document',
+			'baseChecksum' => $current_checksum,
+			'savedChecksum' => $saved_checksum,
+		], $elements, $settings );
+
+		$this->auditor->invalidate_post_cache( $post_id );
+		do_action( 'cresco_layer/ai_patch_rolled_back', $post_id, $entry_id, $saved_checksum, $target );
+
+		return [
+			'restored' => true,
+			'restoredFrom' => $entry_id,
+			'checksum' => $saved_checksum,
+			'verified' => hash_equals( DocumentChecksum::hash( $restore_elements, $restore_settings ), $saved_checksum ),
+			'storage' => $is_autosave ? 'elementor-autosave' : 'draft-document',
+			'historyId' => $history_id,
 			'audit' => $this->auditor->audit_elements( $saved_elements ),
 		];
 	}

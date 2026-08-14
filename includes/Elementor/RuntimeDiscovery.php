@@ -43,15 +43,15 @@ final class RuntimeDiscovery {
 					continue;
 				}
 
-				$name = (string) $this->safe_call( $instance, 'get_name', (string) $fallbackName, 'dynamic-tag-name', $errors );
+				$name = $this->scalar_text( $this->safe_call( $instance, 'get_name', (string) $fallbackName, 'dynamic-tag-name', $errors ) );
 				if ( '' === $name ) { $name = (string) $fallbackName; }
 				if ( '' === $className ) { $className = get_class( $instance ); }
 
 				$entry = [
 					'name' => $name,
-					'title' => wp_strip_all_tags( (string) $this->safe_call( $instance, 'get_title', $name, 'dynamic-tag-title:' . $name, $errors ) ),
+					'title' => wp_strip_all_tags( $this->scalar_text( $this->safe_call( $instance, 'get_title', $name, 'dynamic-tag-title:' . $name, $errors ) ) ),
 					'className' => $className,
-					'group' => (string) $this->safe_call( $instance, 'get_group', '', 'dynamic-tag-group:' . $name, $errors ),
+					'group' => $this->scalar_text( $this->safe_call( $instance, 'get_group', '', 'dynamic-tag-group:' . $name, $errors ) ),
 					'categories' => array_values( array_map( 'strval', (array) $this->safe_call( $instance, 'get_categories', [], 'dynamic-tag-categories:' . $name, $errors ) ) ),
 				];
 				$editorConfig = $this->safe_call( $instance, 'get_editor_config', [], 'dynamic-tag-editor-config:' . $name, $errors );
@@ -229,7 +229,7 @@ final class RuntimeDiscovery {
 					'className' => is_object( $module ) ? get_class( $module ) : '',
 				];
 				if ( is_object( $module ) && $this->is_public_method( $module, 'get_name' ) ) {
-					$out[ $name ]['runtimeName'] = (string) $this->safe_call( $module, 'get_name', $name, $stage . ':' . $name . ':name', $errors );
+					$out[ $name ]['runtimeName'] = $this->scalar_text( $this->safe_call( $module, 'get_name', $name, $stage . ':' . $name . ':name', $errors ) );
 				}
 			} catch ( \Throwable $error ) {
 				$errors[] = $this->error( $stage . ':' . $name, $error );
@@ -247,6 +247,23 @@ final class RuntimeDiscovery {
 			if ( JSON_ERROR_NONE === json_last_error() ) { $raw = $decoded; }
 		}
 		return is_array( $raw ) && is_array( $raw['features'] ?? null ) ? array_values( array_map( 'strval', $raw['features'] ) ) : [];
+	}
+
+	/**
+	 * Elementor lets a Dynamic Tag return either a scalar or an array from metadata getters such as
+	 * get_group(). Casting an array with (string) emits "Array to string conversion" and yields the
+	 * useless literal "Array", so flatten deliberately instead.
+	 */
+	private function scalar_text( $value ): string {
+		if ( is_array( $value ) ) {
+			$parts = [];
+			foreach ( $value as $item ) {
+				if ( is_scalar( $item ) ) { $parts[] = (string) $item; }
+			}
+			return implode( ', ', $parts );
+		}
+		if ( is_scalar( $value ) ) { return (string) $value; }
+		return '';
 	}
 
 	private function safe_call( object $object, string $method, $default, string $stage, array &$errors ) {

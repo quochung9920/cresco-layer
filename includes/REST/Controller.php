@@ -4,6 +4,7 @@ namespace CrescoLayer\REST;
 use CrescoLayer\AI\ContextResolver;
 use CrescoLayer\AI\PackageBuilder;
 use CrescoLayer\AI\PatchApplier;
+use CrescoLayer\AI\PatchHistory;
 use CrescoLayer\AI\PatchValidator;
 use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
@@ -97,6 +98,33 @@ final class Controller {
 			'callback' => [ $this, 'audit' ],
 			'permission_callback' => [ $this, 'can_edit' ],
 		] );
+		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/history', [
+			'methods' => 'GET',
+			'callback' => [ $this, 'patch_history' ],
+			'permission_callback' => [ $this, 'can_edit' ],
+		] );
+		register_rest_route( 'cresco-layer/v1', '/documents/(?P<id>\d+)/history/(?P<entry>[A-Za-z0-9]+)/rollback', [
+			'methods' => 'POST',
+			'callback' => [ $this, 'rollback_patch' ],
+			'permission_callback' => [ $this, 'can_edit' ],
+		] );
+	}
+
+	public function patch_history( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		try {
+			$post_id = absint( $request['id'] );
+			return new WP_REST_Response( [
+				'schema' => PatchHistory::SCHEMA,
+				'postId' => $post_id,
+				'entries' => $this->applier->history()->all( $post_id ),
+			] );
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
+	}
+
+	public function rollback_patch( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		try {
+			return new WP_REST_Response( $this->applier->rollback( absint( $request['id'] ), (string) $request['entry'] ) );
+		} catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function can_edit( WP_REST_Request $request ): bool {

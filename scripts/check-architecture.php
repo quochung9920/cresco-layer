@@ -66,9 +66,14 @@ $required = [
 		"'context' =>", "'aiContextResolver' => 'smart-v1'", "'dynamicTagDiscovery' => 'registry-info-v2'", "'elementorProModuleDiscovery' => 'named-modules-v2'",
 		'/skills/(?P<element>', 'widget_skills', 'resolve_widget_skill', "'widgetSkillRuntime' => 'runtime-v1'", 'deterministicSkillCommands',
 	],
-	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query', 'cresco-layer-snapshot-download', 'Download full Elementor snapshot', '/elementor-snapshot/section/', '/elementor-snapshot/record/' ],
+	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query', 'cresco-layer-snapshot-download', 'Download full Elementor snapshot', '/elementor-snapshot/section/', '/elementor-snapshot/record/', 'cresco-layer-history-refresh', 'cresco-layer-copy-instructions' ],
 	'includes/Support/Assets.php' => [ 'elementor/editor/after_enqueue_scripts', 'cresco-layer-editor', 'cresco-layer-skills', 'assets/skills.js', 'assets/skills.css' ],
 	'includes/Audit/Auditor.php' => [ 'missing-alt', 'multiple-h1', 'large-dom' ],
+	'includes/AI/PatchHistory.php' => [
+		'cresco-layer-patch-history/v1', 'MAX_ENTRIES', 'MAX_SNAPSHOT_BYTES', 'MAX_TOTAL_BYTES',
+		'restorable', 'unset( $entry[\'snapshot\'] )',
+	],
+	'includes/AI/Diff.php' => [ 'SerializableSanitizer', 'MAX_DETAILS', 'MAX_VALUE_LENGTH', 'oldValue', 'newValue' ],
 ];
 foreach ( $required as $relative => $tokens ) {
 	$path = $root . '/' . $relative;

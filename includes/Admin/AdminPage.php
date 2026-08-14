@@ -3,6 +3,7 @@ namespace CrescoLayer\Admin;
 
 final class AdminPage {
 	private string $hook = '';
+	private ?array $documents = null;
 
 	public function register_menu(): void {
 		$this->hook = (string) add_submenu_page(
@@ -72,6 +73,7 @@ final class AdminPage {
 
 			<nav class="cresco-layer-tabs" role="tablist" aria-label="<?php echo esc_attr__( 'Cresco Layer sections', 'cresco-layer' ); ?>">
 				<button type="button" class="cresco-layer-tab is-active" role="tab" aria-selected="true" data-cresco-tab="exchange"><?php echo esc_html__( 'AI Exchange', 'cresco-layer' ); ?></button>
+				<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="history"><?php echo esc_html__( 'History', 'cresco-layer' ); ?></button>
 				<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="inspector"><?php echo esc_html__( 'Runtime Inspector', 'cresco-layer' ); ?></button>
 				<?php if ( $can_manage ) : ?>
 					<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="local-ai"><?php echo esc_html__( 'Local AI', 'cresco-layer' ); ?></button>
@@ -93,7 +95,9 @@ final class AdminPage {
 						<div class="cresco-layer-actions">
 							<button class="button button-primary" id="cresco-layer-export"><?php echo esc_html__( 'Export for AI', 'cresco-layer' ); ?></button>
 							<button class="button" id="cresco-layer-audit"><?php echo esc_html__( 'Run audit', 'cresco-layer' ); ?></button>
+							<button class="button" id="cresco-layer-copy-instructions" disabled><?php echo esc_html__( 'Copy AI instructions', 'cresco-layer' ); ?></button>
 						</div>
+						<p class="description"><?php echo esc_html__( 'After exporting, use “Copy AI instructions” to put the scope-aware briefing on your clipboard and paste it into your AI chat together with the downloaded package.', 'cresco-layer' ); ?></p>
 						<p class="description"><?php echo esc_html__( 'Smart is recommended: it keeps the full registered type index but expands only controls relevant to the task, plus Site Kit, breakpoints, Dynamic Tags and capability coverage. Use Full only when an AI must choose freely from every registered Elementor type.', 'cresco-layer' ); ?></p>
 					</section>
 
@@ -128,6 +132,29 @@ final class AdminPage {
 							<span class="cresco-layer-empty__icon" aria-hidden="true">◎</span>
 							<p><?php echo esc_html__( 'No audit or patch preview yet.', 'cresco-layer' ); ?></p>
 							<p class="description"><?php echo esc_html__( 'Run an audit or validate a patch to see scores, metrics and semantic warnings here.', 'cresco-layer' ); ?></p>
+						</div>
+					</div>
+				</section>
+			</div>
+
+			<div class="cresco-layer-tab-panel" data-cresco-tab-panel="history" role="tabpanel" hidden>
+				<section class="cresco-layer-card">
+					<div class="cresco-layer-result-head">
+						<div>
+							<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Applied change log', 'cresco-layer' ); ?></p>
+							<h2><?php echo esc_html__( 'Patch history & rollback', 'cresco-layer' ); ?></h2>
+						</div>
+						<span id="cresco-layer-history-status" aria-live="polite"></span>
+					</div>
+					<p class="description"><?php echo esc_html__( 'Every applied patch stores the Elementor working document exactly as it was beforehand, so a change can be undone without digging through WordPress revisions. Rolling back is itself recorded, so it can be undone too. Restoring writes to Elementor working data only — it never publishes.', 'cresco-layer' ); ?></p>
+					<div class="cresco-layer-actions">
+						<button class="button" id="cresco-layer-history-refresh"><?php echo esc_html__( 'Refresh history', 'cresco-layer' ); ?></button>
+					</div>
+					<div id="cresco-layer-history-result" class="cresco-layer-history">
+						<div class="cresco-layer-empty">
+							<span class="cresco-layer-empty__icon" aria-hidden="true">⟲</span>
+							<p><?php echo esc_html__( 'No history loaded yet.', 'cresco-layer' ); ?></p>
+							<p class="description"><?php echo esc_html__( 'Choose a document in the AI Exchange tab, then refresh.', 'cresco-layer' ); ?></p>
 						</div>
 					</div>
 				</section>
@@ -181,7 +208,9 @@ final class AdminPage {
 		<?php
 	}
 
+	/** Both enqueue_assets() and render() need this list on the same request; query it once. */
 	private function documents(): array {
+		if ( null !== $this->documents ) { return $this->documents; }
 		$query = new \WP_Query( [
 			'post_type' => 'any',
 			'post_status' => [ 'publish', 'draft', 'pending', 'private' ],
@@ -196,6 +225,7 @@ final class AdminPage {
 			if ( ! current_user_can( 'edit_post', $post->ID ) ) { continue; }
 			$result[] = [ 'id' => $post->ID, 'title' => $post->post_title ?: sprintf( __( '(no title) #%d', 'cresco-layer' ), $post->ID ), 'type' => $post->post_type, 'modified' => $post->post_modified_gmt ];
 		}
+		$this->documents = $result;
 		return $result;
 	}
 

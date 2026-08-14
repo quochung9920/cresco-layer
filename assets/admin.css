@@ -261,6 +261,40 @@
 .cresco-layer-issues li.is-error { border-left-color:var(--cl-danger); background:var(--cl-danger-soft); color:var(--cl-danger); }
 .cresco-layer-audit-compare { display:flex; gap:16px; margin-top:12px; color:var(--cl-text-2); }
 
+/* ---------- Settings diff table ---------- */
+
+.cresco-layer-diff-wrap { overflow-x:auto; margin-top:10px; border:1px solid var(--cl-border); border-radius:var(--cl-radius-s); }
+.cresco-layer-diff { width:100%; border-collapse:collapse; font-size:12px; }
+.cresco-layer-diff th, .cresco-layer-diff td { padding:9px 11px; text-align:left; vertical-align:top; border-bottom:1px solid var(--cl-border); }
+.cresco-layer-diff th { background:var(--cl-surface-2); color:var(--cl-text-2); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+.cresco-layer-diff tbody tr:last-child td { border-bottom:0; }
+.cresco-layer-diff td strong { display:block; color:var(--cl-text); }
+.cresco-layer-diff td small { color:var(--cl-text-3); font:11px/1.4 var(--cl-font-mono); }
+.cresco-layer-diff__setting { font:600 12px/1.4 var(--cl-font-mono); color:var(--cl-text-2); }
+.cresco-layer-diff__old, .cresco-layer-diff__new { max-width:280px; font:11px/1.5 var(--cl-font-mono); word-break:break-word; }
+.cresco-layer-diff__old { color:var(--cl-danger); background:var(--cl-danger-soft); }
+.cresco-layer-diff__new { color:var(--cl-success); background:var(--cl-success-soft); }
+.cresco-layer-diff tr.is-noop .cresco-layer-diff__old, .cresco-layer-diff tr.is-noop .cresco-layer-diff__new { color:var(--cl-text-3); background:var(--cl-surface-2); }
+
+/* ---------- Patch history ---------- */
+
+.cresco-layer-history-list { display:grid; gap:8px; margin-top:14px; }
+.cresco-layer-history-entry {
+	display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:14px; padding:13px 15px;
+	border:1px solid var(--cl-border); border-left:3px solid var(--cl-accent);
+	border-radius:var(--cl-radius-s); background:var(--cl-surface);
+}
+.cresco-layer-history-entry.is-rollback { border-left-color:var(--cl-info); }
+.cresco-layer-history-entry__main { display:grid; gap:3px; min-width:0; }
+.cresco-layer-history-entry__main strong { color:var(--cl-text); font-size:13px; }
+.cresco-layer-history-entry__main span { color:var(--cl-text-3); font-size:11px; }
+.cresco-layer-history-entry__badges { display:flex; flex-wrap:wrap; gap:5px; }
+.cresco-layer-history-entry__actions { white-space:nowrap; }
+
+@media (max-width:900px) {
+	.cresco-layer-history-entry { grid-template-columns:1fr; align-items:stretch; }
+}
+
 /* ---------- Empty states ---------- */
 
 .cresco-layer-empty { display:grid; justify-items:center; gap:4px; padding:34px 16px; text-align:center; }
