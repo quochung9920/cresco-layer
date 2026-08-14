@@ -2,7 +2,7 @@
 namespace CrescoLayer\LocalAI;
 
 final class Analyzer {
-	public function __construct( private ContextCompiler $context, private ProviderManager $providers ) {}
+	public function __construct( private ContextCompiler $context, private ProviderManager $providers, private PlanValidator $plan_validator ) {}
 
 	public function prepare( int $post_id, string $element_id, array $input ): array {
 		$config = $this->providers->summary();
@@ -50,12 +50,13 @@ final class Analyzer {
 		}
 		$inference = $this->providers->chat( (array) $prepared['messages'] );
 		$plan = $this->decode_plan( (string) ( $inference['content'] ?? '' ) );
-		$validated = $this->validate_against_prepared( $plan, $prepared );
+		$validated = $this->validate_against_prepared( $plan, $prepared, $post_id, $element_id, $input );
 		return [
 			'schema' => 'cresco-layer-local-ai-analysis/v1',
 			'browserRequired' => false,
 			'plan' => $validated['plan'],
 			'decision' => $validated['decision'],
+			'runtimeValidation' => $validated['runtimeValidation'],
 			'inference' => [
 				'provider' => (string) ( $inference['provider'] ?? '' ),
 				'model' => (string) ( $inference['model'] ?? '' ),
@@ -69,29 +70,55 @@ final class Analyzer {
 		$prepared = $this->prepare( $post_id, $element_id, $input );
 		$plan = is_array( $input['plan'] ?? null ) ? $input['plan'] : [];
 		if ( ! $plan ) { throw new \InvalidArgumentException( 'Browser Local AI response must contain a plan object.' ); }
-		$validated = $this->validate_against_prepared( $plan, $prepared );
+		$validated = $this->validate_against_prepared( $plan, $prepared, $post_id, $element_id, $input );
 		return [
 			'schema' => 'cresco-layer-local-ai-analysis/v1',
 			'browserRequired' => false,
 			'plan' => $validated['plan'],
 			'decision' => $validated['decision'],
+			'runtimeValidation' => $validated['runtimeValidation'],
 			'context' => $prepared['context'],
 		];
 	}
 
-	private function validate_against_prepared( array $plan, array $prepared ): array {
+	private function validate_against_prepared( array $plan, array $prepared, int $post_id, string $element_id, array $input ): array {
 		$plan = PlannerContract::validate( $plan, (array) ( $prepared['availableSkillIds'] ?? [] ) );
 		$minimum = (float) ( $prepared['minimumConfidence'] ?? 0.85 );
 		$has_questions = ! empty( $plan['questions'] );
 		$has_skills = ! empty( $plan['requestedSkills'] );
-		$accepted = ! $has_questions && $has_skills && $plan['confidence'] >= $minimum;
+		$accepted = false;
 		$reason = 'accepted';
+		$runtime_validation = [ 'validated' => false, 'skipped' => true, 'reason' => 'not-eligible' ];
+
 		if ( $has_questions ) { $reason = 'clarification-required'; }
 		elseif ( ! $has_skills ) { $reason = 'no-effective-plan'; }
 		elseif ( $plan['confidence'] < $minimum ) { $reason = 'below-confidence-threshold'; }
+		else {
+			try {
+				$runtime_validation = $this->plan_validator->validate(
+					$post_id,
+					$element_id,
+					$plan,
+					is_array( $input['liveSettings'] ?? null ) ? $input['liveSettings'] : []
+				);
+				$accepted = true;
+			} catch ( \Throwable $error ) {
+				$reason = 'runtime-validation-failed';
+				$runtime_validation = [ 'validated' => false, 'skipped' => false, 'error' => $error->getMessage() ];
+			}
+		}
+
 		return [
 			'plan' => $plan,
-			'decision' => [ 'accepted' => $accepted, 'reason' => $reason, 'minimumConfidence' => $minimum, 'confidence' => $plan['confidence'], 'requirePreview' => ! empty( $prepared['requirePreview'] ) ],
+			'runtimeValidation' => $runtime_validation,
+			'decision' => [
+				'accepted' => $accepted,
+				'reason' => $reason,
+				'minimumConfidence' => $minimum,
+				'confidence' => $plan['confidence'],
+				'requirePreview' => ! empty( $prepared['requirePreview'] ),
+				'maxRisk' => (string) ( $runtime_validation['maxRisk'] ?? '' ),
+			],
 		];
 	}
 
