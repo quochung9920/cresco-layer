@@ -24,25 +24,117 @@
 		if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(String(value));
 		return String(value).replace(/[^A-Za-z0-9_-]/g, '\\$&');
 	}
+	/**
+	 * Documents that may contain the rendered canvas, ordered by how much we trust them.
+	 *
+	 * The editor chrome carries data-id attributes too — the Navigator lists every element by id — so
+	 * searching the top document first finds a panel row and measures the sidebar instead of the
+	 * design. Preview iframes come first, and named preview frames come before anonymous ones.
+	 */
 	function previewDocuments() {
-		var docs = [document];
-		if (!document.querySelectorAll) return docs;
-		Array.prototype.forEach.call(document.querySelectorAll('iframe'), function (frame) {
-			try { if (frame.contentDocument) docs.push(frame.contentDocument); } catch (e) {}
+		var out = [];
+		if (!document.querySelectorAll) return [{ doc: document, source: 'editor-document', rank: 0 }];
+
+		var named = document.querySelectorAll('#elementor-preview-iframe,iframe[name="elementor-preview-iframe"],iframe[src*="elementor-preview"],iframe[src*="preview=true"]');
+		Array.prototype.forEach.call(named, function (frame) {
+			try { if (frame.contentDocument) out.push({ doc: frame.contentDocument, source: 'elementor-preview-iframe', rank: 3 }); } catch (e) {}
 		});
-		return docs;
-	}
-	function domNode(id) {
-		if (!id) return null;
-		var selector = '[data-id="' + safeCssEscape(id) + '"],[data-e-id="' + safeCssEscape(id) + '"],[data-element-id="' + safeCssEscape(id) + '"]';
-		var docs = previewDocuments();
-		for (var i = 0; i < docs.length; i++) {
+		Array.prototype.forEach.call(document.querySelectorAll('iframe'), function (frame) {
 			try {
-				var node = docs[i].querySelector(selector);
-				if (node) return node;
+				if (!frame.contentDocument) return;
+				if (out.some(function (item) { return item.doc === frame.contentDocument; })) return;
+				out.push({ doc: frame.contentDocument, source: 'unnamed-iframe', rank: 1 });
 			} catch (e) {}
+		});
+		// The editor document is the last resort, never the first guess.
+		out.push({ doc: document, source: 'editor-document', rank: 0 });
+		return out;
+	}
+
+	/** True when the node sits inside Elementor editor UI rather than the rendered design. */
+	function insideEditorChrome(node) {
+		if (!node || typeof node.closest !== 'function') return false;
+		try {
+			return !!node.closest('#elementor-panel,#elementor-navigator,.elementor-panel,.elementor-navigator,#elementor-editor-wrapper > :not(#elementor-preview),[data-elementor-panel]');
+		} catch (e) { return false; }
+	}
+
+	/**
+	 * Resolve the target node together with how much the measurement can be trusted.
+	 *
+	 * A non-null node is not evidence on its own: the same id exists in the Navigator, and a hit
+	 * there produces plausible-looking numbers that describe the sidebar. Confidence therefore comes
+	 * from where the node was found and from whether its geometry is consistent with the tree.
+	 */
+	function resolveTargetNode(id, graph) {
+		var result = { node: null, source: 'none', confidence: 0, reasons: [] };
+		if (!id) { result.reasons.push('No target element id.'); return result; }
+
+		var selector = '[data-id="' + safeCssEscape(id) + '"],[data-e-id="' + safeCssEscape(id) + '"],[data-element-id="' + safeCssEscape(id) + '"]';
+		var candidates = previewDocuments();
+		var best = null;
+
+		for (var i = 0; i < candidates.length; i++) {
+			var node;
+			try { node = candidates[i].doc.querySelector(selector); } catch (e) { continue; }
+			if (!node) continue;
+			if (insideEditorChrome(node)) {
+				if (!best) { result.reasons.push('Matched a node inside Elementor editor UI, which is not the rendered canvas.'); }
+				continue;
+			}
+			best = { node: node, source: candidates[i].source, rank: candidates[i].rank };
+			break;
 		}
-		return null;
+
+		if (!best) {
+			result.reasons.push('Target DOM could not be confidently resolved inside Elementor preview canvas.');
+			return result;
+		}
+
+		result.node = best.node;
+		result.source = best.source;
+		result.confidence = best.rank >= 3 ? 0.98 : (best.rank >= 1 ? 0.7 : 0.35);
+		if (best.rank < 3) { result.reasons.push('Target was found outside a named Elementor preview iframe.'); }
+
+		applyGeometryChecks(result, graph);
+		return result;
+	}
+
+	/** Geometry that contradicts the element tree means the measurement describes something else. */
+	function applyGeometryChecks(result, graph) {
+		var bounds = rect(result.node);
+		if (!bounds) {
+			result.confidence = 0;
+			result.reasons.push('Target node exposed no measurable bounds.');
+			return;
+		}
+
+		var nodes = (graph && graph.nodes) || [];
+		var visible = nodes.filter(function (item) { return item.bounds && item.bounds.width > 0 && item.bounds.height > 0; });
+
+		if (bounds.width <= 1 || bounds.height <= 1) {
+			result.confidence = Math.min(result.confidence, 0.25);
+			result.reasons.push('Target bounds are effectively zero-sized.');
+		}
+		// A container with many descendants cannot legitimately render in a sliver of space.
+		if (nodes.length > 8 && bounds.height > 0 && bounds.height < 24) {
+			result.confidence = Math.min(result.confidence, 0.3);
+			result.reasons.push('Target has ' + nodes.length + ' descendants but occupies less than 24px of height.');
+		}
+		if (nodes.length > 4 && visible.length === 0) {
+			result.confidence = Math.min(result.confidence, 0.3);
+			result.reasons.push('No descendant reported visible bounds while the tree lists ' + nodes.length + ' elements.');
+		}
+		var doc = result.node.ownerDocument;
+		var win = doc && doc.defaultView;
+		if (win && win.innerWidth && (bounds.x > win.innerWidth || bounds.x + bounds.width < 0)) {
+			result.confidence = Math.min(result.confidence, 0.3);
+			result.reasons.push('Target bounds fall outside the preview viewport.');
+		}
+	}
+
+	function domNode(id) {
+		return resolveTargetNode(id, null).node;
 	}
 	function rect(node) {
 		if (!node || typeof node.getBoundingClientRect !== 'function') return null;
@@ -125,15 +217,28 @@
 		walk(pkg && pkg.document ? pkg.document.content : [], '', 0);
 		return { schema: 'cresco-layout-graph/v1', source: 'elementor-tree+live-preview', nodes: nodes };
 	}
+	/** Below this the measurement is reported but must not be treated as describing the design. */
+	var VISUAL_TRUST_THRESHOLD = 0.6;
+
 	function visualSnapshot(pkg, targetId, graph) {
-		var node = domNode(targetId);
+		var resolved = resolveTargetNode(targetId, graph);
+		var node = resolved.node;
 		var doc = node && node.ownerDocument ? node.ownerDocument : document;
 		var win = doc && doc.defaultView ? doc.defaultView : window;
 		var intent = window.CrescoLayerAIIntent || {};
 		var visible = (graph.nodes || []).filter(function (item) { return item.bounds && item.bounds.width > 0 && item.bounds.height > 0; });
+		var trusted = !!node && resolved.confidence >= VISUAL_TRUST_THRESHOLD;
+
 		return {
 			schema: 'cresco-visual-snapshot/v1',
 			kind: 'computed-layout',
+			// An AI that believes an untrusted measurement will design against the sidebar, so the
+			// status is stated rather than left to be inferred from a non-null bounds object.
+			status: trusted ? 'trusted' : 'untrusted',
+			source: resolved.source,
+			confidence: Math.round(resolved.confidence * 100) / 100,
+			reason: trusted ? '' : (resolved.reasons[0] || 'Target DOM could not be confidently resolved inside Elementor preview canvas.'),
+			diagnostics: resolved.reasons,
 			note: 'Structured visual snapshot from the live Elementor preview. Attach the reference image separately when the task is image-matching; binary image data is intentionally not embedded in JSON.',
 			viewport: {
 				width: Math.round((win && win.innerWidth) || 0),
@@ -286,18 +391,35 @@
 			'Output: follow outputContract exactly. Return JSON only.'
 		].join('\n');
 	}
+	/**
+	 * Context quality, scored per dimension rather than as a checklist of present fields.
+	 *
+	 * A field existing is not the same as a field being usable: targetBounds is non-null even when it
+	 * measures the Navigator panel, and awarding full marks for that told the AI to design against
+	 * the sidebar. Visual credit is therefore proportional to the resolver's confidence, so an
+	 * untrusted snapshot lowers the score instead of hiding inside it.
+	 */
 	function quality(pkg, graph, visual, runtime) {
+		var visualConfidence = typeof visual.confidence === 'number' ? visual.confidence : (visual.targetBounds ? 0.5 : 0);
+		if ('untrusted' === visual.status) { visualConfidence = Math.min(visualConfidence, 0.3); }
+
 		var checks = [
-			{ key: 'exactRuntime', weight: 25, ok: runtime.mode === 'exact-runtime' && Object.keys(runtime.widgets || {}).length + Object.keys(runtime.elements || {}).length > 0 },
-			{ key: 'activeKit', weight: 20, ok: !!(pkg.siteDesignContext || pkg.designSystem) },
-			{ key: 'layoutGraph', weight: 20, ok: !!(graph.nodes && graph.nodes.length) },
-			{ key: 'liveVisualMetrics', weight: 15, ok: !!visual.targetBounds },
-			{ key: 'sourceTree', weight: 10, ok: !!(pkg.document && Array.isArray(pkg.document.content) && pkg.document.content.length) },
-			{ key: 'exchangeSafety', weight: 10, ok: !!pkg.exchangePolicy }
+			{ key: 'exactRuntime', max: 25, score: runtime.mode === 'exact-runtime' && Object.keys(runtime.widgets || {}).length + Object.keys(runtime.elements || {}).length > 0 ? 25 : 0 },
+			{ key: 'activeKit', max: 20, score: !!(pkg.siteDesignContext || pkg.designSystem) ? 20 : 0 },
+			{ key: 'layoutGraph', max: 20, score: !!(graph.nodes && graph.nodes.length) ? 20 : 0 },
+			{ key: 'visualConfidence', max: 15, score: Math.round(15 * visualConfidence) },
+			{ key: 'sourceTree', max: 10, score: !!(pkg.document && Array.isArray(pkg.document.content) && pkg.document.content.length) ? 10 : 0 },
+			{ key: 'exchangeSafety', max: 10, score: !!pkg.exchangePolicy ? 10 : 0 }
 		];
-		var score = checks.reduce(function (sum, check) { return sum + (check.ok ? check.weight : 0); }, 0);
+		checks.forEach(function (check) { check.ok = check.score === check.max; });
+
+		var score = checks.reduce(function (sum, check) { return sum + check.score; }, 0);
 		var grade = score >= 95 ? 'Excellent' : score >= 80 ? 'Good' : score >= 65 ? 'Usable' : 'Incomplete';
-		return { schema: 'cresco-context-quality/v1', score: score, grade: grade, checks: checks };
+		var warnings = [];
+		if ('untrusted' === visual.status) {
+			warnings.push('Visual snapshot is untrusted: ' + (visual.reason || 'the target could not be located in the preview canvas') + ' Do not rely on the reported geometry.');
+		}
+		return { schema: 'cresco-context-quality/v2', score: score, grade: grade, checks: checks, warnings: warnings };
 	}
 	function buildV3(pkg) {
 		if (!pkg || pkg.schema !== 'cresco-layer-ai-package/v2') return pkg;

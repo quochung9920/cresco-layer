@@ -20,6 +20,7 @@ final class ElementorIdGenerator {
 	private array $taken = [];
 	private array $generated = [];
 	private array $reused = [];
+	private array $duplicateRefs = [];
 
 	/** @param array $document Existing document elements, used to collect IDs already in use. */
 	public function __construct( array $document = [] ) {
@@ -36,6 +37,7 @@ final class ElementorIdGenerator {
 	public function normalize( array $element, string $root_id ): array {
 		$this->generated = [];
 		$this->reused = [];
+		$this->duplicateRefs = [];
 
 		// The root keeps the target ID; it is the anchor the patch is applied against.
 		$element['id'] = $root_id;
@@ -47,7 +49,13 @@ final class ElementorIdGenerator {
 			$element['elements'] = [];
 		}
 
-		return [ 'element' => $element, 'generated' => $this->generated, 'reused' => $this->reused ];
+		return [
+			'element' => $element,
+			'generated' => $this->generated,
+			'reused' => $this->reused,
+			'refs' => $this->refs,
+			'duplicateRefs' => array_values( array_unique( $this->duplicateRefs ) ),
+		];
 	}
 
 	private function normalize_children( array $children ): array {
@@ -55,8 +63,15 @@ final class ElementorIdGenerator {
 		foreach ( $children as $child ) {
 			if ( ! is_array( $child ) ) { continue; }
 			$id = isset( $child['id'] ) ? (string) $child['id'] : '';
+			$ref = isset( $child['ref'] ) ? (string) $child['ref'] : '';
 
-			if ( $this->is_usable( $id ) ) {
+			if ( '' === $id && self::is_ref( $ref ) ) {
+				// A repeated ref would silently merge two nodes into one, so it is recorded rather
+				// than quietly reused.
+				if ( $this->has_ref( $ref ) ) { $this->duplicateRefs[] = $ref; }
+				$id = $this->resolve_ref( $ref );
+				$this->generated[] = $id;
+			} elseif ( $this->is_usable( $id ) ) {
 				$this->taken[ $id ] = true;
 				$this->reused[] = $id;
 			} else {
@@ -64,6 +79,7 @@ final class ElementorIdGenerator {
 				$this->generated[] = $id;
 			}
 			$child['id'] = $id;
+			unset( $child['ref'] );
 
 			if ( isset( $child['elements'] ) && is_array( $child['elements'] ) ) {
 				$child['elements'] = $this->normalize_children( $child['elements'] );
@@ -79,6 +95,43 @@ final class ElementorIdGenerator {
 	private function is_usable( string $id ): bool {
 		return '' !== $id && preg_match( self::PATTERN, $id ) && ! isset( $this->taken[ $id ] );
 	}
+
+	/**
+	 * Temporary references an external AI may use instead of inventing final Elementor IDs.
+	 *
+	 * A model cannot see the rest of the document, so any ID it mints may collide with an element it
+	 * never knew about — the "Inserted element ID already exists" failure. Letting it name nodes
+	 * symbolically ($new:hero) moves the one decision it cannot make safely back to Cresco, while
+	 * still letting it refer to its own nodes.
+	 */
+	public const REF_PREFIX = '$new:';
+
+	/** Resolved ref => allocated Elementor ID, so sibling references stay consistent. */
+	private array $refs = [];
+
+	public static function is_ref( string $value ): bool {
+		return str_starts_with( $value, self::REF_PREFIX ) && strlen( $value ) > strlen( self::REF_PREFIX );
+	}
+
+	/**
+	 * Allocate the final ID for a temporary reference, reusing it when the same ref appears again.
+	 *
+	 * Two nodes carrying the same ref is a mistake in the answer, not something to paper over: they
+	 * would collapse into one element. The caller decides how to report it via duplicate_refs().
+	 */
+	public function resolve_ref( string $ref ): string {
+		if ( ! self::is_ref( $ref ) ) {
+			throw new \InvalidArgumentException( 'Not a Cresco temporary element reference: ' . $ref );
+		}
+		if ( isset( $this->refs[ $ref ] ) ) { return $this->refs[ $ref ]; }
+		$this->refs[ $ref ] = $this->generate();
+		return $this->refs[ $ref ];
+	}
+
+	public function resolved_refs(): array { return $this->refs; }
+
+	/** True when this ref was never allocated, so a pointer to it cannot be honoured. */
+	public function has_ref( string $ref ): bool { return isset( $this->refs[ $ref ] ); }
 
 	public function generate(): string {
 		for ( $attempt = 0; $attempt < self::MAX_ATTEMPTS; $attempt++ ) {

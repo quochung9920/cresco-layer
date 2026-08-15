@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Cresco Layer
  * Description: Professional Elementor intelligence with deterministic runtime skills, semantic local AI analysis, AI-first visual context exchange and design auditing.
- * Version: 0.16.0
+ * Version: 0.17.0
  * Requires at least: 6.6
  * Requires PHP: 8.1
  * Requires Plugins: elementor
@@ -12,7 +12,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'CRESCO_LAYER_VERSION', '0.16.0' );
+define( 'CRESCO_LAYER_VERSION', '0.17.0' );
 define( 'CRESCO_LAYER_FILE', __FILE__ );
 define( 'CRESCO_LAYER_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CRESCO_LAYER_URL', plugin_dir_url( __FILE__ ) );
