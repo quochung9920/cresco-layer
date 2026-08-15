@@ -19,24 +19,16 @@ if ( ! function_exists( 'get_option' ) ) {
 	function current_user_can( $capability, ...$args ) { return true; }
 }
 
-$base = dirname( __DIR__, 2 ) . '/includes/SiteSettings/';
-require_once $base . 'Contract/Spec.php';
-require_once $base . 'Support/ClampValidator.php';
-require_once $base . 'Support/ManagedCssBlock.php';
-require_once $base . 'Support/ValueFactory.php';
-require_once $base . 'Support/Logger.php';
-require_once $base . 'Gateway/KitGateway.php';
-require_once $base . 'Discovery/CapabilityReport.php';
-require_once $base . 'Registry/OwnershipRegistry.php';
-require_once $base . 'Adapter/SiteSettingsAdapter.php';
-require_once $base . 'Adapter/ElementorClassicKitAdapter.php';
-require_once $base . 'Diff/DiffEngine.php';
-require_once $base . 'Verify/ValueNormalizer.php';
-require_once $base . 'Verify/Verifier.php';
-require_once $base . 'Cache/CacheInvalidator.php';
-require_once $base . 'Cache/ElementorCache.php';
-require_once $base . 'Profiles/ProfessionalCommerceProfile.php';
-require_once $base . 'SiteSettingsEngine.php';
+// Autoload the way the plugin itself does, rather than listing every file: the engine gains
+// collaborators over time, and a stale require list fails as a confusing "class not found".
+spl_autoload_register(
+	static function ( string $class ): void {
+		$prefix = 'CrescoLayer\\';
+		if ( 0 !== strncmp( $class, $prefix, strlen( $prefix ) ) ) { return; }
+		$path = dirname( __DIR__, 2 ) . '/includes/' . str_replace( '\\', '/', substr( $class, strlen( $prefix ) ) ) . '.php';
+		if ( is_readable( $path ) ) { require_once $path; }
+	}
+);
 
 use CrescoLayer\SiteSettings\Cache\CacheInvalidator;
 use CrescoLayer\SiteSettings\Contract\Spec;
@@ -120,12 +112,16 @@ function kit_controls(): array {
 		'paragraph_spacing' => $slider,
 		'link_normal_color' => $color,
 		'link_hover_color' => $color,
-		'container_width' => $slider,
-		'container_padding' => $dimensions,
+		// Layout controls the responsive foundation requires: responsive, px-capable, and percent on
+		// content width so the desktop canvas can stay at 100%.
+		'container_width' => [ 'type' => 'slider', 'responsive' => true, 'size_units' => [ 'px', '%', 'em', 'rem', 'vw', 'custom' ] ],
+		'container_padding' => [ 'type' => 'dimensions', 'responsive' => true, 'size_units' => [ 'px', '%', 'em', 'rem', 'custom' ] ],
 		'space_between_widgets' => $slider,
 		'active_breakpoints' => [ 'type' => 'select2' ],
 		'viewport_mobile' => [ 'type' => 'number' ],
 		'viewport_tablet' => [ 'type' => 'number' ],
+		'viewport_laptop' => [ 'type' => 'number' ],
+		'viewport_widescreen' => [ 'type' => 'number' ],
 		'body_background_color' => $color,
 		'mobile_browser_background' => $color,
 		'body_overscroll_behavior' => [ 'type' => 'select', 'options' => [ 'auto' => 'Auto', 'contain' => 'Contain', 'none' => 'None' ] ],
@@ -271,7 +267,12 @@ eng_assert( 'px' === $saved['form_field_typography_font_size']['unit'], 'A contr
 eng_assert( 16.0 === (float) $saved['form_field_typography_font_size']['size'], 'The mobile-safe 16px form field floor must be kept.' );
 
 // Layout.
-eng_assert( 'rem' === $saved['container_width']['unit'] && 82.0 === (float) $saved['container_width']['size'], 'Content width must be 82rem.' );
+// Content width follows the five-context responsive foundation: the desktop base stays at 100% so the
+// canvas is not boxed, and each smaller device gets its own px ceiling.
+eng_assert( '%' === $saved['container_width']['unit'], 'Desktop base content width must stay at 100%.' );
+eng_assert( 100.0 === (float) $saved['container_width']['size'], 'Desktop base content width must be 100.' );
+eng_assert( 767.0 === (float) $saved['container_width_mobile']['size'], 'Mobile content width must be written.' );
+eng_assert( 1440.0 === (float) $saved['container_width_laptop']['size'], 'Laptop content width must be written.' );
 eng_assert( '0' === (string) $saved['container_padding']['top'], 'Global container padding must be zero.' );
 eng_assert( 'custom' === $saved['space_between_widgets']['unit'], 'Widget gap must be fluid.' );
 
@@ -405,10 +406,17 @@ eng_assert( 0 === $cache5->count, 'A refused save must not clear the cache.' );
 
 /* ---------- Optional surfaces are skipped, not failed ---------- */
 
-$minimal_controls = [
-	'system_colors' => [ 'type' => 'repeater' ],
-	'custom_colors' => [ 'type' => 'repeater' ],
-];
+// Optional surfaces (Hello, Custom CSS, Lightbox) may be absent and must only produce skips. The
+// responsive foundation is not optional, so this Kit keeps those controls — a runtime that cannot
+// express the foundation is meant to fail closed, which is covered separately below.
+$minimal_controls = array_intersect_key(
+	kit_controls(),
+	array_flip( [
+		'system_colors', 'custom_colors', 'system_typography',
+		'container_width', 'container_padding', 'active_breakpoints',
+		'viewport_mobile', 'viewport_tablet', 'viewport_laptop', 'viewport_widescreen',
+	] )
+);
 $gateway6 = new FakeKitGateway( $minimal_controls, [ 'system_colors' => [], 'custom_colors' => [] ] );
 $minimal = ( new SiteSettingsEngine( $gateway6, new DiffEngine(), fresh_registry(), new FakeCache() ) )->apply();
 

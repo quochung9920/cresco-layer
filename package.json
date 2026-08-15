@@ -1,6 +1,6 @@
 {
   "name": "cresco-layer",
-  "version": "0.14.3",
+  "version": "0.15.0",
   "private": true,
   "description": "Lossless scoped AI exchange, deterministic runtime widget skills, task-retrieved semantic local AI analysis and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
@@ -14,6 +14,7 @@
     "test:skills-accuracy": "node tests/js/skills-accuracy-contract-test.mjs",
     "test:local-ai-admin": "node tests/js/local-ai-admin-contract-test.mjs",
     "test:semantic-ai": "node tests/js/semantic-ai-contract-test.mjs",
+    "test:ai-result-import": "php tests/php/ai-result-import-test.php",
     "test:site-settings-console": "node tests/js/site-settings-console-contract-test.mjs",
     "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:clipboard-guard && npm run test:exact-runtime-export && npm run test:exact-runtime-export-behavior && npm run test:editor-skills && npm run test:skills-accuracy && npm run test:local-ai-admin && npm run test:semantic-ai && npm run test:site-settings-console",
     "test:exact-runtime-export-behavior": "node tests/js/exact-runtime-export-behavior-test.mjs"

@@ -27,7 +27,7 @@ foreach ( $forbidden as $needle => $message ) {
 
 $required = [
 	'includes/AI/PackageBuilder.php' => [
-		'cresco-layer-ai-package/v2', 'scopeChecksum', 'widgetCatalog', 'elementCatalog', 'dynamicTags',
+		'cresco-layer-ai-package/v2', 'widgetCatalog', 'elementCatalog', 'dynamicTags',
 		'ContextResolver', 'contextProfile', 'registryIndex', 'capabilityCoverage', 'fullRuntimeSnapshotIsSeparate',
 		'SerializableSanitizer', 'Never invent a setting name.',
 	],
@@ -39,7 +39,9 @@ $required = [
 	'includes/AI/CapabilityScanner.php' => [ 'defaultSettings', 'size_units', 'selectors_dictionary', 'frontend_available', 'catalog_index', 'catalog_entry', 'scanErrors', 'MAX_ARRAY_ITEMS', 'get_atomic_controls', 'get_props_schema' ],
 	'includes/AI/PatchValidator.php' => [ 'cresco-layer-patch/v1', 'replace-element', 'replace-document', 'MAX_OPERATIONS', 'Sensitive settings cannot be modified' ],
 	'includes/AI/SemanticPatchGuard.php' => [ 'inert-css-variable', 'custom-css-native-control', 'unknown-setting', 'verify_data', 'nativeControlOperations' ],
-	'includes/AI/PatchApplier.php' => [ 'assert_scope_operations', 'staleDocumentButScopeUnchanged', 'preserve_children', 'DocumentChecksum::hash', 'get_with_permissions' ],
+	// The AI workflow is checksum-free: scope safety comes from target resolution, not from a hash the
+	// AI would have to echo back. The applier still owns scope enforcement and child preservation.
+	'includes/AI/PatchApplier.php' => [ 'assert_scope_operations', 'preserve_children', 'get_with_permissions' ],
 	'includes/Elementor/ConfigurationCatalog.php' => [ 'catalog_index', 'lazyDetails', 'activeKit', 'scanErrors', "'[REDACTED]'" ],
 	'includes/Elementor/RuntimeSnapshot.php' => [ 'cresco-elementor-snapshot/v1', 'global-settings', 'features', 'breakpoints', 'active-kit', 'dynamic-tags', 'runtime', 'records', 'normalized', 'raw', 'downloadPlan', 'registryEntry', 'recordIndex', 'ElementorPro' ],
 	'includes/Elementor/RuntimeDiscovery.php' => [
@@ -113,8 +115,10 @@ if ( is_dir( $site_settings_dir ) ) {
 	foreach ( $iterator as $file ) {
 		if ( 'php' !== strtolower( $file->getExtension() ) ) { continue; }
 		$source = file_get_contents( $file->getPathname() );
-		if ( str_contains( $source, '_elementor_page_settings' ) ) {
-			$errors[] = 'Site Settings engine must not touch _elementor_page_settings directly: ' . $file->getFilename();
+		// Reading page settings is legitimate (the breakpoint scanner surveys existing documents);
+		// what must never happen is writing Kit settings behind Elementor's document API.
+		if ( preg_match( '/update_post_meta\s*\([^)]*_elementor_page_settings/', $source ) ) {
+			$errors[] = 'Site Settings engine must not write _elementor_page_settings directly: ' . $file->getFilename();
 		}
 	}
 }

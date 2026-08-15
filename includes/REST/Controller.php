@@ -2,6 +2,7 @@
 namespace CrescoLayer\REST;
 
 use CrescoLayer\AI\ContextResolver;
+use CrescoLayer\AI\InternalPatchCompiler;
 use CrescoLayer\AI\PackageBuilder;
 use CrescoLayer\AI\PatchApplier;
 use CrescoLayer\AI\PatchHistory;
@@ -16,6 +17,9 @@ use WP_REST_Request;
 use WP_REST_Response;
 
 final class Controller {
+	/** Report from the last AI-result compilation, surfaced so the UI can show what Cresco filled in. */
+	private array $aiImport = [];
+
 	public function __construct(
 		private PackageBuilder $builder,
 		private PatchValidator $validator,
@@ -143,6 +147,8 @@ final class Controller {
 			'elementorPro' => defined( 'ELEMENTOR_PRO_VERSION' ) ? ELEMENTOR_PRO_VERSION : null,
 			'packageSchema' => 'cresco-layer-ai-package/v2',
 			'patchSchema' => 'cresco-layer-patch/v1',
+			'aiResultSchema' => 'cresco-layer-ai-result/v1',
+			'checksumFreeAiWorkflow' => true,
 			'scopedExchange' => true,
 			'semanticPatchValidation' => true,
 			'postApplyVerification' => true,
@@ -226,11 +232,12 @@ final class Controller {
 		try {
 			$post_id = absint( $request['id'] );
 			$body = $this->request_body( $request );
-			$patch = $this->validator->validate( $this->request_patch_from_body( $body ), $post_id );
+			$patch = $this->validator->validate( $this->request_patch_from_body( $body, $post_id ), $post_id );
 			$semantic = $this->semantic->analyze( $post_id, $patch );
 			$this->semantic->assert_safe( $semantic );
 			$result = $this->applier->preview( $post_id, $patch, $this->expected_scope( $body ) );
 			$result['semantic'] = $semantic;
+			if ( $this->aiImport ) { $result['aiImport'] = $this->aiImport['report']; }
 			return new WP_REST_Response( $result, 200 );
 		} catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
@@ -239,11 +246,12 @@ final class Controller {
 		try {
 			$post_id = absint( $request['id'] );
 			$body = $this->request_body( $request );
-			$patch = $this->validator->validate( $this->request_patch_from_body( $body ), $post_id );
+			$patch = $this->validator->validate( $this->request_patch_from_body( $body, $post_id ), $post_id );
 			$semantic = $this->semantic->analyze( $post_id, $patch );
 			$this->semantic->assert_safe( $semantic );
 			$result = $this->applier->apply( $post_id, $patch, $this->expected_scope( $body ) );
 			$result['semantic'] = $semantic;
+			if ( $this->aiImport ) { $result['aiImport'] = $this->aiImport['report']; }
 			$result['verification'] = $this->semantic->verify( $post_id, $patch );
 			return new WP_REST_Response( $result, 200 );
 		} catch ( \Throwable $error ) { return $this->error( $error ); }
@@ -259,10 +267,34 @@ final class Controller {
 		return $body;
 	}
 
-	private function request_patch_from_body( array $body ): array {
+	/**
+	 * Accept either an internal patch or a raw AI answer.
+	 *
+	 * `aiResult` carries whatever the user pasted, dropped or uploaded — envelope, markdown fence and
+	 * surrounding prose included. Compiling it here means preview and apply share one entry point, so
+	 * the two can never disagree about what a given answer means.
+	 */
+	private function request_patch_from_body( array $body, int $post_id = 0 ): array {
+		if ( isset( $body['aiResult'] ) && is_string( $body['aiResult'] ) ) {
+			$this->aiImport = ( new InternalPatchCompiler() )->compile(
+				$body['aiResult'],
+				$post_id,
+				$this->document_elements( $post_id ),
+				trim( (string) ( $body['selectedElementId'] ?? '' ) )
+			);
+			return $this->aiImport['patch'];
+		}
 		if ( isset( $body['patch'] ) && is_array( $body['patch'] ) ) { return $body['patch']; }
 		if ( isset( $body['schema'] ) ) { return $body; }
-		throw new \InvalidArgumentException( 'Request must contain a JSON patch.' );
+		throw new \InvalidArgumentException( 'Request must contain an AI result or a JSON patch.' );
+	}
+
+	/** Current working elements, used to resolve the target and avoid ID collisions. */
+	private function document_elements( int $post_id ): array {
+		if ( ! $post_id ) { return []; }
+		$manager = \Elementor\Plugin::instance()->documents;
+		$document = $manager->get_doc_or_auto_save( $post_id, get_current_user_id() ) ?: $manager->get( $post_id, false );
+		return $document ? (array) $document->get_elements_data() : [];
 	}
 
 	private function expected_scope( array $body ): ?array {

@@ -299,6 +299,42 @@ POST /wp-json/cresco-layer/v1/design-standard/apply
 
 Site Settings are global, so these routes require `manage_options`.
 
+## AI result import
+
+An AI describes the interface it wants; Cresco handles Elementor's patch mechanics. The model returns a target and an Elementor element tree — nothing else:
+
+```json
+{
+  "schema": "cresco-layer-ai-result/v1",
+  "target": { "postId": 3, "id": "3ed4781" },
+  "element": {
+    "id": "3ed4781",
+    "elType": "container",
+    "settings": { "content_width": "boxed" },
+    "elements": [
+      { "elType": "widget", "widgetType": "heading", "settings": { "title": "HELLO" } }
+    ]
+  }
+}
+```
+
+No checksum, no operations, no scope object, and no element IDs for anything the model creates. `cresco-layer-patch/v1` is now an internal format: `InternalPatchCompiler` turns the result into the `replace-element` operation the applier understands, so preview, semantic validation, post-apply verification and rollback history all still run unchanged.
+
+**Whatever the model actually returned is accepted.** Chat models wrap their answers — a markdown fence, a `result`/`data`/`output` envelope, a sentence before the JSON, a missing `schema` line. `AIResultNormalizer` unwraps all of those, because refusing them would send the user back to hand-editing the file this workflow exists to avoid. Tolerance stops at recognition: unrelated JSON is still refused, and the refusal names the schema that was found, the top-level keys, and what was expected.
+
+**Element IDs are Cresco's job.** A model cannot see the rest of the document, so any ID it invents may collide with an element it never knew about. `ElementorIdGenerator` keeps the root ID (it identifies what the user selected), keeps supplied child IDs that are Elementor-shaped and unused, and generates the rest — including for IDs that are malformed, duplicated inside the answer, or already taken elsewhere in the document.
+
+**The target is resolved against the live document, not trusted from the payload.** A result built for another document, a result that names a different element than the one selected, a result whose root disagrees with its own target, or a target deleted since the export are each refused with a specific message rather than applied to the wrong element.
+
+Send an AI result to the existing preview and apply routes as `aiResult` (raw text), with `selectedElementId` when the editor knows the selection:
+
+```text
+POST /wp-json/cresco-layer/v1/documents/<id>/preview
+POST /wp-json/cresco-layer/v1/documents/<id>/apply
+```
+
+The response carries an `aiImport` report saying which IDs Cresco generated and how many elements the tree contains.
+
 ## Getting packages in and out
 
 Neither direction depends on the filesystem, because pasting into a web chat is often faster than downloading and re-uploading a file.
