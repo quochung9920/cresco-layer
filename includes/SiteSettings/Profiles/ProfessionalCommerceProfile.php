@@ -6,18 +6,13 @@ use CrescoLayer\SiteSettings\Contract\Spec;
 /**
  * The `professional-commerce` baseline expressed as semantic intent.
  *
- * Nothing here names an Elementor control. The profile says "accent is this colour" and "h1 grows
- * from 36 to 64 px"; translating that into whatever the running Elementor registers is the
- * adapter's job. Keeping the two apart means an Elementor rename breaks one mapping table rather
- * than the whole design baseline.
- *
- * Sizes are given as ranges, not per-device values, because the adapter turns a range into a single
- * fluid clamp() rather than a stack of breakpoint overrides.
+ * Fluid typography and spacing scale continuously, while layout uses five device contexts:
+ * Mobile, Tablet, Laptop, Desktop (base), and Widescreen.
  */
 final class ProfessionalCommerceProfile {
 	public const ID = 'professional-commerce';
 
-	/** Fluid range: below 320px nothing shrinks further, above 1440px nothing grows further. */
+	/** Fluid type/spacing range. Layout breakpoints continue beyond this range. */
 	private const VIEWPORT_MIN = 320;
 	private const VIEWPORT_MAX = 1440;
 
@@ -53,10 +48,6 @@ final class ProfessionalCommerceProfile {
 		] );
 	}
 
-	/**
-	 * System slots map onto Elementor's four fixed IDs; everything else becomes a custom global with
-	 * an ID the ownership registry keeps stable across runs.
-	 */
 	private function colors(): array {
 		return [
 			'system' => [
@@ -80,10 +71,6 @@ final class ProfessionalCommerceProfile {
 		];
 	}
 
-	/**
-	 * Global typography carries family and weight only. A size here would resize every widget bound
-	 * to the token; heading sizes belong to Theme Style, where they apply to H1–H6 specifically.
-	 */
 	private function typography(): array {
 		$family = 'Inter';
 		return [
@@ -97,11 +84,21 @@ final class ProfessionalCommerceProfile {
 		];
 	}
 
-	/** Fluid custom properties, published into the managed Custom CSS block when that control exists. */
+	/** Fluid custom properties for sites where Global Custom CSS is available. */
 	private function tokens(): array {
 		return [
-			'--cresco-container-max' => '82rem',
-			'--cresco-gutter' => 'clamp(1rem, 0.57rem + 2.14vw, 2.5rem)',
+			'--cresco-container-max' => '1320px',
+			'--cresco-container-max-mobile' => '767px',
+			'--cresco-container-max-tablet' => '960px',
+			'--cresco-container-max-laptop' => '1180px',
+			'--cresco-container-max-desktop' => '1320px',
+			'--cresco-container-max-widescreen' => '1500px',
+			'--cresco-gutter' => 'clamp(32px, 2.5vw, 48px)',
+			'--cresco-gutter-mobile' => 'clamp(16px, 4vw, 20px)',
+			'--cresco-gutter-tablet' => 'clamp(20px, 2.5vw, 28px)',
+			'--cresco-gutter-laptop' => 'clamp(24px, 2.2vw, 32px)',
+			'--cresco-gutter-desktop' => 'clamp(32px, 2.5vw, 48px)',
+			'--cresco-gutter-widescreen' => 'clamp(48px, 3vw, 80px)',
 			'--cresco-fs-display' => 'clamp(2.75rem, 1.95rem + 4vw, 5.5rem)',
 			'--cresco-fs-h1' => 'clamp(2.25rem, 1.6rem + 2.6vw, 4rem)',
 			'--cresco-fs-h2' => 'clamp(1.875rem, 1.45rem + 1.5vw, 2.75rem)',
@@ -127,11 +124,6 @@ final class ProfessionalCommerceProfile {
 		];
 	}
 
-	/**
-	 * Theme Style typography. `fluid` is the expression used when the control accepts a custom unit;
-	 * `fallbackPx` is the plain size written when it does not, so a Kit without custom units still
-	 * gets a sensible value rather than nothing.
-	 */
 	private function theme_typography(): array {
 		return [
 			'body' => [
@@ -171,22 +163,13 @@ final class ProfessionalCommerceProfile {
 		];
 	}
 
-	/**
-	 * Deliberately inert. A global radius here would round every <img> on the site, including logos
-	 * and brand marks; card and product rounding belongs to element-level patches instead.
-	 */
 	private function images(): array {
-		return [
-			'borderRadiusPx' => 0,
-			'opacity' => 1,
-			'hoverOpacity' => 1,
-		];
+		return [ 'borderRadiusPx' => 0, 'opacity' => 1, 'hoverOpacity' => 1 ];
 	}
 
 	private function form_fields(): array {
 		return [
 			'label' => [ 'color' => 'primary', 'fluid' => 'clamp(0.875rem, 0.85rem + 0.1vw, 0.9375rem)', 'fallbackPx' => 15, 'font_weight' => '600' ],
-			// 16px is the threshold below which iOS zooms the viewport on focus, so it is a floor, not a preference.
 			'field' => [ 'fontSizePx' => 16, 'line_height' => 1.5, 'textColor' => 'text', 'background' => 'surface', 'borderColor' => 'border-strong', 'borderWidthPx' => 1, 'borderRadiusRem' => 0.625 ],
 			'padding' => [
 				'y' => 'clamp(0.75rem, 0.71rem + 0.18vw, 0.875rem)',
@@ -198,13 +181,23 @@ final class ProfessionalCommerceProfile {
 		];
 	}
 
+	private function content_widths(): array {
+		return [
+			'mobile' => 767,
+			'tablet' => 960,
+			'laptop' => 1180,
+			'desktop' => 1320,
+			'widescreen' => 1500,
+		];
+	}
+
 	private function hello_header(): array {
 		return [
 			'logoDisplay' => 'yes',
 			'taglineDisplay' => '',
 			'menuDisplay' => 'yes',
 			'width' => 'boxed',
-			'contentWidthRem' => 82,
+			'contentWidthPx' => $this->content_widths(),
 			'logoWidth' => [ 'fluid' => 'clamp(7.5rem, 6.65rem + 2.7vw, 10.5rem)', 'fallbackPx' => 160 ],
 			'background' => 'surface',
 			'menuLayout' => 'horizontal',
@@ -221,7 +214,7 @@ final class ProfessionalCommerceProfile {
 			'menuDisplay' => 'yes',
 			'copyrightDisplay' => 'yes',
 			'width' => 'boxed',
-			'contentWidthRem' => 82,
+			'contentWidthPx' => $this->content_widths(),
 			'logoWidth' => [ 'fluid' => 'clamp(7.5rem, 7rem + 1.8vw, 9.5rem)', 'fallbackPx' => 144 ],
 			'background' => 'primary',
 			'menuColor' => '#E2E8F0',
@@ -230,22 +223,28 @@ final class ProfessionalCommerceProfile {
 		];
 	}
 
-	/**
-	 * Container padding is deliberately zero: Elementor applies it to nested containers too, so a
-	 * global value compounds into double and triple gutters. The page-level gutter is an
-	 * element-level concern.
-	 */
 	private function layout(): array {
 		return [
-			'contentWidthRem' => 82,
-			'contentWidthPxFallback' => 1312,
-			'containerPaddingPx' => 0,
+			'contentWidthPx' => $this->content_widths(),
+			'containerPadding' => [
+				'mobile' => [ 'fluid' => 'clamp(16px, 4vw, 20px)', 'fallbackPx' => 18 ],
+				'tablet' => [ 'fluid' => 'clamp(20px, 2.5vw, 28px)', 'fallbackPx' => 24 ],
+				'laptop' => [ 'fluid' => 'clamp(24px, 2.2vw, 32px)', 'fallbackPx' => 28 ],
+				'desktop' => [ 'fluid' => 'clamp(32px, 2.5vw, 48px)', 'fallbackPx' => 40 ],
+				'widescreen' => [ 'fluid' => 'clamp(48px, 3vw, 80px)', 'fallbackPx' => 64 ],
+			],
 			'widgetGap' => [ 'fluid' => 'clamp(1rem, 0.86rem + 0.71vw, 1.5rem)', 'fallbackPx' => 20 ],
 			'pageTitleSelector' => [ 'preserve' => true ],
 			'stretchedSectionContainer' => [ 'preserve' => true ],
 			'defaultPageTemplate' => [ 'preserve' => true ],
-			'breakpoints' => [ 'mobile' => 767, 'tablet' => 1024 ],
-			'preserveExistingBreakpoints' => true,
+			'breakpoints' => [
+				'mobile' => 767,
+				'tablet' => 1024,
+				'laptop' => 1440,
+				'widescreen' => 1920,
+			],
+			// This profile intentionally standardises exactly five contexts. Desktop is implicit/base.
+			'preserveExistingBreakpoints' => false,
 		];
 	}
 
