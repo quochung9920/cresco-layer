@@ -28,7 +28,8 @@ final class Assets {
 
 	public function enqueue_editor_scripts(): void {
 		wp_enqueue_script( 'cresco-layer-editor', CRESCO_LAYER_URL . 'assets/editor.js', [], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-editor' ], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-exact-runtime-export', CRESCO_LAYER_URL . 'assets/exact-runtime-export.js', [ 'cresco-layer-editor' ], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-exact-runtime-export' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-skills-accuracy', CRESCO_LAYER_URL . 'assets/skills-accuracy.js', [ 'cresco-layer-skills' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-semantic-ai', CRESCO_LAYER_URL . 'assets/semantic-ai.js', [ 'cresco-layer-skills-accuracy' ], CRESCO_LAYER_VERSION, false );
 
