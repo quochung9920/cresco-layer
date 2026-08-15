@@ -5,16 +5,25 @@ namespace CrescoLayer\AI;
  * Compiles AI-facing results into the internal `cresco-layer-patch/v1` representation.
  *
  * Full-tree AI results are allowed only for empty targets or explicit rebuilds. Incremental work
- * stays delta-first. For legacy/delta patches, Cresco also owns IDs for inserted subtrees so the AI
- * can focus on Elementor structure and native controls instead of database identity.
+ * stays delta-first. Semantic mutation v2 is preferred for external AI: it is compiled to patch/v1,
+ * then new subtree IDs and safe deterministic control-value repairs are owned by Cresco.
  */
 final class InternalPatchCompiler {
 	private ElementLocator $locator;
 	private AIResultNormalizer $normalizer;
+	private AIMutationCompiler $mutationCompiler;
+	private MutationNormalizer $mutationNormalizer;
 
-	public function __construct( ?ElementLocator $locator = null, ?AIResultNormalizer $normalizer = null ) {
+	public function __construct(
+		?ElementLocator $locator = null,
+		?AIResultNormalizer $normalizer = null,
+		?AIMutationCompiler $mutationCompiler = null,
+		?MutationNormalizer $mutationNormalizer = null
+	) {
 		$this->locator = $locator ?? new ElementLocator();
 		$this->normalizer = $normalizer ?? new AIResultNormalizer();
+		$this->mutationCompiler = $mutationCompiler ?? new AIMutationCompiler( $this->locator );
+		$this->mutationNormalizer = $mutationNormalizer ?? new MutationNormalizer( $this->locator );
 	}
 
 	/**
@@ -28,7 +37,19 @@ final class InternalPatchCompiler {
 		$normalized = $this->normalizer->normalize( $raw );
 
 		if ( 'legacy-patch' === $normalized['kind'] ) {
-			return $this->normalize_delta_patch( $normalized['result'], $elements );
+			return $this->finalize( $this->normalize_delta_patch( $normalized['result'], $elements ), $elements );
+		}
+
+		if ( 'semantic-mutation' === $normalized['kind'] ) {
+			$semantic = $this->mutationCompiler->compile( $normalized['result'], $post_id, $elements, $selected );
+			$delta = $this->normalize_delta_patch( $semantic['patch'], $elements );
+			$delta['report'] = array_merge( $delta['report'], $semantic['report'], [
+				'generatedIds' => $delta['report']['generatedIds'] ?? [],
+				'reusedIds' => $delta['report']['reusedIds'] ?? [],
+				'resolvedRefs' => $delta['report']['resolvedRefs'] ?? [],
+				'deltaNormalized' => true,
+			] );
+			return $this->finalize( $delta, $elements );
 		}
 
 		$result = $normalized['result'];
@@ -38,12 +59,15 @@ final class InternalPatchCompiler {
 
 		if ( $this->has_live_content( $live_target ) && ! $this->explicit_replace_intent( $normalized['raw'] ) ) {
 			throw new \InvalidArgumentException(
-				'This target already contains live Elementor data, so Cresco will not compile a full-tree AI result into replace-element automatically. Return only the intended delta change using insert-element/update-setting, or set intent to "replace-target" only when the user explicitly requested a complete rebuild of this target.'
+				'This target already contains live Elementor data, so Cresco will not compile a full-tree AI result into replace-element automatically. Return only the intended delta change using cresco-ai-mutation/v2 or insert-element/update-setting, or set intent to "replace-target" only when the user explicitly requested a complete rebuild of this target.'
 			);
 		}
 
 		$generator = new ElementorIdGenerator( $elements );
 		$normalized_tree = $generator->normalize( $result['element'], $target_id );
+		if ( ! empty( $normalized_tree['duplicateRefs'] ) ) {
+			throw new \InvalidArgumentException( 'Duplicate temporary element ref in AI result: ' . implode( ', ', $normalized_tree['duplicateRefs'] ) );
+		}
 
 		$patch = [
 			'schema' => 'cresco-layer-patch/v1',
@@ -60,18 +84,19 @@ final class InternalPatchCompiler {
 			],
 		];
 
-		return [
+		return $this->finalize( [
 			'patch' => $patch,
 			'report' => [
 				'source' => 'ai-result',
 				'targetId' => $target_id,
 				'generatedIds' => $normalized_tree['generated'],
 				'reusedIds' => $normalized_tree['reused'],
+				'resolvedRefs' => $normalized_tree['refs'] ?? [],
 				'elementCount' => $this->count_elements( $normalized_tree['element'] ),
 				'destructiveReplace' => $this->has_live_content( $live_target ),
 				'scopeMode' => $scope_mode,
 			],
-		];
+		], $elements );
 	}
 
 	/** Normalize IDs only for new inserted subtrees; existing IDs remain authoritative. */
@@ -79,6 +104,7 @@ final class InternalPatchCompiler {
 		$generator = new ElementorIdGenerator( $elements );
 		$generated = [];
 		$reused = [];
+		$refs = [];
 		$count = 0;
 		$operations = is_array( $patch['operations'] ?? null ) ? $patch['operations'] : [];
 
@@ -86,16 +112,33 @@ final class InternalPatchCompiler {
 			if ( ! is_array( $operation ) || 'insert-element' !== (string) ( $operation['operation'] ?? '' ) || ! is_array( $operation['element'] ?? null ) ) { continue; }
 			$element = $operation['element'];
 			$supplied_id = trim( (string) ( $element['id'] ?? '' ) );
+			$root_ref = trim( (string) ( $element['ref'] ?? '' ) );
 			$taken = array_flip( $generator->taken() );
 			$usable = 1 === preg_match( '/^[a-f0-9]{7}$/', $supplied_id ) && ! isset( $taken[ $supplied_id ] );
-			$root_id = $usable ? $supplied_id : $generator->generate();
-			if ( ! $usable ) { $generated[] = $root_id; }
-			else { $reused[] = $root_id; }
+
+			if ( $usable ) {
+				$root_id = $supplied_id;
+				$reused[] = $root_id;
+			} elseif ( ElementorIdGenerator::is_ref( $root_ref ) ) {
+				if ( $generator->has_ref( $root_ref ) ) {
+					throw new \InvalidArgumentException( 'Duplicate temporary element ref in inserted roots: ' . $root_ref );
+				}
+				$root_id = $generator->resolve_ref( $root_ref );
+				$generated[] = $root_id;
+				unset( $element['ref'] );
+			} else {
+				$root_id = $generator->generate();
+				$generated[] = $root_id;
+			}
 
 			$tree = $generator->normalize( $element, $root_id );
+			if ( ! empty( $tree['duplicateRefs'] ) ) {
+				throw new \InvalidArgumentException( 'Duplicate temporary element ref in inserted subtree: ' . implode( ', ', $tree['duplicateRefs'] ) );
+			}
 			$operations[ $index ]['element'] = $tree['element'];
 			$generated = array_merge( $generated, $tree['generated'] );
 			$reused = array_merge( $reused, $tree['reused'] );
+			$refs = array_replace( $refs, (array) ( $tree['refs'] ?? [] ), $generator->resolved_refs() );
 			$count += $this->count_elements( $tree['element'] );
 		}
 
@@ -106,11 +149,29 @@ final class InternalPatchCompiler {
 				'source' => 'legacy-patch',
 				'generatedIds' => array_values( array_unique( $generated ) ),
 				'reusedIds' => array_values( array_unique( $reused ) ),
+				'resolvedRefs' => $refs,
 				'targetId' => (string) ( $patch['scope']['rootElementId'] ?? '' ),
 				'elementCount' => $count,
 				'deltaNormalized' => true,
 			],
 		];
+	}
+
+	/** Apply only semantics-preserving runtime-proven repairs. SemanticPatchGuard remains final authority. */
+	private function finalize( array $compiled, array $elements ): array {
+		try {
+			$normalized = $this->mutationNormalizer->normalize( $compiled['patch'], $elements );
+			$compiled['patch'] = $normalized['patch'];
+			$compiled['report']['autoRepaired'] = $normalized['repairs'];
+			$compiled['report']['autoRepairCount'] = count( $normalized['repairs'] );
+		} catch ( \Throwable $error ) {
+			// Runtime normalization is additive safety. A scan problem must not silently alter the patch;
+			// the downstream SemanticPatchGuard will still validate the untouched values fail-closed.
+			$compiled['report']['autoRepaired'] = [];
+			$compiled['report']['autoRepairCount'] = 0;
+			$compiled['report']['normalizationWarning'] = $error->getMessage();
+		}
+		return $compiled;
 	}
 
 	private function resolve_target( array $result, int $post_id, array $elements, string $selected ): string {
