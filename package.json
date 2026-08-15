@@ -1,6 +1,6 @@
 {
   "name": "cresco-layer",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "private": true,
   "description": "Lossless scoped AI exchange, deterministic runtime widget skills, task-retrieved semantic local AI analysis and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {

@@ -22,6 +22,7 @@ use CrescoLayer\LocalAI\ProviderManager as LocalAIProviderManager;
 use CrescoLayer\LocalAI\RESTController as LocalAIRESTController;
 use CrescoLayer\LocalAI\Settings as LocalAISettings;
 use CrescoLayer\REST\Controller;
+use CrescoLayer\SiteSettings\RESTController as SiteSettingsRESTController;
 use CrescoLayer\Skills\WidgetSkillRuntime;
 use CrescoLayer\Support\Assets;
 use CrescoLayer\Support\Requirements;
@@ -75,6 +76,7 @@ final class Plugin {
 		add_action( 'rest_api_init', [ $controller, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $local_rest, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $standard, 'register_routes' ] );
+		add_action( 'rest_api_init', [ new SiteSettingsRESTController(), 'register_routes' ] );
 		add_action( 'admin_menu', [ $admin, 'register_menu' ] );
 		add_action( 'admin_enqueue_scripts', [ $admin, 'enqueue_assets' ] );
 		( new LocalAIAdminIntegration() )->register_hooks();

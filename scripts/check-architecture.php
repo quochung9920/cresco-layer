@@ -82,7 +82,37 @@ $required = [
 	'includes/DesignSystem/FluidPlanner.php' => [ 'cresco-fluid-typography/v1', "'unit' => 'custom'", 'remove-page-setting', 'supports_custom_unit' ],
 	'includes/DesignSystem/Presets.php' => [ 'cresco-design-preset/v1', 'has_control', 'preservesBrandColors' ],
 	'includes/DesignSystem/StandardController.php' => [ 'cresco-layer-patch/v1', 'current_checksum', 'manage_options', '/design-standard', 'publishReminder' ],
+	'includes/SiteSettings/Contract/Spec.php' => [ 'cresco-site-settings/v1', "MODE_MERGE = 'merge'", 'MODE_SYNC_OWNED', 'MODE_FORCE', 'SYSTEM_COLOR_IDS' ],
+	'includes/SiteSettings/Support/ClampValidator.php' => [ 'FORBIDDEN_CHARS', 'VAR_PREFIX', 'rejection_reason', 'unbalanced_parentheses', 'javascript:' ],
+	'includes/SiteSettings/Support/ManagedCssBlock.php' => [ 'CRESCO:FLUID-TOKENS:START', 'CRESCO:FLUID-TOKENS:END', 'user_css', 'render_tokens' ],
+	'includes/SiteSettings/Support/ValueFactory.php' => [ "'unit' => 'custom'", 'custom_unit_unsupported', 'invalid_value:', 'typography_row' ],
+	'includes/SiteSettings/Gateway/ElementorKitGateway.php' => [ 'get_active_kit', 'kits_manager', '$kit->save(', 'current_user_can' ],
+	'includes/SiteSettings/Discovery/CapabilityReport.php' => [ 'supports_custom_unit', 'allows_option', 'has_any', 'helloHeader' ],
+	'includes/SiteSettings/Registry/OwnershipRegistry.php' => [ 'cresco_layer_elementor_state', 'bind_kit', 'generate_id', 'id_for' ],
+	'includes/SiteSettings/Adapter/ElementorClassicKitAdapter.php' => [
+		'elementor-classic', 'unsupported_control', 'tab_not_registered', 'stable_custom_id',
+		'system_colors', 'custom_colors', 'hello_header', 'container_padding',
+	],
+	'includes/SiteSettings/Diff/DiffEngine.php' => [ 'changed', 'canonical_repeater', 'equivalent', 'hash' ],
+	'includes/SiteSettings/SiteSettingsEngine.php' => [
+		"'status' => 'no_op'", 'verification_failed', 'persist_ownership', 'validate_spec',
+		'$this->cache->clear()', 'rolledBack',
+	],
+	'includes/SiteSettings/RESTController.php' => [ 'manage_options', '/site-settings/apply', '/site-settings/preview' ],
 ];
+
+// The Site Settings engine must reach Elementor through the Kit document, never through post meta.
+$site_settings_dir = $root . '/includes/SiteSettings';
+if ( is_dir( $site_settings_dir ) ) {
+	$iterator = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $site_settings_dir, FilesystemIterator::SKIP_DOTS ) );
+	foreach ( $iterator as $file ) {
+		if ( 'php' !== strtolower( $file->getExtension() ) ) { continue; }
+		$source = file_get_contents( $file->getPathname() );
+		if ( str_contains( $source, '_elementor_page_settings' ) ) {
+			$errors[] = 'Site Settings engine must not touch _elementor_page_settings directly: ' . $file->getFilename();
+		}
+	}
+}
 foreach ( $required as $relative => $tokens ) {
 	$path = $root . '/' . $relative;
 	if ( ! is_file( $path ) ) { $errors[] = 'Missing required file: ' . $relative; continue; }

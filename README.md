@@ -180,6 +180,63 @@ Requested Elementor values are actually present after save
 
 The final visual review and Update/Publish decision still belongs to the user in Elementor.
 
+## Elementor Native Site Settings Engine
+
+Cresco can configure an entire Elementor design system in one transaction, then step out of the way. The values land in Elementor's own **Site Settings**, so a designer opens Elementor and edits, rebrands or maintains the site exactly as if it had been built by hand. Cresco adds no competing design-system UI.
+
+The active Kit is the source of truth. Writes go through the Kit document's own `save()`, never through `_elementor_page_settings` — the architecture check fails the build if any file in the engine touches that meta key.
+
+### Pipeline
+
+```text
+cresco-site-settings/v1 spec → validate → resolve active Kit → discover capabilities
+  → read → snapshot → adapt → diff → (no change? stop) → write → verify → clear cache
+```
+
+Two properties shape it. **Nothing is written unless the diff says something changed**, so a repeated sync costs a read; and the write is **verified by reading the Kit back**, because Elementor can accept a save and still normalise a value — a rollback restores the snapshot when that happens.
+
+### Schema separation
+
+`cresco-site-settings/v1` owns the global design system: global colours and fonts, Theme Style, site layout defaults, lightbox, Hello Theme globals. `cresco-layer-patch/v1` continues to own pages, containers and widgets. The two never overlap, so an Elementor release that renames Kit controls cannot disturb element-level patching.
+
+The spec carries semantic intent — `accent`, `h1`, `surface` — not Elementor control names. Mapping is the adapter's job, behind `SiteSettingsAdapter`, so a future Atomic/V4 model gets its own implementation rather than branches inside a shared one.
+
+### Capability discovery
+
+Every control is checked against the running Kit before it is written; a control that does not exist is reported as `skipped` with a reason rather than written under a key nothing reads. Optional surfaces — Hello Theme header/footer, Elementor Pro custom CSS and page transitions — are detected the same way, so a Free install on a non-Hello theme still completes a full pass.
+
+### Stable global IDs
+
+Elementor identifies a custom global by an opaque `_id`, and its title is not a key: writing "Surface" twice produces two swatches. An ownership registry (`cresco_layer_elementor_state`) maps each semantic key to the ID Cresco created, so a re-run updates the existing global. If the registry is lost, an existing global with a matching title is adopted rather than duplicated. The registry is bookkeeping only — the style itself lives in the Kit.
+
+### Fluid responsive
+
+Continuous scaling uses `clamp()`; breakpoints are reserved for structural change. A single fluid value replaces a stack of per-device overrides, so the sizes *between* breakpoints are considered rather than left to jump.
+
+Fluid values are written with Elementor's `custom` unit, which reaches CSS verbatim — which is exactly why every expression passes a validator first. The validator is an allowlist: functions are limited to `clamp/min/max/calc/var`, custom properties must sit in the `--cresco-` namespace, and any character that could close a declaration or open a rule is rejected. A control without the custom unit falls back to a native value instead of failing.
+
+When Global Custom CSS exists, fluid tokens are published into a delimited block:
+
+```text
+/* CRESCO:FLUID-TOKENS:START */ … /* CRESCO:FLUID-TOKENS:END */
+```
+
+Only that block is ever rewritten. CSS before, after or around it is returned untouched, and writing the same tokens twice is byte-identical so the diff still reports no change.
+
+### Preservation
+
+In `merge` mode the engine leaves alone: user custom globals, custom breakpoints, Site Identity, CSS outside the managed block, and any Kit setting written by a third-party addon. Page title selector, stretched-section container and default page template are preserved by profile, because forcing a page template can strip a theme's header and footer.
+
+Global container padding is set to zero deliberately: Elementor applies it to nested containers too, so a global value compounds into double and triple gutters.
+
+Runtime endpoints (all require `manage_options`, since Site Settings are global):
+
+```text
+GET  /wp-json/cresco-layer/v1/site-settings/profile
+POST /wp-json/cresco-layer/v1/site-settings/preview
+POST /wp-json/cresco-layer/v1/site-settings/apply
+```
+
 ## Design Standard for Site Settings
 
 The **Design Standard** tab measures the active Elementor Kit — Global Colors, Global Fonts, Typography, Layout — and proposes concrete fixes.
