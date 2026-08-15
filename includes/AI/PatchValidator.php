@@ -14,9 +14,8 @@ final class PatchValidator {
 		if ( 'cresco-layer-patch/v1' !== ( $patch['schema'] ?? '' ) ) { throw new \InvalidArgumentException( 'Unsupported patch schema.' ); }
 		$base = isset( $patch['base'] ) && is_array( $patch['base'] ) ? $patch['base'] : [];
 		$post_id = absint( $base['postId'] ?? 0 );
+		if ( ! $post_id ) { throw new \InvalidArgumentException( 'Patch base postId is missing or invalid.' ); }
 		if ( $expected_post_id && $post_id !== $expected_post_id ) { throw new \InvalidArgumentException( 'Patch postId does not match the requested document.' ); }
-		$checksum = isset( $base['checksum'] ) ? strtolower( (string) $base['checksum'] ) : '';
-		if ( ! preg_match( '/^[a-f0-9]{64}$/', $checksum ) ) { throw new \InvalidArgumentException( 'Patch base checksum is missing or invalid.' ); }
 
 		$scope = null;
 		if ( isset( $patch['scope'] ) ) {
@@ -33,7 +32,7 @@ final class PatchValidator {
 		}
 		$out = [
 			'schema' => 'cresco-layer-patch/v1',
-			'base' => [ 'postId' => $post_id, 'checksum' => $checksum ],
+			'base' => [ 'postId' => $post_id ],
 			'label' => sanitize_text_field( (string) ( $patch['label'] ?? 'AI Import' ) ),
 			'operations' => $clean,
 		];
@@ -52,9 +51,7 @@ final class PatchValidator {
 		if ( 'document' !== $mode && ! $ids ) { throw new \InvalidArgumentException( 'Scoped patch requires elementIds.' ); }
 		if ( 'widget' === $mode && 1 !== count( $ids ) ) { throw new \InvalidArgumentException( 'Widget scope requires exactly one elementId.' ); }
 		if ( '' !== $root && ! in_array( $root, $ids, true ) ) { throw new \InvalidArgumentException( 'Patch rootElementId must be one of elementIds.' ); }
-		$checksum = strtolower( (string) ( $scope['checksum'] ?? '' ) );
-		if ( ! preg_match( '/^[a-f0-9]{64}$/', $checksum ) ) { throw new \InvalidArgumentException( 'Patch scope checksum is missing or invalid.' ); }
-		return [ 'mode' => $mode, 'rootElementId' => $root, 'elementIds' => $ids, 'checksum' => $checksum ];
+		return [ 'mode' => $mode, 'rootElementId' => $root, 'elementIds' => $ids ];
 	}
 
 	private function validate_operation( array $op, int $index ): array {
