@@ -51,10 +51,11 @@ function document_elements(): array {
 	];
 }
 
-/** The minimal answer a model is asked for: a target and an Elementor tree. */
+/** The minimal answer for an explicit full rebuild: a target and an Elementor tree. */
 function minimal_result(): array {
 	return [
 		'schema' => 'cresco-layer-ai-result/v1',
+		'intent' => 'replace-target',
 		'target' => [ 'postId' => 3, 'id' => '3ed4781' ],
 		'element' => [
 			'id' => '3ed4781', 'elType' => 'container', 'settings' => [ 'content_width' => 'boxed' ],
@@ -139,7 +140,7 @@ ai_assert( in_array( 'c0ffee1', $kept['reused'], true ), 'A kept ID must be repo
 
 // An ID that collides with the document, or is malformed, is replaced.
 $colliding = minimal_result()['element'];
-$colliding['elements'][0]['id'] = 'aaa1111';   // already used elsewhere in the document
+$colliding['elements'][0]['id'] = 'aaa1111';
 $colliding['elements'][1]['id'] = 'NOT-VALID';
 $fixed = ( new ElementorIdGenerator( document_elements() ) )->normalize( $colliding, '3ed4781' );
 ai_assert( 'aaa1111' !== $fixed['element']['elements'][0]['id'], 'A colliding ID must be replaced.' );
@@ -162,6 +163,17 @@ ai_assert( '' !== $deep['element']['elements'][0]['elements'][0]['id'], 'A neste
 /* ---------- Compiling into the internal patch ---------- */
 
 $compiler = new InternalPatchCompiler();
+
+// A non-empty target cannot be replaced just because an AI echoed a full tree. This is the
+// separation boundary: incremental work must return insert/update deltas.
+$implicit_replace = minimal_result();
+unset( $implicit_replace['intent'] );
+ai_throws(
+	fn() => $compiler->compile( json_encode( $implicit_replace ), 3, document_elements(), '3ed4781' ),
+	'already contains live Elementor data',
+	'Implicit full-tree replacement of a populated target must be refused.'
+);
+
 $compiled = $compiler->compile( json_encode( minimal_result() ), 3, document_elements(), '3ed4781' );
 $patch = $compiled['patch'];
 
@@ -171,10 +183,11 @@ ai_assert( ! isset( $patch['base']['checksum'] ), 'The checksum-free workflow mu
 ai_assert( 'subtree' === $patch['scope']['mode'], 'Replacing an element and its children is a subtree scope.' );
 ai_assert( '3ed4781' === $patch['scope']['rootElementId'], 'The scope must be anchored to the target.' );
 ai_assert( 1 === count( $patch['operations'] ), 'One replacement is one operation.' );
-ai_assert( 'replace-element' === $patch['operations'][0]['operation'], 'A returned subtree compiles to replace-element.' );
+ai_assert( 'replace-element' === $patch['operations'][0]['operation'], 'An explicit full rebuild compiles to replace-element.' );
 ai_assert( '3ed4781' === $patch['operations'][0]['elementId'], 'The operation must address the target.' );
 ai_assert( 3 === $compiled['report']['elementCount'], 'The report must count the whole returned tree.' );
 ai_assert( 2 === count( $compiled['report']['generatedIds'] ), 'The report must say which IDs Cresco generated.' );
+ai_assert( true === $compiled['report']['destructiveReplace'], 'Replacing a populated target must be reported as destructive.' );
 
 // The AI never has to name the document or the element when the editor already knows.
 $bare = minimal_result();
@@ -182,6 +195,14 @@ unset( $bare['target'] );
 unset( $bare['element']['id'] );
 $from_selection = $compiler->compile( json_encode( $bare ), 3, document_elements(), '3ed4781' );
 ai_assert( '3ed4781' === $from_selection['patch']['operations'][0]['elementId'], 'The current selection must supply a missing target.' );
+
+// An empty construction target remains simple: no explicit destructive intent is required.
+$empty_result = minimal_result();
+unset( $empty_result['intent'] );
+$empty_result['target']['id'] = 'bbb2222';
+$empty_result['element']['id'] = 'bbb2222';
+$empty_compiled = $compiler->compile( json_encode( $empty_result ), 3, document_elements(), 'bbb2222' );
+ai_assert( false === $empty_compiled['report']['destructiveReplace'], 'An empty target must stay a simple construction target.' );
 
 // Legacy patches pass straight through.
 $legacy_compiled = $compiler->compile( $legacy, 3, document_elements(), '' );
