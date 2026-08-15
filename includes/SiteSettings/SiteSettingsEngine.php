@@ -2,6 +2,7 @@
 namespace CrescoLayer\SiteSettings;
 
 use CrescoLayer\SiteSettings\Adapter\ElementorClassicKitAdapter;
+use CrescoLayer\SiteSettings\Adapter\ResponsiveFoundationBridge;
 use CrescoLayer\SiteSettings\Cache\CacheInvalidator;
 use CrescoLayer\SiteSettings\Cache\ElementorCache;
 use CrescoLayer\SiteSettings\Contract\Spec;
@@ -16,18 +17,7 @@ use CrescoLayer\SiteSettings\Support\ValueFactory;
 use CrescoLayer\SiteSettings\Verify\ValueNormalizer;
 use CrescoLayer\SiteSettings\Verify\Verifier;
 
-/**
- * Runs one Site Settings transaction end to end.
- *
- *   resolve kit → discover capabilities → read → snapshot → build → diff
- *     → (no change? stop) → write → verify → clear cache → commit
- *
- * Two properties drive the shape of this class. The write is conditional, so an unchanged re-run
- * costs a read and nothing else. And the write is verified by reading the Kit back rather than
- * trusting save() — Elementor can accept a save and still normalise a value into something other
- * than what was asked for, which would leave Cresco reporting success over a Kit that does not
- * match the spec.
- */
+/** Runs one Site Settings transaction end to end. */
 final class SiteSettingsEngine {
 	public const VERSION = '1';
 
@@ -50,13 +40,31 @@ final class SiteSettingsEngine {
 		$this->verifier = new Verifier( $this->normalizer );
 	}
 
+	private function value_factory(): ValueFactory {
+		return new ValueFactory( new ClampValidator() );
+	}
+
 	private function adapter(): ElementorClassicKitAdapter {
 		return new ElementorClassicKitAdapter(
 			$this->gateway,
 			$this->registry,
-			new ValueFactory( new ClampValidator() ),
+			$this->value_factory(),
 			new ManagedCssBlock()
 		);
+	}
+
+	/**
+	 * Build the normal Classic Kit mapping, then add the responsive foundation that needs to understand
+	 * Elementor's responsive-control duplication modes as well as explicit per-device controls.
+	 */
+	private function build_with_foundation( ElementorClassicKitAdapter $adapter, array $spec ): array {
+		$built = $adapter->build( $spec );
+		$bridge = new ResponsiveFoundationBridge(
+			$adapter->capabilities(),
+			$this->value_factory(),
+			$this->gateway->settings()
+		);
+		return $bridge->apply( $spec, $built );
 	}
 
 	/** Lightweight environment report for the admin console; reads nothing beyond the Kit. */
@@ -110,7 +118,6 @@ final class SiteSettingsEngine {
 		$this->registry->bind_kit( $kit_id );
 
 		$adapter = $this->adapter();
-
 		if ( ! $adapter->supports() ) {
 			return $this->failure( 'The active Kit is not a Classic Elementor Kit; no adapter can drive it.', $this->gateway->errors(), $log );
 		}
@@ -123,9 +130,9 @@ final class SiteSettingsEngine {
 		] );
 
 		$current = $this->gateway->settings();
-		$snapshot = $current;  // Captured before any mutation so a failed verify can be rolled back.
+		$snapshot = $current;
 
-		$built = $adapter->build( $spec );
+		$built = $this->build_with_foundation( $adapter, $spec );
 		$desired = $built['settings'];
 		$plan = $built['plan'];
 		$skipped = $built['skipped'];
@@ -162,7 +169,6 @@ final class SiteSettingsEngine {
 		];
 
 		if ( ! $comparison['changed'] ) {
-			// Nothing to write, so nothing to invalidate either.
 			return array_merge( $base, [
 				'success' => true,
 				'status' => 'no_op',
@@ -205,7 +211,6 @@ final class SiteSettingsEngine {
 			] );
 		}
 
-		// One invalidation for the whole transaction, after the write is known to be good.
 		$cleared = $this->cache->clear();
 		$this->persist_ownership( $desired );
 		$this->registry->record_hash( $this->diff->hash( $desired ) );
@@ -223,12 +228,7 @@ final class SiteSettingsEngine {
 		] );
 	}
 
-	/**
-	 * Verify the current Kit against the profile without writing anything.
-	 *
-	 * Separate from apply so a reviewer can ask "does the live Kit still match the standard" at any
-	 * time — for example after someone edited Site Settings by hand.
-	 */
+	/** Verify the current Kit against the profile without writing anything. */
 	public function verify_only( ?array $spec = null ): array {
 		$spec = $spec ?? $this->profile_spec();
 		$invalid = $this->validate_spec( $spec );
@@ -242,7 +242,7 @@ final class SiteSettingsEngine {
 			return $this->failure( 'The active Kit is not a Classic Elementor Kit.', $this->gateway->errors(), new Logger() );
 		}
 
-		$built = $adapter->build( $spec );
+		$built = $this->build_with_foundation( $adapter, $spec );
 		$verification = $this->verifier->verify( $built['plan'], $this->gateway->settings() );
 
 		return [
@@ -283,16 +283,11 @@ final class SiteSettingsEngine {
 		return [ 'attempted' => true, 'success' => true, 'status' => 'success', 'verified' => 0 === $still_applied ];
 	}
 
-	/** Read the Kit back and check every planned write, in profile terms. */
 	private function verify_plan( array $plan ): array {
 		$this->gateway->refresh();
 		return $this->verifier->verify( $plan, $this->gateway->settings() );
 	}
 
-	/**
-	 * Record the Elementor IDs Cresco now owns, so the next run updates these rows instead of
-	 * appending new ones. This is what makes repeated syncs idempotent.
-	 */
 	private function persist_ownership( array $desired ): void {
 		$map = [ 'custom_colors' => 'colors', 'custom_typography' => 'typography' ];
 		foreach ( $map as $control => $bucket ) {
