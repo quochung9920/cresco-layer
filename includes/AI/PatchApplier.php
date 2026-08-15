@@ -17,11 +17,10 @@ final class PatchApplier {
 	public function history(): PatchHistory { return $this->history; }
 
 	/**
-	 * Checksum of the document a patch would actually be applied to.
+	 * Internal checksum of the Elementor working document.
 	 *
-	 * Callers that build a patch server-side need the same value load_document() computes — the
-	 * working document, which may be an autosave — otherwise the freshness guard rejects their own
-	 * freshly built patch.
+	 * AI patches no longer carry or validate freshness checksums. This value remains available for
+	 * audit/history/rollback integrity and server-side diagnostics only.
 	 */
 	public function current_checksum( int $post_id ): string {
 		return $this->load_document( $post_id )[4];
@@ -29,8 +28,7 @@ final class PatchApplier {
 
 	public function preview( int $post_id, array $raw_patch, ?array $expected_scope = null ): array {
 		$patch = $this->validator->validate( $raw_patch, $post_id );
-		[ $main_document, $working_document, $elements, $settings, $current_checksum ] = $this->load_document( $post_id );
-		$freshness = $this->assert_freshness( $patch, $elements, $current_checksum );
+		[ $main_document, $working_document, $elements, $settings ] = $this->load_document( $post_id );
 		$this->assert_expected_scope( $patch, $expected_scope );
 		$this->assert_scope_operations( $patch, $elements );
 		$candidate_elements = $elements;
@@ -38,10 +36,7 @@ final class PatchApplier {
 		$this->apply_operations( $candidate_elements, $candidate_settings, $patch['operations'], $patch['scope']['mode'] ?? 'document' );
 		return [
 			'valid' => true,
-			'baseChecksum' => $current_checksum,
-			'candidateChecksum' => DocumentChecksum::hash( $candidate_elements, $candidate_settings ),
 			'scope' => $patch['scope'] ?? null,
-			'staleDocumentButScopeUnchanged' => $freshness['staleDocumentButScopeUnchanged'],
 			'diff' => Diff::summarize( $patch['operations'] ),
 			'diffDetails' => Diff::details( $patch['operations'], $elements, $settings ),
 			'auditBefore' => $this->auditor->audit_elements( $elements ),
@@ -53,7 +48,6 @@ final class PatchApplier {
 	public function apply( int $post_id, array $raw_patch, ?array $expected_scope = null ): array {
 		$patch = $this->validator->validate( $raw_patch, $post_id );
 		[ $main_document, $working_document, $elements, $settings, $current_checksum ] = $this->load_document( $post_id );
-		$freshness = $this->assert_freshness( $patch, $elements, $current_checksum );
 		$this->assert_expected_scope( $patch, $expected_scope );
 		$this->assert_scope_operations( $patch, $elements );
 		$candidate_elements = $elements;
@@ -101,7 +95,6 @@ final class PatchApplier {
 			'checksum' => $saved_checksum,
 			'storage' => $is_autosave ? 'elementor-autosave' : 'draft-document',
 			'scope' => $patch['scope'] ?? null,
-			'staleDocumentButScopeUnchanged' => $freshness['staleDocumentButScopeUnchanged'],
 			'diff' => Diff::summarize( $patch['operations'] ),
 			'audit' => $this->auditor->audit_elements( $saved_elements ),
 			'historyId' => $history_id,
@@ -175,19 +168,6 @@ final class PatchApplier {
 		return [ $main, $working, $elements, $settings, DocumentChecksum::hash( $elements, $settings ) ];
 	}
 
-	private function assert_freshness( array $patch, array $elements, string $current_checksum ): array {
-		$scope = $patch['scope'] ?? null;
-		if ( ! is_array( $scope ) || 'document' === $scope['mode'] ) {
-			$this->assert_checksum( $patch['base']['checksum'], $current_checksum );
-			return [ 'staleDocumentButScopeUnchanged' => false ];
-		}
-		$current_scope_checksum = $this->locator->scope_checksum( $elements, $scope['mode'], $scope['elementIds'] );
-		if ( ! hash_equals( $scope['checksum'], $current_scope_checksum ) ) {
-			throw new \RuntimeException( 'The exported Elementor widget/selection changed after AI export. Export that scope again before applying the patch.' );
-		}
-		return [ 'staleDocumentButScopeUnchanged' => ! hash_equals( $patch['base']['checksum'], $current_checksum ) ];
-	}
-
 	private function assert_expected_scope( array $patch, ?array $expected_scope ): void {
 		if ( null === $expected_scope ) { return; }
 		$scope = $patch['scope'] ?? null;
@@ -254,10 +234,6 @@ final class PatchApplier {
 	private function document_id( $document ): int {
 		$post = is_object( $document ) && method_exists( $document, 'get_post' ) ? $document->get_post() : null;
 		return $post ? (int) $post->ID : 0;
-	}
-
-	private function assert_checksum( string $expected, string $current ): void {
-		if ( ! hash_equals( $current, $expected ) ) { throw new \RuntimeException( 'This AI result was generated from an older Elementor document. Export a fresh package or rebase the patch before applying.' ); }
 	}
 
 	private function apply_operations( array &$elements, array &$page_settings, array $operations, string $scope_mode ): void {
