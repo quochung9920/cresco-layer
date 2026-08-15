@@ -15,9 +15,11 @@ namespace CrescoLayer\DesignSystem;
 final class FluidPlanner {
 	public const SCHEMA = 'cresco-fluid-typography/v1';
 
-	/** Elementor's responsive suffixes, smallest device first. */
-	private const DEVICE_SUFFIXES = [ '_mobile', '_tablet' ];
-	/** When no mobile override exists, assume the mobile size is this fraction of the desktop one. */
+	/** Responsive overrides below desktop that can provide the minimum anchor. */
+	private const MINIMUM_DEVICE_SUFFIXES = [ '_mobile', '_mobile_extra', '_tablet', '_tablet_extra', '_laptop' ];
+	/** Every known Elementor override that can beat the base clamp() at some viewport. */
+	private const OVERRIDE_DEVICE_SUFFIXES = [ '_mobile', '_mobile_extra', '_tablet', '_tablet_extra', '_laptop', '_widescreen' ];
+	/** When no mobile/tablet/laptop override exists, assume the mobile size is this fraction of desktop. */
 	private const DEFAULT_MOBILE_FACTOR = 0.72;
 	/** Below this the fluid range is not worth the indirection. */
 	private const MIN_GROWTH_PX = 2.0;
@@ -100,17 +102,17 @@ final class FluidPlanner {
 	}
 
 	private function is_device_variant( string $name ): bool {
-		foreach ( self::DEVICE_SUFFIXES as $suffix ) {
+		foreach ( self::OVERRIDE_DEVICE_SUFFIXES as $suffix ) {
 			if ( str_ends_with( $name, $suffix ) ) { return true; }
 		}
-		// Custom breakpoints add their own suffixes; treat any _<device> tail on a font size as a variant.
+		// Keep recognising the known Elementor naming family if another responsive variant appears.
 		return (bool) preg_match( '/_(?:mobile|tablet|laptop|widescreen|mobile_extra|tablet_extra)(?:_extra)?$/', $name );
 	}
 
-	/** The smallest device override actually set for this control, in px. */
+	/** The smallest below-desktop device override actually set for this control, in px. */
 	private function smallest_device_value( string $name ): ?float {
 		$found = [];
-		foreach ( self::DEVICE_SUFFIXES as $suffix ) {
+		foreach ( self::MINIMUM_DEVICE_SUFFIXES as $suffix ) {
 			$px = $this->px_value( $this->kit->setting( $name . $suffix ) );
 			if ( null !== $px && $px > 0 ) { $found[] = $px; }
 		}
@@ -121,7 +123,7 @@ final class FluidPlanner {
 	/** @return string[] Device override setting names that currently hold a value. */
 	private function existing_device_overrides( string $name ): array {
 		$out = [];
-		foreach ( self::DEVICE_SUFFIXES as $suffix ) {
+		foreach ( self::OVERRIDE_DEVICE_SUFFIXES as $suffix ) {
 			$key = $name . $suffix;
 			if ( null !== $this->px_value( $this->kit->setting( $key ) ) ) { $out[] = $key; }
 		}
