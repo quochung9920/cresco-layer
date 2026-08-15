@@ -48,4 +48,35 @@ assert_snapshot( 42 === $output['number'], 'Scalar value changed unexpectedly.' 
 assert_snapshot( count( $report['redactions'] ) >= 5, 'Redaction paths were not reported.' );
 assert_snapshot( false !== strpos( implode( "\n", $report['omissions'] ), 'runtime-object:SnapshotRuntimeFixture' ), 'Runtime object omission was not reported.' );
 
+// Elementor data can legitimately be deeper than fourteen levels once nested containers, widget
+// repeaters and control values are combined. This fixture mirrors that shape and protects against
+// writing the literal [TRUNCATED] placeholder into document.content again.
+$leaf = [
+	'id' => 'leaf123',
+	'elType' => 'widget',
+	'widgetType' => 'icon',
+	'settings' => [
+		'selected_icon' => [ 'value' => 'fas fa-tint', 'library' => 'fa-solid' ],
+		'primary_color' => '#A9D5FF',
+		'size' => [ 'unit' => 'px', 'size' => 11, 'sizes' => [] ],
+	],
+	'elements' => [],
+];
+$deep_element = $leaf;
+for ( $depth = 0; $depth < 20; $depth++ ) {
+	$deep_element = [
+		'id' => 'node' . $depth,
+		'elType' => 'container',
+		'settings' => [ 'flex_direction' => 'column' ],
+		'elements' => [ $deep_element ],
+	];
+}
+$deep_sanitizer = new SerializableSanitizer();
+$deep_output = $deep_sanitizer->sanitize( [ 'document' => [ 'content' => [ $deep_element ] ] ], '$.aiPackage' );
+$cursor = $deep_output['document']['content'][0];
+for ( $depth = 0; $depth < 20; $depth++ ) { $cursor = $cursor['elements'][0]; }
+assert_snapshot( 'fas fa-tint' === $cursor['settings']['selected_icon']['value'], 'Deep Elementor icon data must survive serialization without [TRUNCATED].' );
+assert_snapshot( '#A9D5FF' === $cursor['settings']['primary_color'], 'Deep Elementor color data must survive serialization.' );
+assert_snapshot( false === strpos( json_encode( $deep_output ), '[TRUNCATED]' ), 'Normal deep Elementor trees must not contain [TRUNCATED].' );
+
 echo "Serializable sanitizer tests passed.\n";
