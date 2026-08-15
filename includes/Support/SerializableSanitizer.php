@@ -4,7 +4,12 @@ namespace CrescoLayer\Support;
 final class SerializableSanitizer {
 	private const REDACTED = '[REDACTED]';
 	private const TRUNCATED = '[TRUNCATED]';
-	private const MAX_DEPTH = 14;
+	// Elementor trees legitimately become deep when nested widgets, repeater values and responsive
+	// control shapes are combined. Fourteen levels was low enough to replace real persisted widget
+	// settings with the literal [TRUNCATED] marker in an otherwise valid AI export. Keep a generous
+	// recursion ceiling for safety, while the import exchange guard prevents any placeholder that is
+	// ever produced at this hard limit from being written back to Elementor.
+	private const MAX_DEPTH = 64;
 	private const MAX_STRING = 262144;
 	private const MAX_ARRAY_ITEMS = 20000;
 
