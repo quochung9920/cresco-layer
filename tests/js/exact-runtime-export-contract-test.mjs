@@ -17,13 +17,13 @@ assert.match(source, /manifest\.contextProfile = 'exact-runtime'/);
 assert.match(source, /siteDesignContext/);
 assert.match(source, /Exact Runtime/);
 assert.match(source, /value="exact"/);
-assert.match(source, /CONSTRUCTION_WIDGETS/);
+assert.match(source, /constructionWidgets/);
 assert.match(source, /'form'/);
-assert.match(source, /CONSTRUCTION_ELEMENTS/);
+assert.match(source, /constructionElements/);
 assert.match(source, /'container'/);
 assert.match(source, /window\.fetch = function/);
 assert.match(source, /state\.profile !== 'exact'/);
-assert.match(source, /errorResponse/);
+assert.match(source, /function failed/);
 
 assert.match(assets, /cresco-layer-exact-runtime-export/);
 assert.match(assets, /assets\/exact-runtime-export\.js/);
