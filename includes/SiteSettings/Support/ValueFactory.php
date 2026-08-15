@@ -27,13 +27,24 @@ final class ValueFactory {
 	 */
 	public function slider( string $expression, float $fallback, bool $supports_custom, string $fallback_unit = 'px' ): array {
 		if ( ! $supports_custom ) {
-			return [ 'value' => [ 'unit' => $fallback_unit, 'size' => $fallback ], 'fluid' => false, 'reason' => 'custom_unit_unsupported' ];
+			return [ 'value' => $this->slider_shape( $fallback_unit, $fallback ), 'fluid' => false, 'reason' => 'custom_unit_unsupported' ];
 		}
 		$rejection = $this->clamp->rejection_reason( $expression );
 		if ( null !== $rejection ) {
-			return [ 'value' => [ 'unit' => $fallback_unit, 'size' => $fallback ], 'fluid' => false, 'reason' => 'invalid_value:' . $rejection ];
+			return [ 'value' => $this->slider_shape( $fallback_unit, $fallback ), 'fluid' => false, 'reason' => 'invalid_value:' . $rejection ];
 		}
-		return [ 'value' => [ 'unit' => 'custom', 'size' => $expression ], 'fluid' => true, 'reason' => 'custom_unit' ];
+		return [ 'value' => $this->slider_shape( 'custom', $expression ), 'fluid' => true, 'reason' => 'custom_unit' ];
+	}
+
+	/**
+	 * The complete slider value shape.
+	 *
+	 * Control_Slider::get_default_value() is `[ unit, size, sizes ]`, and Elementor merges that default
+	 * into whatever is stored when the settings are read back. Writing a partial shape therefore round
+	 * trips as a different array than the one that was sent, which reads as a failed write.
+	 */
+	public function slider_shape( string $unit, $size ): array {
+		return [ 'unit' => $unit, 'size' => $size, 'sizes' => [] ];
 	}
 
 	/**

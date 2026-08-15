@@ -66,7 +66,7 @@ $required = [
 		"'context' =>", "'aiContextResolver' => 'smart-v1'", "'dynamicTagDiscovery' => 'registry-info-v2'", "'elementorProModuleDiscovery' => 'named-modules-v2'",
 		'/skills/(?P<element>', 'widget_skills', 'resolve_widget_skill', "'widgetSkillRuntime' => 'runtime-v1'", 'deterministicSkillCommands',
 	],
-	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query', 'cresco-layer-snapshot-download', 'Download full Elementor snapshot', '/elementor-snapshot/section/', '/elementor-snapshot/record/', 'cresco-layer-history-refresh', 'cresco-layer-copy-instructions' ],
+	'includes/Admin/AdminPage.php' => [ 'Elementor Configuration & Full Runtime Snapshot', 'cresco-layer-catalog-load', 'cresco-layer-catalog-query', 'cresco-layer-snapshot-download', 'Download full Elementor snapshot', '/elementor-snapshot/section/', '/elementor-snapshot/record/', 'cresco-layer-history-refresh', 'cresco-layer-copy-instructions', 'cresco-layer-ss-import', 'cresco-layer-ss-verify', 'Elementor Global Settings' ],
 	'includes/Support/Assets.php' => [ 'elementor/editor/after_enqueue_scripts', 'cresco-layer-editor', 'cresco-layer-skills', 'assets/skills.js', 'assets/skills.css' ],
 	'includes/Audit/Auditor.php' => [ 'missing-alt', 'multiple-h1', 'large-dom' ],
 	'includes/AI/PatchHistory.php' => [
@@ -96,9 +96,14 @@ $required = [
 	'includes/SiteSettings/Diff/DiffEngine.php' => [ 'changed', 'canonical_repeater', 'equivalent', 'hash' ],
 	'includes/SiteSettings/SiteSettingsEngine.php' => [
 		"'status' => 'no_op'", 'verification_failed', 'persist_ownership', 'validate_spec',
-		'$this->cache->clear()', 'rolledBack',
+		'$this->cache->clear()', 'verify_only', 'private function rollback', "'attempted' => true", 'health',
 	],
-	'includes/SiteSettings/RESTController.php' => [ 'manage_options', '/site-settings/apply', '/site-settings/preview' ],
+	'includes/SiteSettings/RESTController.php' => [ 'manage_options', '/site-settings/apply', '/site-settings/preview', '/site-settings/health', '/site-settings/verify' ],
+	'includes/SiteSettings/Verify/ValueNormalizer.php' => [ 'slider', 'dimensions', 'gaps', 'repeater', 'css_expression', 'satisfies' ],
+	'includes/SiteSettings/Verify/Verifier.php' => [
+		'semanticPath', 'elementorControl', 'controlType', 'expectedNormalized', 'actualNormalized',
+		'semantic_value_mismatch', 'SKIPPED_FROM_VERIFICATION', 'MISMATCH_COUNT',
+	],
 ];
 
 // The Site Settings engine must reach Elementor through the Kit document, never through post meta.

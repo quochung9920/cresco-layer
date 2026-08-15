@@ -24,8 +24,31 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 	private array $current;
 	private array $skipped = [];
 	private array $notes = [];
+	private array $preserved = [];
+	/** Elementor control name => Cresco semantic path, so a mismatch can be reported in profile terms. */
+	private array $paths = [];
 	/** Semantic colour key => resolved literal, built while mapping the palette. */
 	private array $palette = [];
+
+	/**
+	 * Semantic names for controls written directly rather than through a put_* helper. A control with
+	 * no entry falls back to its own name, so the plan is never incomplete — verification scope is
+	 * derived from it, and a missing entry would silently drop a control from being checked.
+	 */
+	private const DIRECT_PATHS = [
+		'system_colors' => 'designSystem.colors.system',
+		'custom_colors' => 'designSystem.colors.custom',
+		'system_typography' => 'designSystem.typography.system',
+		'default_generic_fonts' => 'designSystem.typography.genericFonts',
+		'body_background_background' => 'settings.background.bodyBackground',
+		'body_background_color' => 'settings.background.bodyBackground',
+		'container_width' => 'settings.layout.contentWidth',
+		'container_padding' => 'settings.layout.containerPadding',
+		'active_breakpoints' => 'settings.layout.breakpoints.active',
+		'viewport_mobile' => 'settings.layout.breakpoints.mobile',
+		'viewport_tablet' => 'settings.layout.breakpoints.tablet',
+		'custom_css' => 'settings.customCss.fluidTokens',
+	];
 
 	public function __construct(
 		private KitGateway $gateway,
@@ -48,6 +71,8 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 	public function build( array $spec ): array {
 		$this->skipped = [];
 		$this->notes = [];
+		$this->preserved = [];
+		$this->paths = [];
 		$settings = [];
 
 		$this->map_colors( $spec, $settings );
@@ -62,7 +87,37 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 		$this->map_hello( $spec, $settings );
 		$this->map_custom_css( $spec, $settings );
 
-		return [ 'settings' => $settings, 'skipped' => $this->skipped, 'notes' => $this->notes ];
+		return [
+			'settings' => $settings,
+			'plan' => $this->plan( $settings ),
+			'skipped' => $this->skipped,
+			'preserved' => $this->preserved,
+			'notes' => $this->notes,
+		];
+	}
+
+	/**
+	 * One entry per control Cresco is actually writing, carrying the semantic name and the runtime
+	 * control type. This is the verification scope: built from what was written rather than from what
+	 * the profile hoped to write, so an unsupported or preserved control can never enter it.
+	 */
+	private function plan( array $settings ): array {
+		$plan = [];
+		foreach ( $settings as $control => $value ) {
+			$control = (string) $control;
+			$plan[] = [
+				'semanticPath' => $this->paths[ $control ] ?? self::DIRECT_PATHS[ $control ] ?? $control,
+				'control' => $control,
+				'controlType' => (string) ( $this->capabilities->control( $control )['type'] ?? '' ),
+				'value' => $value,
+			];
+		}
+		return $plan;
+	}
+
+	private function path( string $control, string $semantic ): void {
+		if ( '' === $semantic ) { return; }
+		$this->paths[ $control ] = $semantic;
 	}
 
 	public function capabilities(): CapabilityReport { return $this->capabilities; }
@@ -265,7 +320,9 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 			$this->put_color( $settings, 'form_field_focus_text_color', $focus['textColor'] ?? null, 'themeStyle.formFields.focus.textColor' );
 			$this->put_color( $settings, 'form_field_focus_background_color', $focus['background'] ?? null, 'themeStyle.formFields.focus.background' );
 			$this->put_color( $settings, 'form_field_focus_accent_color', $focus['accentColor'] ?? null, 'themeStyle.formFields.focus.accentColor' );
-			$this->put_scalar( $settings, 'form_field_focus_transition_duration', isset( $focus['transitionMs'] ) ? [ 'unit' => 'px', 'size' => (int) $focus['transitionMs'] ] : null );
+			if ( isset( $focus['transitionMs'] ) ) {
+				$this->put_number_unit( $settings, 'form_field_focus_transition_duration', (int) $focus['transitionMs'], 'px' );
+			}
 		}
 	}
 
@@ -296,9 +353,9 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 
 		if ( $this->capabilities->has( 'container_width' ) ) {
 			if ( $this->capabilities->supports_unit( 'container_width', 'rem' ) ) {
-				$settings['container_width'] = [ 'unit' => 'rem', 'size' => (float) ( $layout['contentWidthRem'] ?? 82 ) ];
+				$settings['container_width'] = $this->factory->slider_shape( 'rem', (float) ( $layout['contentWidthRem'] ?? 82 ) );
 			} else {
-				$settings['container_width'] = [ 'unit' => 'px', 'size' => (float) ( $layout['contentWidthPxFallback'] ?? 1312 ) ];
+				$settings['container_width'] = $this->factory->slider_shape( 'px', (float) ( $layout['contentWidthPxFallback'] ?? 1312 ) );
 				$this->notes[] = [ 'key' => 'settings.layout.contentWidth', 'note' => 'rem_unsupported_used_px' ];
 			}
 		} else {
@@ -320,9 +377,10 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 
 		// Page title selector, stretched container and default page template are preserve-by-default;
 		// forcing a template can strip a theme's header/footer or break WooCommerce templates.
-		foreach ( [ 'pageTitleSelector' => 'page_title_selector', 'stretchedSectionContainer' => 'stretched_section_container', 'defaultPageTemplate' => 'default_page_template' ] as $key => $control ) {
+		foreach ( [ 'pageTitleSelector', 'stretchedSectionContainer', 'defaultPageTemplate' ] as $key ) {
 			if ( ! empty( $layout[ $key ]['preserve'] ) ) {
-				$this->notes[] = [ 'key' => 'settings.layout.' . $key, 'note' => 'preserved_by_profile' ];
+				// Preserved values were never requested, so they must not enter the verification scope.
+				$this->preserved[] = [ 'key' => 'settings.layout.' . $key, 'reason' => 'preserved_by_profile' ];
 			}
 		}
 	}
@@ -410,7 +468,7 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 				if ( $this->capabilities->has( $control ) ) {
 					$unit = $this->capabilities->supports_unit( $control, 'rem' ) ? 'rem' : 'px';
 					$size = 'rem' === $unit ? (float) $definition['contentWidthRem'] : (float) $definition['contentWidthRem'] * 16;
-					$settings[ $control ] = [ 'unit' => $unit, 'size' => $size ];
+					$settings[ $control ] = $this->factory->slider_shape( $unit, $size );
 				}
 			}
 			if ( ! empty( $definition['logoWidth'] ) ) {
@@ -508,6 +566,7 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 		if ( ! $this->capabilities->has( $control ) ) { if ( '' !== $key ) { $this->skip( $key, 'unsupported_control' ); } return; }
 		$resolved = $this->resolve_color( $value );
 		if ( null === $resolved ) { $this->skip( $key, 'unresolved_color' ); return; }
+		$this->path( $control, $key );
 		$settings[ $control ] = $resolved;
 	}
 
@@ -521,15 +580,18 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 		$settings[ $control ] = $value;
 	}
 
+	/** An empty $unit means the control has no unit switcher; leave the key to Elementor's default. */
 	private function put_number_unit( array &$settings, string $control, $value, string $unit ): void {
 		if ( null === $value ) { return; }
 		if ( ! $this->capabilities->has( $control ) ) { return; }
-		$settings[ $control ] = [ 'unit' => $unit, 'size' => (float) $value ];
+		$shape = $this->factory->slider_shape( $unit, (float) $value );
+		if ( '' === $unit ) { unset( $shape['unit'] ); }
+		$settings[ $control ] = $shape;
 	}
 
 	private function put_size_px( array &$settings, string $control, float $px ): void {
 		if ( ! $this->capabilities->has( $control ) ) { return; }
-		$settings[ $control ] = [ 'unit' => 'px', 'size' => $px ];
+		$settings[ $control ] = $this->factory->slider_shape( 'px', $px );
 	}
 
 	/**
@@ -547,6 +609,7 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 			$fallback_unit
 		);
 		if ( ! $result['fluid'] ) { $this->notes[] = [ 'key' => $key, 'note' => $result['reason'] ]; }
+		$this->path( $control, $key );
 		$settings[ $control ] = $result['value'];
 	}
 
@@ -559,6 +622,7 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 			false
 		);
 		if ( ! $result['fluid'] ) { $this->notes[] = [ 'key' => $key, 'note' => $result['reason'] ]; }
+		$this->path( $control, $key );
 		$settings[ $control ] = $result['value'];
 	}
 
@@ -567,6 +631,7 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 		if ( ! $this->capabilities->has( $control ) ) { $this->skip( $key, 'unsupported_control' ); return; }
 		$unit = $this->capabilities->supports_unit( $control, 'rem' ) ? 'rem' : 'px';
 		$size = 'rem' === $unit ? $rem : $rem * 16;
+		$this->path( $control, $key );
 		$settings[ $control ] = [
 			'unit' => $unit, 'top' => (string) $size, 'right' => (string) $size,
 			'bottom' => (string) $size, 'left' => (string) $size, 'isLinked' => true,
@@ -575,6 +640,7 @@ final class ElementorClassicKitAdapter implements SiteSettingsAdapter {
 
 	private function put_radius_px( array &$settings, string $control, float $px, string $key ): void {
 		if ( ! $this->capabilities->has( $control ) ) { $this->skip( $key, 'unsupported_control' ); return; }
+		$this->path( $control, $key );
 		$settings[ $control ] = [
 			'unit' => 'px', 'top' => (string) $px, 'right' => (string) $px,
 			'bottom' => (string) $px, 'left' => (string) $px, 'isLinked' => true,

@@ -31,7 +31,7 @@ final class DiffEngine {
 				$merged[ $key ] = $value;
 				continue;
 			}
-			if ( $this->equivalent( $current[ $key ], $value ) ) {
+			if ( $this->satisfies( $current[ $key ], $value ) ) {
 				$unchanged[] = $key;
 				continue;
 			}
@@ -59,6 +59,40 @@ final class DiffEngine {
 	 */
 	public function equivalent( $a, $b ): bool {
 		return $this->canonical( $a ) === $this->canonical( $b );
+	}
+
+	/**
+	 * True when $actual already carries everything $desired asks for.
+	 *
+	 * Deliberately not equality. Elementor merges each control's default into a value when settings
+	 * are read back — a slider gains `sizes`, a repeater row gains fields an addon registered — so an
+	 * exact comparison would report a change on every run and the engine would rewrite the Kit
+	 * forever. Cresco only owns the keys it declares; anything else in the stored value is somebody
+	 * else's and must neither be compared nor removed.
+	 */
+	public function satisfies( $actual, $desired ): bool {
+		if ( is_array( $desired ) ) {
+			if ( ! is_array( $actual ) ) { return false; }
+
+			if ( $this->is_repeater( $desired ) ) {
+				if ( ! $this->is_repeater( $actual ) ) { return false; }
+				$stored = [];
+				foreach ( $actual as $row ) { $stored[ (string) $row['_id'] ] = $row; }
+				foreach ( $desired as $row ) {
+					$id = (string) $row['_id'];
+					if ( ! isset( $stored[ $id ] ) ) { return false; }
+					if ( ! $this->satisfies( $stored[ $id ], $row ) ) { return false; }
+				}
+				return true;
+			}
+
+			foreach ( $desired as $key => $value ) {
+				if ( ! array_key_exists( $key, $actual ) ) { return false; }
+				if ( ! $this->satisfies( $actual[ $key ], $value ) ) { return false; }
+			}
+			return true;
+		}
+		return $this->equivalent( $actual, $desired );
 	}
 
 	private function canonical( $value ) {

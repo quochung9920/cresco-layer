@@ -74,6 +74,7 @@ final class AdminPage {
 			<nav class="cresco-layer-tabs" role="tablist" aria-label="<?php echo esc_attr__( 'Cresco Layer sections', 'cresco-layer' ); ?>">
 				<button type="button" class="cresco-layer-tab is-active" role="tab" aria-selected="true" data-cresco-tab="exchange"><?php echo esc_html__( 'AI Exchange', 'cresco-layer' ); ?></button>
 				<?php if ( $can_manage ) : ?>
+					<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="site-settings"><?php echo esc_html__( 'Elementor Site Settings', 'cresco-layer' ); ?></button>
 					<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="standard"><?php echo esc_html__( 'Design Standard', 'cresco-layer' ); ?></button>
 				<?php endif; ?>
 				<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="history"><?php echo esc_html__( 'History', 'cresco-layer' ); ?></button>
@@ -142,6 +143,59 @@ final class AdminPage {
 			</div>
 
 			<?php if ( $can_manage ) : ?>
+				<div class="cresco-layer-tab-panel" data-cresco-tab-panel="site-settings" role="tabpanel" hidden>
+					<section class="cresco-layer-card">
+						<div class="cresco-layer-result-head">
+							<div>
+								<p class="cresco-layer-eyebrow"><?php echo esc_html__( 'Import / sync console', 'cresco-layer' ); ?></p>
+								<h2><?php echo esc_html__( 'Elementor Global Settings', 'cresco-layer' ); ?></h2>
+							</div>
+							<span id="cresco-layer-ss-status" aria-live="polite"></span>
+						</div>
+						<p class="description"><?php echo esc_html__( 'Configures Elementor’s own Site Settings from a Cresco profile, then hands control back. Colours, fonts, typography, buttons, forms and layout are still edited in Elementor → Site Settings; this screen only previews, imports and verifies.', 'cresco-layer' ); ?></p>
+
+						<h3><?php echo esc_html__( 'Environment', 'cresco-layer' ); ?></h3>
+						<div id="cresco-layer-ss-environment" class="cresco-layer-ss-env">
+							<p class="description"><?php echo esc_html__( 'Checking the Elementor runtime…', 'cresco-layer' ); ?></p>
+						</div>
+
+						<h3><?php echo esc_html__( 'Profile', 'cresco-layer' ); ?></h3>
+						<div class="cresco-layer-ss-controls">
+							<label for="cresco-layer-ss-profile"><?php echo esc_html__( 'Profile', 'cresco-layer' ); ?>
+								<select id="cresco-layer-ss-profile">
+									<option value="professional-commerce">professional-commerce</option>
+								</select>
+							</label>
+							<label for="cresco-layer-ss-mode"><?php echo esc_html__( 'Sync mode', 'cresco-layer' ); ?>
+								<select id="cresco-layer-ss-mode">
+									<option value="merge"><?php echo esc_html__( 'Merge — update declared values, preserve everything else', 'cresco-layer' ); ?></option>
+									<option value="sync-owned"><?php echo esc_html__( 'Sync owned — only resources Cresco created', 'cresco-layer' ); ?></option>
+								</select>
+							</label>
+						</div>
+
+						<div class="cresco-layer-actions">
+							<button class="button" id="cresco-layer-ss-preview"><?php echo esc_html__( 'Preview changes', 'cresco-layer' ); ?></button>
+							<button class="button button-primary" id="cresco-layer-ss-import"><?php echo esc_html__( 'Import to Elementor', 'cresco-layer' ); ?></button>
+							<button class="button" id="cresco-layer-ss-verify"><?php echo esc_html__( 'Verify current settings', 'cresco-layer' ); ?></button>
+						</div>
+						<p class="description"><?php echo esc_html__( 'Preview never writes. Import writes Elementor working data for the Kit and rolls back automatically if verification fails.', 'cresco-layer' ); ?></p>
+
+						<div id="cresco-layer-ss-result" class="cresco-layer-ss-result">
+							<div class="cresco-layer-empty">
+								<span class="cresco-layer-empty__icon" aria-hidden="true">⇄</span>
+								<p><?php echo esc_html__( 'No operation run yet.', 'cresco-layer' ); ?></p>
+								<p class="description"><?php echo esc_html__( 'Start with “Preview changes” to see what would be written.', 'cresco-layer' ); ?></p>
+							</div>
+						</div>
+
+						<details class="cresco-layer-ss-technical" id="cresco-layer-ss-technical" hidden>
+							<summary><?php echo esc_html__( 'Show technical details', 'cresco-layer' ); ?></summary>
+							<pre id="cresco-layer-ss-raw"></pre>
+						</details>
+					</section>
+				</div>
+
 				<div class="cresco-layer-tab-panel" data-cresco-tab-panel="standard" role="tabpanel" hidden>
 					<section class="cresco-layer-card">
 						<div class="cresco-layer-result-head">

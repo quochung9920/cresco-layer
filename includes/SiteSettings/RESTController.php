@@ -33,6 +33,22 @@ final class RESTController {
 		register_rest_route( 'cresco-layer/v1', '/site-settings/apply', [
 			'methods' => 'POST', 'callback' => [ $this, 'apply' ], 'permission_callback' => $permission,
 		] );
+		register_rest_route( 'cresco-layer/v1', '/site-settings/health', [
+			'methods' => 'GET', 'callback' => [ $this, 'health' ], 'permission_callback' => $permission,
+		] );
+		register_rest_route( 'cresco-layer/v1', '/site-settings/verify', [
+			'methods' => 'POST', 'callback' => [ $this, 'verify' ], 'permission_callback' => $permission,
+		] );
+	}
+
+	public function health(): WP_REST_Response|WP_Error {
+		try { return new WP_REST_Response( $this->engine->health() ); }
+		catch ( \Throwable $error ) { return $this->error( $error ); }
+	}
+
+	public function verify( WP_REST_Request $request ): WP_REST_Response|WP_Error {
+		try { return new WP_REST_Response( $this->engine->verify_only( $this->spec( $request ) ) ); }
+		catch ( \Throwable $error ) { return $this->error( $error ); }
 	}
 
 	public function can_manage(): bool {

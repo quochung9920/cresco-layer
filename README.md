@@ -201,6 +201,22 @@ Two properties shape it. **Nothing is written unless the diff says something cha
 
 The spec carries semantic intent — `accent`, `h1`, `surface` — not Elementor control names. Mapping is the adapter's job, behind `SiteSettingsAdapter`, so a future Atomic/V4 model gets its own implementation rather than branches inside a shared one.
 
+### Import / sync console
+
+**Cresco Layer → Elementor Site Settings** is an operations console, not a design editor. It shows the discovered environment, previews a change set, imports it, and verifies the result. Colours, fonts, typography, buttons, forms and layout are still edited in Elementor → Site Settings; nothing here offers a per-value input.
+
+Preview and Verify never write and never invalidate cache. Import is confirmed, locks its buttons while running, and reports one of four states plainly: **updated**, **no_op** (already synchronised — not an error), **verification_failed**, or a hard failure.
+
+### Verification
+
+`save()` returning true is not proof. After writing, the Kit is read back and every planned control is compared semantically.
+
+Scope is exactly what Cresco planned to write. A control the running Elementor does not register, a value the profile preserves, and any setting owned by a theme or addon were never requested, so they are reported as **skipped** or **preserved** and cannot fail the transaction.
+
+Comparison is semantic because Elementor does not store back what it was given: a slider gains `sizes` from its control default, numbers move between `16`, `"16"` and `16.0`, a dimensions value carries editor-only `isLinked`, hex colours change case, repeater rows gain addon fields, and CSS gains formatting. Each control type has its own rule — `sizes` is noise on a slider but real on a repeater row, whitespace is noise in CSS but not in a font family.
+
+When something genuinely does not match, the result carries enough to fix it without re-running: semantic path, Elementor control, control type, raw and normalised values on both sides, and a machine-readable reason. A failed verification rolls back and reports whether the rollback itself was confirmed.
+
 ### Capability discovery
 
 Every control is checked against the running Kit before it is written; a control that does not exist is reported as `skipped` with a reason rather than written under a key nothing reads. Optional surfaces — Hello Theme header/footer, Elementor Pro custom CSS and page transitions — are detected the same way, so a Free install on a non-Hello theme still completes a full pass.

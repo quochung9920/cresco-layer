@@ -13,6 +13,8 @@ use CrescoLayer\SiteSettings\Support\ClampValidator;
 use CrescoLayer\SiteSettings\Support\Logger;
 use CrescoLayer\SiteSettings\Support\ManagedCssBlock;
 use CrescoLayer\SiteSettings\Support\ValueFactory;
+use CrescoLayer\SiteSettings\Verify\ValueNormalizer;
+use CrescoLayer\SiteSettings\Verify\Verifier;
 
 /**
  * Runs one Site Settings transaction end to end.
@@ -32,6 +34,8 @@ final class SiteSettingsEngine {
 	private DiffEngine $diff;
 	private OwnershipRegistry $registry;
 	private CacheInvalidator $cache;
+	private Verifier $verifier;
+	private ValueNormalizer $normalizer;
 
 	public function __construct(
 		private KitGateway $gateway,
@@ -42,6 +46,39 @@ final class SiteSettingsEngine {
 		$this->diff = $diff ?? new DiffEngine();
 		$this->registry = $registry ?? new OwnershipRegistry();
 		$this->cache = $cache ?? new ElementorCache();
+		$this->normalizer = new ValueNormalizer();
+		$this->verifier = new Verifier( $this->normalizer );
+	}
+
+	private function adapter(): ElementorClassicKitAdapter {
+		return new ElementorClassicKitAdapter(
+			$this->gateway,
+			$this->registry,
+			new ValueFactory( new ClampValidator() ),
+			new ManagedCssBlock()
+		);
+	}
+
+	/** Lightweight environment report for the admin console; reads nothing beyond the Kit. */
+	public function health(): array {
+		$available = $this->gateway->is_available();
+		$adapter = $available ? $this->adapter() : null;
+		$supports = $adapter && $adapter->supports();
+		return [
+			'engineLoaded' => true,
+			'elementorLoaded' => class_exists( \Elementor\Plugin::class ),
+			'kitResolved' => $available,
+			'kitId' => $this->gateway->kit_id(),
+			'adapterResolved' => $supports,
+			'adapter' => $supports ? $adapter->id() : null,
+			'profileLoaded' => ProfessionalCommerceProfile::ID,
+			'mode' => Spec::MODE_MERGE,
+			'modes' => Spec::MODES,
+			'capabilitiesDiscovered' => $supports,
+			'capabilities' => $supports ? $adapter->capabilities()->summary() : [],
+			'registryValid' => $this->registry->kit_id() === $this->gateway->kit_id() || 0 === $this->registry->kit_id(),
+			'errors' => $this->gateway->errors(),
+		];
 	}
 
 	/** The built-in profile spec, for callers that want to inspect before applying. */
@@ -72,9 +109,7 @@ final class SiteSettingsEngine {
 		$kit_id = $this->gateway->kit_id();
 		$this->registry->bind_kit( $kit_id );
 
-		$factory = new ValueFactory( new ClampValidator() );
-		$css = new ManagedCssBlock();
-		$adapter = new ElementorClassicKitAdapter( $this->gateway, $this->registry, $factory, $css );
+		$adapter = $this->adapter();
 
 		if ( ! $adapter->supports() ) {
 			return $this->failure( 'The active Kit is not a Classic Elementor Kit; no adapter can drive it.', $this->gateway->errors(), $log );
@@ -92,7 +127,11 @@ final class SiteSettingsEngine {
 
 		$built = $adapter->build( $spec );
 		$desired = $built['settings'];
-		$log->add_many( 'skipped', $built['skipped'] );
+		$plan = $built['plan'];
+		$skipped = $built['skipped'];
+		$preserved = $built['preserved'];
+		$log->add_many( 'skipped', $skipped );
+		$log->add_many( 'preserved', $preserved );
 		$log->add_many( 'notes', $built['notes'] );
 
 		$comparison = $this->diff->compare( $current, $desired );
@@ -104,68 +143,66 @@ final class SiteSettingsEngine {
 			'created' => count( $comparison['created'] ),
 			'updated' => count( $comparison['updated'] ),
 			'unchanged' => count( $comparison['unchanged'] ),
-			'skipped' => count( $built['skipped'] ),
+			'skipped' => count( $skipped ),
+			'preserved' => count( $preserved ),
+		];
+
+		$base = [
+			'schema' => Spec::SCHEMA,
+			'adapter' => $adapter->id(),
+			'profile' => (string) ( $spec['profile'] ?? '' ),
+			'mode' => (string) ( $spec['mode'] ?? Spec::MODE_MERGE ),
+			'kitId' => $kit_id,
+			'summary' => $summary,
+			'skipped' => $skipped,
+			'preserved' => $preserved,
+			'capabilities' => $adapter->capabilities()->summary(),
+			'warnings' => [],
+			'errors' => [],
 		];
 
 		if ( ! $comparison['changed'] ) {
 			// Nothing to write, so nothing to invalidate either.
-			return [
+			return array_merge( $base, [
 				'success' => true,
 				'status' => 'no_op',
-				'schema' => Spec::SCHEMA,
-				'adapter' => $adapter->id(),
-				'kitId' => $kit_id,
-				'summary' => $summary,
-				'skipped' => $built['skipped'],
-				'capabilities' => $adapter->capabilities()->summary(),
+				'verification' => null,
+				'rollback' => null,
 				'cacheCleared' => false,
-				'warnings' => [],
-				'errors' => [],
 				'log' => $log->render( 'no_op' ),
-			];
+			] );
 		}
 
 		if ( ! $write ) {
-			return [
+			return array_merge( $base, [
 				'success' => true,
 				'status' => 'preview',
-				'schema' => Spec::SCHEMA,
-				'adapter' => $adapter->id(),
-				'kitId' => $kit_id,
-				'summary' => $summary,
 				'created' => $comparison['created'],
 				'updated' => $comparison['updated'],
-				'skipped' => $built['skipped'],
-				'capabilities' => $adapter->capabilities()->summary(),
+				'unchanged' => $comparison['unchanged'],
+				'verification' => null,
+				'rollback' => null,
 				'cacheCleared' => false,
-				'warnings' => [],
-				'errors' => [],
 				'log' => $log->render( 'preview' ),
-			];
+			] );
 		}
 
 		if ( ! $this->gateway->save( $comparison['merged'] ) ) {
 			return $this->failure( 'Elementor rejected the Kit save.', $this->gateway->errors(), $log );
 		}
 
-		$verification = $this->verify( $desired );
-		if ( ! $verification['verified'] ) {
-			$rolled_back = $this->gateway->save( $snapshot );
-			return [
+		$verification = $this->verify_plan( $plan );
+		if ( 'pass' !== $verification['status'] ) {
+			$rollback = $this->rollback( $snapshot, $plan );
+			return array_merge( $base, [
 				'success' => false,
 				'status' => 'verification_failed',
-				'schema' => Spec::SCHEMA,
-				'adapter' => $adapter->id(),
-				'kitId' => $kit_id,
-				'summary' => $summary,
-				'rolledBack' => $rolled_back,
-				'mismatched' => $verification['mismatched'],
-				'skipped' => $built['skipped'],
+				'verification' => $verification,
+				'rollback' => $rollback,
 				'cacheCleared' => false,
-				'warnings' => [],
-				'errors' => [ 'Saved Kit settings did not match the requested values.' ],
-				'log' => $log->render( 'verification_failed' ),
-			];
+				'errors' => [ sprintf( '%d of %d verified settings did not match the requested values.', $verification['mismatchCount'], $verification['scopeCount'] ) ],
+				'log' => $log->render( 'verification_failed' ) . "\n\n" . $this->verifier->render( $verification, $skipped, $preserved, $rollback ),
+			] );
 		}
 
 		// One invalidation for the whole transaction, after the write is known to be good.
@@ -173,36 +210,83 @@ final class SiteSettingsEngine {
 		$this->persist_ownership( $desired );
 		$this->registry->record_hash( $this->diff->hash( $desired ) );
 
-		return [
+		return array_merge( $base, [
 			'success' => true,
 			'status' => 'updated',
-			'schema' => Spec::SCHEMA,
-			'adapter' => $adapter->id(),
-			'kitId' => $kit_id,
-			'summary' => $summary,
 			'created' => $comparison['created'],
 			'updated' => $comparison['updated'],
-			'skipped' => $built['skipped'],
-			'capabilities' => $adapter->capabilities()->summary(),
+			'verification' => $verification,
+			'rollback' => null,
 			'cacheCleared' => $cleared,
 			'cacheClears' => $this->cache->clears(),
+			'log' => $log->render( 'success' ) . "\n\n" . $this->verifier->render( $verification, $skipped, $preserved, null ),
+		] );
+	}
+
+	/**
+	 * Verify the current Kit against the profile without writing anything.
+	 *
+	 * Separate from apply so a reviewer can ask "does the live Kit still match the standard" at any
+	 * time — for example after someone edited Site Settings by hand.
+	 */
+	public function verify_only( ?array $spec = null ): array {
+		$spec = $spec ?? $this->profile_spec();
+		$invalid = $this->validate_spec( $spec );
+		if ( null !== $invalid ) { return $this->failure( $invalid, [], new Logger() ); }
+		if ( ! $this->gateway->is_available() ) {
+			return $this->failure( 'Elementor has no readable active Kit.', $this->gateway->errors(), new Logger() );
+		}
+
+		$adapter = $this->adapter();
+		if ( ! $adapter->supports() ) {
+			return $this->failure( 'The active Kit is not a Classic Elementor Kit.', $this->gateway->errors(), new Logger() );
+		}
+
+		$built = $adapter->build( $spec );
+		$verification = $this->verifier->verify( $built['plan'], $this->gateway->settings() );
+
+		return [
+			'success' => 'pass' === $verification['status'],
+			'status' => 'pass' === $verification['status'] ? 'verified' : 'verification_failed',
+			'schema' => Spec::SCHEMA,
+			'adapter' => $adapter->id(),
+			'profile' => (string) ( $spec['profile'] ?? '' ),
+			'kitId' => $this->gateway->kit_id(),
+			'verification' => $verification,
+			'skipped' => $built['skipped'],
+			'preserved' => $built['preserved'],
+			'capabilities' => $adapter->capabilities()->summary(),
+			'rollback' => null,
+			'cacheCleared' => false,
 			'warnings' => [],
 			'errors' => [],
-			'log' => $log->render( 'success' ),
+			'log' => $this->verifier->render( $verification, $built['skipped'], $built['preserved'], null ),
 		];
 	}
 
-	/** Read the Kit back and confirm every managed key really holds what was requested. */
-	private function verify( array $desired ): array {
+	/** Restore the pre-apply snapshot and confirm the restore actually took. */
+	private function rollback( array $snapshot, array $plan ): array {
+		$saved = $this->gateway->save( $snapshot );
+		if ( ! $saved ) {
+			return [ 'attempted' => true, 'success' => false, 'status' => 'failed', 'verified' => false ];
+		}
 		$this->gateway->refresh();
-		$saved = $this->gateway->settings();
-		$mismatched = [];
-		foreach ( $desired as $key => $value ) {
-			if ( ! array_key_exists( $key, $saved ) || ! $this->diff->equivalent( $saved[ $key ], $value ) ) {
-				$mismatched[] = $key;
+		$restored = $this->gateway->settings();
+		$still_applied = 0;
+		foreach ( $plan as $entry ) {
+			$control = (string) ( $entry['control'] ?? '' );
+			if ( '' === $control || ! array_key_exists( $control, $snapshot ) ) { continue; }
+			if ( ! $this->normalizer->satisfies( $restored[ $control ] ?? null, $snapshot[ $control ], (string) ( $entry['controlType'] ?? '' ) ) ) {
+				$still_applied++;
 			}
 		}
-		return [ 'verified' => [] === $mismatched, 'mismatched' => $mismatched ];
+		return [ 'attempted' => true, 'success' => true, 'status' => 'success', 'verified' => 0 === $still_applied ];
+	}
+
+	/** Read the Kit back and check every planned write, in profile terms. */
+	private function verify_plan( array $plan ): array {
+		$this->gateway->refresh();
+		return $this->verifier->verify( $plan, $this->gateway->settings() );
 	}
 
 	/**

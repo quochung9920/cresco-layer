@@ -276,6 +276,47 @@
 .cresco-layer-diff__new { color:var(--cl-success); background:var(--cl-success-soft); }
 .cresco-layer-diff tr.is-noop .cresco-layer-diff__old, .cresco-layer-diff tr.is-noop .cresco-layer-diff__new { color:var(--cl-text-3); background:var(--cl-surface-2); }
 
+/* ---------- Elementor Site Settings console ---------- */
+
+.cresco-layer-ss-env { margin-bottom:18px; }
+.cresco-layer-ss-env-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:9px; }
+.cresco-layer-ss-env-card {
+	display:grid; gap:3px; padding:12px 13px;
+	border:1px solid var(--cl-border); border-left:3px solid var(--cl-success);
+	border-radius:var(--cl-radius-s); background:var(--cl-surface-2);
+}
+.cresco-layer-ss-env-card.is-warning { border-left-color:var(--cl-warning); }
+.cresco-layer-ss-env-card span { color:var(--cl-text-3); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+.cresco-layer-ss-env-card strong { color:var(--cl-text); font-size:13px; }
+
+.cresco-layer-ss-caps { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:6px; margin-top:10px; }
+.cresco-layer-ss-cap {
+	display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 11px;
+	border:1px solid var(--cl-border); border-radius:var(--cl-radius-s); background:var(--cl-surface);
+}
+.cresco-layer-ss-cap span { color:var(--cl-text-2); font-size:12px; }
+
+.cresco-layer-ss-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:4px; }
+.cresco-layer-ss-controls label { display:grid; gap:6px; font-size:12px; }
+
+.cresco-layer-ss-result { margin-top:18px; }
+.cresco-layer-ss-headline { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+.cresco-layer-ss-headline strong { color:var(--cl-text); font-size:14px; }
+
+.cresco-layer-ss-technical { margin-top:16px; border:1px solid var(--cl-border); border-radius:var(--cl-radius-s); background:var(--cl-surface-2); }
+.cresco-layer-ss-technical[hidden] { display:none; }
+.cresco-layer-ss-technical > summary { padding:10px 13px; color:var(--cl-text-2); font-size:12px; cursor:pointer; }
+.cresco-layer-ss-technical pre {
+	max-height:420px; overflow:auto; margin:0; padding:12px 14px;
+	border-top:1px solid var(--cl-border); background:var(--cl-code-bg); color:var(--cl-code-text);
+	font:11px/1.55 var(--cl-font-mono); white-space:pre-wrap; word-break:break-word;
+}
+
+@media (max-width:1100px) { .cresco-layer-ss-env-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:900px) {
+	.cresco-layer-ss-env-grid, .cresco-layer-ss-controls { grid-template-columns:1fr; }
+}
+
 /* ---------- Design standard ---------- */
 
 .cresco-layer-subtabs { display:flex; flex-wrap:wrap; gap:4px; margin:16px 0 4px; padding:4px; border:1px solid var(--cl-border); border-radius:10px; background:var(--cl-surface-2); width:fit-content; }

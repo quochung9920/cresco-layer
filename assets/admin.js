@@ -214,6 +214,8 @@
 			if(!known)name=tabs[0].getAttribute('data-cresco-tab');
 			tabs.forEach(function(tab){var active=tab.getAttribute('data-cresco-tab')===name;tab.classList.toggle('is-active',active);tab.setAttribute('aria-selected',active?'true':'false');});
 			panels.forEach(function(panel){panel.hidden=panel.getAttribute('data-cresco-tab-panel')!==name;});
+			// Discovery is lightweight but still a request; only run it when the console is opened.
+			if('site-settings'===name)loadEnvironment();
 			if(persist){try{window.localStorage.setItem('crescoLayerAdminTab',name);}catch(e){}}
 		}
 		tabs.forEach(function(tab){tab.addEventListener('click',function(){activate(tab.getAttribute('data-cresco-tab'),true);});});
@@ -556,6 +558,206 @@
 	if(standardRun)standardRun.addEventListener('click',runStandard);
 	if(standardPreview)standardPreview.addEventListener('click',previewStandard);
 	if(standardApply)standardApply.addEventListener('click',applyStandard);
+
+	/* ---------- Elementor Site Settings import/sync console ---------- */
+
+	var ssResult=document.getElementById('cresco-layer-ss-result');
+	var ssStatus=document.getElementById('cresco-layer-ss-status');
+	var ssEnvironment=document.getElementById('cresco-layer-ss-environment');
+	var ssProfile=document.getElementById('cresco-layer-ss-profile');
+	var ssMode=document.getElementById('cresco-layer-ss-mode');
+	var ssTechnical=document.getElementById('cresco-layer-ss-technical');
+	var ssRaw=document.getElementById('cresco-layer-ss-raw');
+	var ssButtons=['cresco-layer-ss-preview','cresco-layer-ss-import','cresco-layer-ss-verify'].map(function(id){return document.getElementById(id);});
+	var ssBusy=false;
+	var ssLoaded=false;
+
+	function setSsStatus(text,tone){if(!ssStatus)return;ssStatus.textContent=text||'';ssStatus.className=tone?'is-'+tone:'';}
+	function ssLock(locked){
+		ssBusy=locked;
+		ssButtons.forEach(function(button){if(button)button.disabled=locked;});
+	}
+	function ssBody(){
+		return JSON.stringify({spec:null,profile:ssProfile?ssProfile.value:'',mode:ssMode?ssMode.value:'merge'});
+	}
+	function ssShowRaw(data){
+		if(!ssTechnical||!ssRaw)return;
+		ssRaw.textContent=pretty(data);
+		ssTechnical.hidden=false;
+	}
+	function ssCapabilityRow(label,supported){
+		var row=document.createElement('div');row.className='cresco-layer-ss-cap';
+		var name=document.createElement('span');name.textContent=label;
+		var state=badge(supported?'supported':'unsupported',supported?'success':'neutral');
+		row.appendChild(name);row.appendChild(state);
+		return row;
+	}
+	function renderEnvironment(data){
+		if(!ssEnvironment)return;clearNode(ssEnvironment);
+		var grid=document.createElement('div');grid.className='cresco-layer-ss-env-grid';
+		[['Elementor',data.elementorLoaded?'Connected':'Not available',data.elementorLoaded],
+		 ['Active Kit',data.kitId?('#'+data.kitId):'Not resolved',!!data.kitResolved],
+		 ['Adapter',data.adapter||'None',!!data.adapterResolved],
+		 ['Profile',data.profileLoaded||'—',!!data.profileLoaded],
+		 ['Registry',data.registryValid?'Valid':'Rebuilding',!!data.registryValid]].forEach(function(item){
+			var card=document.createElement('div');card.className='cresco-layer-ss-env-card'+(item[2]?'':' is-warning');
+			var label=document.createElement('span');label.textContent=item[0];
+			var value=document.createElement('strong');value.textContent=item[1];
+			card.appendChild(label);card.appendChild(value);grid.appendChild(card);
+		});
+		ssEnvironment.appendChild(grid);
+
+		var caps=data.capabilities||{};
+		var capBox=document.createElement('div');capBox.className='cresco-layer-ss-caps';
+		[['Hello Header',caps.helloHeader],['Hello Footer',caps.helloFooter],['Custom CSS',caps.customCss],['Lightbox',caps.lightbox],['Page Transitions',caps.pageTransitions]].forEach(function(item){
+			capBox.appendChild(ssCapabilityRow(item[0],!!item[1]));
+		});
+		ssEnvironment.appendChild(capBox);
+
+		if(!data.kitResolved){
+			var warn=document.createElement('p');warn.className='cresco-layer-catalog-load-error';
+			warn.textContent='Elementor has no writable active Kit, so import is unavailable.';
+			ssEnvironment.appendChild(warn);
+			ssButtons.forEach(function(button){if(button)button.disabled=true;});
+		}
+	}
+	function loadEnvironment(){
+		if(ssLoaded||!ssEnvironment)return;
+		ssLoaded=true;
+		request('/site-settings/health').then(function(data){renderEnvironment(data);}).catch(function(error){
+			clearNode(ssEnvironment);
+			var bad=document.createElement('p');bad.className='cresco-layer-catalog-load-error';
+			bad.textContent=error&&error.message?error.message:String(error);
+			ssEnvironment.appendChild(bad);
+		});
+	}
+	function ssSummaryGrid(summary){
+		var grid=document.createElement('div');grid.className='cresco-layer-score-grid cresco-layer-score-grid--catalog';
+		[['Created',summary.created||0],['Updated',summary.updated||0],['Unchanged',summary.unchanged||0],['Skipped',summary.skipped||0],['Preserved',summary.preserved||0]].forEach(function(item){
+			var card=document.createElement('div');card.className='cresco-layer-score';
+			var v=document.createElement('strong');v.textContent=String(item[1]);
+			var l=document.createElement('span');l.textContent=item[0];
+			card.appendChild(v);card.appendChild(l);grid.appendChild(card);
+		});
+		return grid;
+	}
+	function ssList(title,items,tone){
+		if(!items||!items.length)return null;
+		var details=document.createElement('details');details.className='cresco-layer-catalog-config';
+		var summary=document.createElement('summary');summary.textContent=title+' · '+items.length;details.appendChild(summary);
+		var list=document.createElement('ul');list.className='cresco-layer-issues';
+		items.forEach(function(item){
+			var li=document.createElement('li');
+			if(tone)li.className='is-'+tone;
+			li.textContent=typeof item==='string'?item:((item.key||'')+(item.reason?' — '+item.reason:''));
+			list.appendChild(li);
+		});
+		details.appendChild(list);
+		return details;
+	}
+	function ssMismatchTable(verification){
+		var wrap=document.createElement('div');wrap.className='cresco-layer-diff-wrap';
+		var table=document.createElement('table');table.className='cresco-layer-diff';
+		var head=document.createElement('thead');head.innerHTML='<tr><th>Property</th><th>Expected</th><th>Actual</th><th>Reason</th></tr>';table.appendChild(head);
+		var body=document.createElement('tbody');
+		(verification.mismatches||[]).forEach(function(m){
+			var row=document.createElement('tr');
+			var prop=document.createElement('td');
+			var strong=document.createElement('strong');strong.textContent=m.semanticPath||m.elementorControl;
+			var small=document.createElement('small');small.textContent=m.elementorControl+' · '+(m.controlType||'unknown');
+			prop.appendChild(strong);prop.appendChild(small);
+			var exp=document.createElement('td');exp.className='cresco-layer-diff__new';exp.textContent=pretty(m.expectedNormalized);
+			var act=document.createElement('td');act.className='cresco-layer-diff__old';act.textContent=pretty(m.actualNormalized);
+			var why=document.createElement('td');why.textContent=m.reason||'';
+			row.appendChild(prop);row.appendChild(exp);row.appendChild(act);row.appendChild(why);
+			body.appendChild(row);
+		});
+		table.appendChild(body);wrap.appendChild(table);
+		return wrap;
+	}
+	function renderSsResult(data){
+		if(!ssResult)return;clearNode(ssResult);
+
+		var head=document.createElement('div');head.className='cresco-layer-ss-headline';
+		var chip=document.createElement('span');
+		var status=String(data.status||'');
+		var tone=data.success?(status==='no_op'?'is-muted':'is-positive'):'is-invalid';
+		chip.className='cresco-layer-chip '+tone;
+		chip.textContent=status.replace(/_/g,' ').toUpperCase();
+		head.appendChild(chip);
+		var title=document.createElement('strong');
+		title.textContent=status==='no_op'?'Elementor Site Settings are already synchronized.'
+			:status==='preview'?'Preview only — nothing was written.'
+			:status==='updated'?'Global settings imported successfully.'
+			:status==='verified'?'Current settings match the profile.'
+			:status==='verification_failed'?'Verification failed.'
+			:'Operation finished.';
+		head.appendChild(title);
+		ssResult.appendChild(head);
+
+		if(data.kitId){
+			var meta=document.createElement('p');meta.className='description';
+			meta.textContent='Kit #'+data.kitId+' · '+(data.adapter||'')+' · database write: '+((status==='updated')?'yes':'no')+' · cache cleared: '+(data.cacheCleared?'yes':'no');
+			ssResult.appendChild(meta);
+		}
+
+		if(data.summary)ssResult.appendChild(ssSummaryGrid(data.summary));
+
+		var verification=data.verification;
+		if(verification){
+			var vLine=document.createElement('p');vLine.className='description';
+			vLine.textContent='Verification: '+String(verification.status).toUpperCase()+' — '+verification.matchedCount+'/'+verification.scopeCount+' settings matched.';
+			ssResult.appendChild(vLine);
+			if(verification.mismatchCount){
+				var h=document.createElement('h3');h.textContent='Mismatches · '+verification.mismatchCount;ssResult.appendChild(h);
+				ssResult.appendChild(ssMismatchTable(verification));
+			}
+		}
+
+		if(data.rollback){
+			var rb=document.createElement('p');
+			rb.className='description';
+			rb.textContent='Rollback: '+String(data.rollback.status||'').toUpperCase()+(data.rollback.verified===false?' (restored state could not be fully confirmed)':'');
+			ssResult.appendChild(rb);
+		}
+
+		[['Created',data.created,null],['Updated',data.updated,null],['Skipped',data.skipped,'warning'],['Preserved',data.preserved,null]].forEach(function(item){
+			var block=ssList(item[0],item[1],item[2]);
+			if(block)ssResult.appendChild(block);
+		});
+
+		if((data.errors||[]).length){
+			var errors=document.createElement('ul');errors.className='cresco-layer-issues';
+			data.errors.forEach(function(message){var li=document.createElement('li');li.className='is-error';li.textContent=message;errors.appendChild(li);});
+			ssResult.appendChild(errors);
+		}
+
+		ssShowRaw(data);
+	}
+	function ssRun(path,label,tone){
+		if(ssBusy)return;
+		ssLock(true);
+		setSsStatus(label,'busy');
+		request(path,{method:'POST',body:ssBody()}).then(function(data){
+			renderSsResult(data);
+			var ok=data.success!==false;
+			setSsStatus(ok?'Done.':'Finished with problems.',ok?'success':'error');
+			if(ok&&tone)toast(tone,'success');
+		}).catch(function(error){
+			setSsStatus(error&&error.message?error.message:String(error),'error');
+		}).finally(function(){ssLock(false);});
+	}
+
+	var ssPreviewButton=document.getElementById('cresco-layer-ss-preview');
+	var ssImportButton=document.getElementById('cresco-layer-ss-import');
+	var ssVerifyButton=document.getElementById('cresco-layer-ss-verify');
+	if(ssPreviewButton)ssPreviewButton.addEventListener('click',function(){ssRun('/site-settings/preview','Building preview…','');});
+	if(ssVerifyButton)ssVerifyButton.addEventListener('click',function(){ssRun('/site-settings/verify','Verifying current settings…','');});
+	if(ssImportButton)ssImportButton.addEventListener('click',function(){
+		if(ssBusy)return;
+		if(!window.confirm('Import the profile into Elementor Site Settings?\n\nThis writes Elementor working data for the active Kit and rolls back automatically if verification fails.'))return;
+		ssRun('/site-settings/apply','Applying Site Settings…','Site settings imported. Open Elementor → Site Settings to review.');
+	});
 
 	initTabs();
 	initTheme();

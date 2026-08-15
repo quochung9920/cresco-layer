@@ -31,6 +31,8 @@ require_once $base . 'Registry/OwnershipRegistry.php';
 require_once $base . 'Adapter/SiteSettingsAdapter.php';
 require_once $base . 'Adapter/ElementorClassicKitAdapter.php';
 require_once $base . 'Diff/DiffEngine.php';
+require_once $base . 'Verify/ValueNormalizer.php';
+require_once $base . 'Verify/Verifier.php';
 require_once $base . 'Cache/CacheInvalidator.php';
 require_once $base . 'Cache/ElementorCache.php';
 require_once $base . 'Profiles/ProfessionalCommerceProfile.php';
@@ -61,9 +63,23 @@ final class FakeKitGateway implements KitGateway {
 	public function is_available(): bool { return $this->available; }
 	public function kit_id(): int { return $this->id; }
 	public function controls(): array { return $this->kitControls; }
-	public function settings(): array { return $this->kitSettings; }
 	public function errors(): array { return []; }
 	public function refresh(): void {}
+
+	/**
+	 * Elementor merges each control's default into the stored value when settings are read back, so a
+	 * slider always returns with `sizes` present whether or not it was written. Reproducing that here
+	 * is what makes this fake represent the real round trip: without it, a partial value written by
+	 * Cresco appears to survive intact, and a verification bug stays invisible until production.
+	 */
+	public function settings(): array {
+		$out = $this->kitSettings;
+		foreach ( $this->kitControls as $name => $control ) {
+			if ( 'slider' !== ( $control['type'] ?? '' ) || ! isset( $out[ $name ] ) || ! is_array( $out[ $name ] ) ) { continue; }
+			$out[ $name ] = array_merge( [ 'unit' => 'px', 'size' => '', 'sizes' => [] ], $out[ $name ] );
+		}
+		return $out;
+	}
 
 	public function save( array $settings ): bool {
 		if ( $this->refuseSave ) { return false; }
@@ -196,7 +212,20 @@ $gateway = new FakeKitGateway( kit_controls(), [
 $cache = new FakeCache();
 $first = run_engine( $gateway, $cache, $registry );
 
-eng_assert( true === $first['success'], 'A fresh Kit must apply successfully: ' . implode( ' | ', $first['errors'] ?? [] ) );
+/** A failing apply must print why, not just that it failed. */
+function describe_mismatches( array $result ): string {
+	$out = implode( ' | ', $result['errors'] ?? [] );
+	foreach ( $result['verification']['mismatches'] ?? [] as $mismatch ) {
+		$out .= sprintf(
+			"\n  %s [%s type=%s]\n    expected: %s\n    actual:   %s",
+			$mismatch['semanticPath'], $mismatch['elementorControl'], $mismatch['controlType'],
+			json_encode( $mismatch['expectedNormalized'] ), json_encode( $mismatch['actualNormalized'] )
+		);
+	}
+	return $out;
+}
+
+eng_assert( true === $first['success'], 'A fresh Kit must apply successfully: ' . describe_mismatches( $first ) );
 eng_assert( 'updated' === $first['status'], 'A fresh Kit must report updated, got ' . $first['status'] );
 eng_assert( 42 === $first['kitId'], 'The resolved Kit id must be reported.' );
 eng_assert( 'elementor-classic' === $first['adapter'], 'The Classic adapter must be reported.' );
@@ -262,6 +291,39 @@ eng_assert( str_contains( $saved['custom_css'], '.client-rule' ), 'User CSS must
 eng_assert( $css->has_block( $saved['custom_css'] ), 'The managed token block must be added.' );
 eng_assert( str_contains( $saved['custom_css'], '--cresco-fs-h1' ), 'Fluid tokens must be published.' );
 
+/* ---------- Regression: slider round trip ----------
+ * Elementor's slider default is [unit, size, sizes] and is merged into the stored value on read.
+ * Writing a partial shape made every slider come back "different", which failed verification for
+ * 37 controls on a real Kit while an unrealistic fake still passed. */
+
+eng_assert( array_key_exists( 'sizes', $saved['h1_typography_font_size'] ), 'A slider must be written with the complete Elementor shape, including sizes.' );
+eng_assert( array_key_exists( 'sizes', $saved['container_width'] ), 'container_width must carry the full slider shape.' );
+eng_assert( array_key_exists( 'sizes', $saved['space_between_widgets'] ), 'The widget gap must carry the full slider shape.' );
+
+$diff = new DiffEngine();
+$stored_by_elementor = [ 'unit' => 'custom', 'size' => 'clamp(1rem,2vw,2rem)', 'sizes' => [] ];
+$asked_for = [ 'unit' => 'custom', 'size' => 'clamp(1rem,2vw,2rem)' ];
+eng_assert( $diff->satisfies( $stored_by_elementor, $asked_for ), 'A default key Elementor adds must not count as a difference.' );
+eng_assert( ! $diff->equivalent( $stored_by_elementor, $asked_for ), 'Strict equality is what failed before; it must still be strict.' );
+eng_assert( ! $diff->satisfies( [ 'unit' => 'px', 'size' => 5, 'sizes' => [] ], $asked_for ), 'A genuinely different value must still be detected.' );
+eng_assert( ! $diff->satisfies( [ 'unit' => 'custom' ], $asked_for ), 'A missing declared key must be detected.' );
+
+// Repeater rows gain default fields the same way.
+eng_assert(
+	$diff->satisfies(
+		[ [ '_id' => 'a1', 'title' => 'Surface', 'color' => '#FFFFFF', 'addon_field' => 'x' ] ],
+		[ [ '_id' => 'a1', 'title' => 'Surface', 'color' => '#FFFFFF' ] ]
+	),
+	'An extra repeater field written by an addon must not count as a difference.'
+);
+eng_assert(
+	! $diff->satisfies(
+		[ [ '_id' => 'a1', 'title' => 'Surface', 'color' => '#000000' ] ],
+		[ [ '_id' => 'a1', 'title' => 'Surface', 'color' => '#FFFFFF' ] ]
+	),
+	'A changed repeater value must still be detected.'
+);
+
 /* ---------- Run 2 with the same input: NO_OP ---------- */
 
 $cache2 = new FakeCache();
@@ -304,10 +366,33 @@ $failed = ( new SiteSettingsEngine( $gateway4, new DiffEngine(), $registry4, $ca
 
 eng_assert( false === $failed['success'], 'A corrupted save must fail.' );
 eng_assert( 'verification_failed' === $failed['status'], 'Verification must catch a value Elementor changed.' );
-eng_assert( in_array( 'h1_color', $failed['mismatched'], true ), 'The mismatched key must be reported.' );
-eng_assert( true === $failed['rolledBack'], 'A failed verification must roll back.' );
 eng_assert( 0 === $cache4->count, 'A failed transaction must not clear the cache.' );
 eng_assert( 'keep' === $gateway4->settings()['existing'], 'Rollback must restore the snapshot.' );
+
+// Rollback must report what happened, not just that something went wrong.
+eng_assert( true === $failed['rollback']['attempted'], 'A failed verification must attempt rollback.' );
+eng_assert( true === $failed['rollback']['success'], 'The rollback must be reported as successful.' );
+eng_assert( 'success' === $failed['rollback']['status'], 'Rollback status must be machine-readable.' );
+
+// The diagnostic must be enough to fix the problem without re-running.
+$verification = $failed['verification'];
+eng_assert( 'failed' === $verification['status'], 'Verification status must be failed.' );
+eng_assert( $verification['scopeCount'] > 0, 'The verification scope must be reported.' );
+eng_assert( 1 === $verification['mismatchCount'], 'Exactly the corrupted control must mismatch, got ' . $verification['mismatchCount'] );
+eng_assert( $verification['matchedCount'] === $verification['scopeCount'] - 1, 'Every other control must have matched.' );
+
+$mismatch = $verification['mismatches'][0];
+foreach ( [ 'semanticPath', 'elementorControl', 'controlType', 'expectedRaw', 'actualRaw', 'expectedNormalized', 'actualNormalized', 'reason' ] as $field ) {
+	eng_assert( array_key_exists( $field, $mismatch ), 'A mismatch must report ' . $field . '.' );
+}
+eng_assert( 'h1_color' === $mismatch['elementorControl'], 'The mismatch must name the Elementor control.' );
+eng_assert( 'themeStyle.typography.h1.color' === $mismatch['semanticPath'], 'The mismatch must name the semantic property, got ' . $mismatch['semanticPath'] );
+eng_assert( 'color' === $mismatch['controlType'], 'The mismatch must report the runtime control type.' );
+eng_assert( '#BADBAD' === $mismatch['actualRaw'], 'The mismatch must show what Elementor actually stored.' );
+eng_assert( '#0F172A' === $mismatch['expectedRaw'], 'The mismatch must show what was requested.' );
+eng_assert( 'semantic_value_mismatch' === $mismatch['reason'], 'The mismatch must carry a machine-readable reason.' );
+eng_assert( str_contains( $failed['log'], 'MISMATCH_COUNT: 1' ), 'The log must lead with the mismatch count.' );
+eng_assert( str_contains( $failed['log'], 'h1_color' ), 'The log must name the mismatched control.' );
 
 /* ---------- A refused save fails cleanly ---------- */
 
@@ -382,5 +467,68 @@ eng_assert( 'preview' === $preview['status'], 'Preview must report preview statu
 eng_assert( 0 === $gateway8->saveCount, 'Preview must not save.' );
 eng_assert( 0 === $cache8->count, 'Preview must not clear the cache.' );
 eng_assert( ! empty( $preview['created'] ) || ! empty( $preview['updated'] ), 'Preview must list the pending changes.' );
+
+/* ---------- Verification scope excludes what was never requested ---------- */
+
+// Reproduces the reported environment: the Hello tab is registered, but this build of the theme does
+// not expose the menu colour/typography controls. They must land in Skipped, not in Errors.
+$partial_hello = $hello_controls;
+unset( $partial_hello['hello_header_menu_color'] );
+$scope_gateway = new FakeKitGateway( $partial_hello, [ 'system_colors' => [], 'custom_colors' => [] ] );
+$scoped = ( new SiteSettingsEngine( $scope_gateway, new DiffEngine(), fresh_registry(), new FakeCache() ) )->apply();
+
+eng_assert( true === $scoped['success'], 'Unsupported Hello controls must not fail the transaction: ' . describe_mismatches( $scoped ) );
+eng_assert( 'pass' === $scoped['verification']['status'], 'Verification must pass when only unsupported controls were skipped.' );
+
+$scoped_skips = array_column( $scoped['skipped'], 'key' );
+eng_assert( in_array( 'themeStyle.helloHeader.menuColor', $scoped_skips, true ), 'An unsupported Hello control must appear as skipped.' );
+foreach ( $scoped['verification']['matched'] as $path ) {
+	eng_assert( ! str_contains( $path, 'helloHeader.menuColor' ), 'A skipped control must never enter the verification scope.' );
+}
+
+// Preserved values are reported separately and are not verified.
+$preserved_keys = array_column( $scoped['preserved'], 'key' );
+eng_assert( in_array( 'settings.layout.defaultPageTemplate', $preserved_keys, true ), 'Preserved layout values must be reported.' );
+eng_assert( in_array( 'settings.layout.pageTitleSelector', $preserved_keys, true ), 'Every preserved value must be reported.' );
+foreach ( $scoped['verification']['matched'] as $path ) {
+	eng_assert( ! str_contains( $path, 'defaultPageTemplate' ), 'A preserved value must never enter the verification scope.' );
+}
+eng_assert( str_contains( $scoped['log'], 'SKIPPED_FROM_VERIFICATION' ), 'The log must separate skipped controls from failures.' );
+eng_assert( str_contains( $scoped['log'], 'PRESERVED' ), 'The log must list preserved values.' );
+
+/* ---------- Verify-only never writes ---------- */
+
+$verify_gateway = new FakeKitGateway( kit_controls(), [ 'system_colors' => [], 'custom_colors' => [] ] );
+$verify_cache = new FakeCache();
+$verify_engine = new SiteSettingsEngine( $verify_gateway, new DiffEngine(), fresh_registry(), $verify_cache );
+
+$before_apply = $verify_engine->verify_only();
+eng_assert( 'verification_failed' === $before_apply['status'], 'An unconfigured Kit must not verify as matching the profile.' );
+eng_assert( 0 === $verify_gateway->saveCount, 'Verify must not write.' );
+eng_assert( 0 === $verify_cache->count, 'Verify must not clear the cache.' );
+eng_assert( $before_apply['verification']['mismatchCount'] > 0, 'Verify must report the mismatches it found.' );
+
+$verify_engine->apply();
+$saves_after_apply = $verify_gateway->saveCount;
+$after_apply = $verify_engine->verify_only();
+eng_assert( 'verified' === $after_apply['status'], 'A configured Kit must verify: ' . describe_mismatches( $after_apply ) );
+eng_assert( 'pass' === $after_apply['verification']['status'], 'Verification must pass after apply.' );
+eng_assert( $saves_after_apply === $verify_gateway->saveCount, 'Verify must still not write after an apply.' );
+
+/* ---------- Health reports the environment without writing ---------- */
+
+$health_gateway = new FakeKitGateway( $hello_controls, [ 'system_colors' => [], 'custom_colors' => [] ] );
+$health = ( new SiteSettingsEngine( $health_gateway, new DiffEngine(), fresh_registry(), new FakeCache() ) )->health();
+eng_assert( true === $health['engineLoaded'], 'Health must report the engine.' );
+eng_assert( true === $health['kitResolved'], 'Health must resolve the Kit.' );
+eng_assert( 42 === $health['kitId'], 'Health must report the resolved Kit id.' );
+eng_assert( 'elementor-classic' === $health['adapter'], 'Health must report the adapter.' );
+eng_assert( 'professional-commerce' === $health['profileLoaded'], 'Health must report the profile.' );
+eng_assert( true === $health['capabilities']['helloHeader'], 'Health must surface discovered capabilities.' );
+eng_assert( 0 === $health_gateway->saveCount, 'Health must not write.' );
+
+$offline = ( new SiteSettingsEngine( new FakeKitGateway( [], [], 0, false ), new DiffEngine(), fresh_registry(), new FakeCache() ) )->health();
+eng_assert( false === $offline['kitResolved'], 'Health must report an unresolvable Kit.' );
+eng_assert( false === $offline['adapterResolved'], 'Health must report that no adapter applies.' );
 
 echo "Site settings engine contract tests passed.\n";
