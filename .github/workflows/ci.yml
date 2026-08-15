@@ -36,8 +36,12 @@ jobs:
         run: php tests/php/serializable-sanitizer-test.php
       - name: Runtime snapshot contract tests
         run: php tests/php/runtime-snapshot-contract-test.php
-      - name: Patch and checksum tests
+      - name: Patch contract tests
         run: php tests/php/patch-validator-test.php
+      - name: Checksum-free patch apply contract tests
+        run: php tests/php/patch-applier-checksum-free-contract-test.php
+      - name: AI package export contract tests
+        run: php tests/php/package-builder-layout-context-contract-test.php
       - name: Semantic patch safety tests
         run: php tests/php/semantic-patch-guard-test.php
       - name: Scoped exchange tests
