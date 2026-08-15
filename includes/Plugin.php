@@ -2,6 +2,7 @@
 namespace CrescoLayer;
 
 use CrescoLayer\Admin\AdminPage;
+use CrescoLayer\AI\ExchangeSafetyGuard;
 use CrescoLayer\AI\PackageBuilder;
 use CrescoLayer\AI\PatchApplier;
 use CrescoLayer\AI\PatchValidator;
@@ -45,6 +46,7 @@ final class Plugin {
 		}
 
 		( new Assets() )->register_hooks();
+		( new ExchangeSafetyGuard() )->register_hooks();
 		add_action( 'elementor/widgets/register', [ new WidgetRegistry(), 'register' ] );
 		add_action( 'elementor/dynamic_tags/register', [ new DynamicTagRegistry(), 'register' ] );
 
