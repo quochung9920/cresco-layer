@@ -184,7 +184,7 @@ final class ResponsiveFoundationValidator {
 				continue;
 			}
 			if ( ! isset( $definition['fallbackPx'] ) || (float) $definition['fallbackPx'] <= 0 ) { $errors[] = $this->issue( 'global_container_padding_fallback_invalid', 'Global Container Padding requires a positive px fallback for runtimes that cannot render the custom value.', [ 'device' => $device, 'definition' => $definition ] ); }
-			if ( $expression !== (string) ( $gutter['fluid'] ?? '' ) || (float) ( $definition['fallbackPx'] ?? 0 ) !== (float) ( $gutter['fallbackPx'] ?? 0 ) ) { $errors[] = $this->issue( 'global_container_padding_gutter_mismatch', 'Global Container Padding and the semantic page gutter must be the same professional fluid baseline.', [ 'device' => $devinition, 'pageGutter' => $gutter ] ); }
+			if ( $expression !== (string) ( $gutter['fluid'] ?? '' ) || (float) ( $definition['fallbackPx'] ?? 0 ) !== (float) ( $gutter['fallbackPx'] ?? 0 ) ) { $errors[] = $this->issue( 'global_container_padding_gutter_mismatch', 'Global Container Padding and the semantic page gutter must be the same professional fluid baseline.', [ 'device' => $device, 'containerPadding' => $definition, 'pageGutter' => $gutter ] ); }
 		}
 	}
 
@@ -211,7 +211,7 @@ final class ResponsiveFoundationValidator {
 		return $formatted . 'px';
 	}
 	private function clamp_px_limits( string $expression ): ?array {
-		if ( ! preg_match( '/^clamp\(\s*(-?(?:\d+(?:\.\d+)?|\.\d+))px\s*,.*?,,s*(-?(?:\d+(?:\.\d+)?|\.\d+))px\s*\)$/i', trim( $expression ), $match ) ) { return null; }
+		if ( ! preg_match( '/^clamp\(\s*(-?(?:\d+(?:\.\d+)?|\.\d+))px\s*,.*?,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))px\s*\)$/i', trim( $expression ), $match ) ) { return null; }
 		return [ 'min' => (float) $match[1], 'max' => (float) $match[2] ];
 	}
 	private function issue( string $code, string $message, array $data = [] ): array { return [ 'code' => $code, 'message' => $message, 'data' => $data ]; }
