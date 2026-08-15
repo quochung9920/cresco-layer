@@ -111,7 +111,13 @@
 		});
 	}
 
-	function selectedId() {
+	/**
+	 * The selection as the editor reports it right now, or '' when it cannot be read.
+	 *
+	 * Only live sources: Elementor's own channel, then the selected node in the top document, then
+	 * inside each preview iframe. Remembered state is deliberately excluded — see liveSelectedId.
+	 */
+	function liveSelectedId() {
 		try {
 			if (window.elementor && elementor.channels && elementor.channels.editor) {
 				var selected = elementor.channels.editor.request('selectedElement');
@@ -132,10 +138,20 @@
 				if (id) return id;
 			}
 		} catch (e2) {}
-		id = modelId(selectedModel);
-		if (id) return rememberId(id);
-		if (validId(selectedElementId)) return selectedElementId;
-		throw new Error('Select an Elementor widget or container first.');
+		return '';
+	}
+
+	/**
+	 * selectedElementId and selectedModel remember the last element the user touched, which is not
+	 * the same as the element selected now: changing selection through the Navigator or the keyboard
+	 * fires no canvas pointer event. Falling back to that memory silently pointed an import at the
+	 * container the user had selected earlier, rewriting the wrong one. Answering with an error
+	 * instead costs one click; answering with a stale ID costs the user their layout.
+	 */
+	function selectedId() {
+		var id = liveSelectedId();
+		if (id) return id;
+		throw new Error('Cresco could not read the current Elementor selection. Click the element on the canvas, then try again.');
 	}
 
 	function selectedIdSafe() {

@@ -175,12 +175,55 @@ final class PatchApplier {
 		$expected_mode = sanitize_key( (string) ( $expected_scope['mode'] ?? '' ) );
 		$expected_root = trim( (string) ( $expected_scope['rootElementId'] ?? '' ) );
 		if ( $expected_mode && $scope['mode'] !== $expected_mode ) { throw new \RuntimeException( 'The AI patch scope does not match the selected Elementor import mode.' ); }
-		if ( $expected_root && $scope['rootElementId'] !== $expected_root ) { throw new \RuntimeException( 'The AI patch targets a different Elementor element.' ); }
+		if ( ! $expected_root ) { return; }
+
+		/*
+		 * Comparing only a declared root let a patch through when it declared none, and its operations
+		 * then landed on whatever elementIds they carried. The selected element must be inside the
+		 * patch's own scope, however that scope is expressed.
+		 */
+		$root = trim( (string) ( $scope['rootElementId'] ?? '' ) );
+		$ids = array_map( 'strval', (array) ( $scope['elementIds'] ?? [] ) );
+		$covers_selection = ( '' !== $root && $root === $expected_root ) || ( '' === $root && in_array( $expected_root, $ids, true ) );
+		if ( ! $covers_selection ) {
+			throw new \RuntimeException( sprintf(
+				'The AI result targets %s but %s is selected in Elementor. Select the matching element, or export again for the current selection.',
+				'' !== $root ? $root : ( $ids ? implode( ', ', $ids ) : 'an unnamed element' ),
+				$expected_root
+			) );
+		}
+	}
+
+	/**
+	 * Element-level operations require a scope that authorises them.
+	 *
+	 * Page-level operations carry no element target, so they remain valid without one.
+	 */
+	private function assert_no_element_operations( array $patch ): void {
+		foreach ( $patch['operations'] as $op ) {
+			$element_id = trim( (string) ( $op['elementId'] ?? $op['parentId'] ?? '' ) );
+			if ( '' === $element_id ) { continue; }
+			throw new \RuntimeException( sprintf(
+				'This patch changes Elementor element %s without declaring which elements it is allowed to modify. Re-export for the element you want to change.',
+				$element_id
+			) );
+		}
 	}
 
 	private function assert_scope_operations( array $patch, array $elements ): void {
 		$scope = $patch['scope'] ?? null;
-		if ( ! is_array( $scope ) || 'document' === $scope['mode'] ) { return; }
+
+		/*
+		 * A patch with no scope used to skip every target check, so an operation naming any element
+		 * in the document was applied to it — the user selected one container and a different one was
+		 * rewritten. Only an explicit document scope may address the whole page; an absent scope is a
+		 * patch that never said what it was allowed to touch, which is not permission.
+		 */
+		if ( ! is_array( $scope ) ) {
+			$this->assert_no_element_operations( $patch );
+			return;
+		}
+		if ( 'document' === $scope['mode'] ) { return; }
 		$allowed = $this->locator->scope_ids( $elements, $scope['mode'], $scope['elementIds'] );
 		if ( ! $allowed ) { throw new \RuntimeException( 'The scoped Elementor target no longer exists.' ); }
 		$allowed_map = array_fill_keys( $allowed, true );
