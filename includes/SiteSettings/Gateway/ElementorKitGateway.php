@@ -1,6 +1,7 @@
 <?php
 namespace CrescoLayer\SiteSettings\Gateway;
 
+use CrescoLayer\SiteSettings\Support\HelloControlBridge;
 use Elementor\Plugin as ElementorPlugin;
 
 /**
@@ -27,6 +28,10 @@ final class ElementorKitGateway implements KitGateway {
 	public function save( array $settings ): bool {
 		$kit = $this->kit_document();
 		if ( ! $kit ) { return false; }
+
+		$controls = method_exists( $kit, 'get_controls' ) ? $kit->get_controls() : [];
+		$controls = is_array( $controls ) ? $controls : [];
+		$settings = HelloControlBridge::prepare_for_save( $settings, $controls );
 
 		// Kit::save() expects the document payload shape. A Kit carries no elements, but the key must
 		// be present or Elementor treats the save as a partial document write.
@@ -83,6 +88,11 @@ final class ElementorKitGateway implements KitGateway {
 				$controls = $kit->get_controls();
 				$state['controls'] = is_array( $controls ) ? $controls : [];
 			}
+
+			// Hello exposes some controls in the stack even while their conditions make them inactive.
+			// Hiding those from capability discovery prevents Cresco from planning writes that Elementor
+			// will necessarily filter back out (for example logo width while logo type is `title`).
+			$state['controls'] = HelloControlBridge::filter_controls( $state['controls'], $state['settings'] );
 
 			// An unreadable control list is a hard stop: capability discovery is what keeps the engine
 			// from inventing setting keys, so writing without it is exactly the failure mode to avoid.
