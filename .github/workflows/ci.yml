@@ -62,5 +62,7 @@ jobs:
         run: php tests/php/design-standard-plan-test.php
       - name: Balanced responsive design standard tests
         run: php tests/php/design-standard-responsive-test.php
+      - name: Site Settings responsive foundation tests
+        run: php tests/php/site-settings-responsive-foundation-test.php
       - name: JavaScript quality
         run: npm run check
