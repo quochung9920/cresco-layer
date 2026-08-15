@@ -1,13 +1,15 @@
 {
   "name": "cresco-layer",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "private": true,
-  "description": "Lossless scoped AI exchange, deterministic runtime widget skills, task-retrieved semantic local AI analysis and professional intelligence for Elementor and Elementor Pro.",
+  "description": "Lossless scoped AI exchange, AI-first visual context compilation, deterministic runtime widget skills and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
-    "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/clipboard-guard.js && node --check assets/exact-runtime-export.js && node --check assets/skills.js && node --check assets/skills-accuracy.js && node --check assets/local-ai-admin.js && node --check assets/semantic-ai.js",
+    "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/clipboard-guard.js && node --check assets/exact-runtime-export.js && node --check assets/ai-context-v3.js && node --check assets/ai-panel.js && node --check assets/skills.js && node --check assets/skills-accuracy.js && node --check assets/local-ai-admin.js && node --check assets/semantic-ai.js",
     "test:editor-bootstrap": "node tests/js/editor-bootstrap-test.mjs",
     "test:editor-live-apply": "node tests/js/editor-live-apply-test.mjs",
     "test:editor-ai-ux": "node tests/js/editor-ai-ux-contract-test.mjs",
+    "test:ai-context-v3": "node tests/js/ai-context-v3-contract-test.mjs",
+    "test:ai-panel": "node tests/js/ai-panel-contract-test.mjs",
     "test:clipboard-guard": "node tests/js/clipboard-guard-test.mjs",
     "test:exact-runtime-export": "node tests/js/exact-runtime-export-contract-test.mjs",
     "test:editor-skills": "node tests/js/editor-skills-contract-test.mjs",
@@ -18,7 +20,7 @@
     "test:ai-exchange-safety": "php tests/php/ai-exchange-safety-guard-test.php",
     "test:serializable-sanitizer": "php tests/php/serializable-sanitizer-test.php",
     "test:site-settings-console": "node tests/js/site-settings-console-contract-test.mjs",
-    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:clipboard-guard && npm run test:exact-runtime-export && npm run test:exact-runtime-export-behavior && npm run test:editor-skills && npm run test:skills-accuracy && npm run test:local-ai-admin && npm run test:semantic-ai && npm run test:site-settings-console && npm run test:ai-result-import && npm run test:ai-exchange-safety && npm run test:serializable-sanitizer",
+    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:ai-context-v3 && npm run test:ai-panel && npm run test:clipboard-guard && npm run test:exact-runtime-export && npm run test:exact-runtime-export-behavior && npm run test:editor-skills && npm run test:skills-accuracy && npm run test:local-ai-admin && npm run test:semantic-ai && npm run test:site-settings-console && npm run test:ai-result-import && npm run test:ai-exchange-safety && npm run test:serializable-sanitizer",
     "test:exact-runtime-export-behavior": "node tests/js/exact-runtime-export-behavior-test.mjs"
   },
   "engines": {
