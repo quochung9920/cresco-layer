@@ -2,15 +2,11 @@
 namespace CrescoLayer\AI;
 
 /**
- * Compiles a `cresco-layer-ai-result/v1` into the internal `cresco-layer-patch/v1`.
+ * Compiles AI-facing results into the internal `cresco-layer-patch/v1` representation.
  *
- * The patch format still exists and still carries every safety guarantee — scope enforcement,
- * semantic validation, preview, verification, rollback. What changed is who has to write it: the
- * AI describes the interface it wants, and this turns that description into the operation the
- * applier understands. Operations, scope objects and element IDs never reach the user or the model.
- *
- * The target is resolved against the live document rather than trusted from the payload, so a
- * result generated for one element can never be applied to another.
+ * Full-tree AI results are allowed only for empty targets or explicit rebuilds. Incremental work
+ * stays delta-first. For legacy/delta patches, Cresco also owns IDs for inserted subtrees so the AI
+ * can focus on Elementor structure and native controls instead of database identity.
  */
 final class InternalPatchCompiler {
 	private ElementLocator $locator;
@@ -31,14 +27,10 @@ final class InternalPatchCompiler {
 	public function compile( string $raw, int $post_id, array $elements, string $selected = '' ): array {
 		$normalized = $this->normalizer->normalize( $raw );
 
-		// A legacy patch is already in the internal format; pass it through untouched so existing
-		// saved results keep working. ExchangeSafetyGuard still blocks serialization placeholders at
-		// the REST boundary before the patch can be previewed or applied.
+		// Delta patches remain a supported AI output because they are the safest representation for
+		// add/edit/move work. Normalize inserted subtree IDs here so models do not need to invent them.
 		if ( 'legacy-patch' === $normalized['kind'] ) {
-			return [
-				'patch' => $normalized['result'],
-				'report' => [ 'source' => 'legacy-patch', 'generatedIds' => [], 'reusedIds' => [], 'targetId' => '', 'elementCount' => 0 ],
-			];
+			return $this->normalize_delta_patch( $normalized['result'], $elements );
 		}
 
 		$result = $normalized['result'];
@@ -46,10 +38,8 @@ final class InternalPatchCompiler {
 		$live_target = $this->locator->find( $elements, $target_id );
 
 		// A full-tree AI result necessarily means replace-element. That is safe by default for an
-		// empty construction target, but it is destructive for a target that already owns settings or
-		// children. Require an explicit replacement intent there so incremental requests cannot echo a
-		// read-only export back over live Elementor content by accident. Incremental work should use a
-		// delta cresco-layer-patch/v1 (insert-element / update-setting) instead.
+		// empty construction target, but destructive for a populated target. Require explicit intent
+		// so an incremental request can never echo read-only source context over live Elementor data.
 		if ( $this->has_live_content( $live_target ) && ! $this->explicit_replace_intent( $normalized['raw'] ) ) {
 			throw new \InvalidArgumentException(
 				'This target already contains live Elementor data, so Cresco will not compile a full-tree AI result into replace-element automatically. Return only the intended delta change using insert-element/update-setting, or set intent to "replace-target" only when the user explicitly requested a complete rebuild of this target.'
@@ -87,8 +77,49 @@ final class InternalPatchCompiler {
 	}
 
 	/**
+	 * Normalize IDs only for new inserted subtrees. Existing element IDs in update/move/remove
+	 * operations are never rewritten because they identify live Elementor data.
+	 */
+	private function normalize_delta_patch( array $patch, array $elements ): array {
+		$generator = new ElementorIdGenerator( $elements );
+		$generated = [];
+		$reused = [];
+		$count = 0;
+		$operations = is_array( $patch['operations'] ?? null ) ? $patch['operations'] : [];
+
+		foreach ( $operations as $index => $operation ) {
+			if ( ! is_array( $operation ) || 'insert-element' !== (string) ( $operation['operation'] ?? '' ) || ! is_array( $operation['element'] ?? null ) ) { continue; }
+			$element = $operation['element'];
+			$supplied_id = trim( (string) ( $element['id'] ?? '' ) );
+			$taken = array_flip( $generator->taken() );
+			$usable = 1 === preg_match( '/^[a-f0-9]{7}$/', $supplied_id ) && ! isset( $taken[ $supplied_id ] );
+			$root_id = $usable ? $supplied_id : $generator->generate();
+			if ( ! $usable ) { $generated[] = $root_id; }
+			else { $reused[] = $root_id; }
+
+			$tree = $generator->normalize( $element, $root_id );
+			$operations[ $index ]['element'] = $tree['element'];
+			$generated = array_merge( $generated, $tree['generated'] );
+			$reused = array_merge( $reused, $tree['reused'] );
+			$count += $this->count_elements( $tree['element'] );
+		}
+
+		$patch['operations'] = $operations;
+		return [
+			'patch' => $patch,
+			'report' => [
+				'source' => 'legacy-patch',
+				'generatedIds' => array_values( array_unique( $generated ) ),
+				'reusedIds' => array_values( array_unique( $reused ) ),
+				'targetId' => (string) ( $patch['scope']['rootElementId'] ?? '' ),
+				'elementCount' => $count,
+				'deltaNormalized' => true,
+			],
+		];
+	}
+
+	/**
 	 * Decide which element the result applies to, and refuse when that is ambiguous.
-	 *
 	 * Silently applying to the current selection when the result names a different element would
 	 * rewrite something the user never asked to change.
 	 */
@@ -144,8 +175,6 @@ final class InternalPatchCompiler {
 		if ( ! empty( $target['settings'] ) ) { return true; }
 		if ( ! empty( $target['elements'] ) ) { return true; }
 
-		// Preserve unknown persisted fields as another signal that this is not an empty construction
-		// shell. Metadata keys that define identity/type are not treated as authored content.
 		foreach ( $target as $key => $value ) {
 			if ( in_array( (string) $key, [ 'id', 'elType', 'widgetType', 'isInner', 'settings', 'elements' ], true ) ) { continue; }
 			if ( null !== $value && '' !== $value && [] !== $value ) { return true; }
