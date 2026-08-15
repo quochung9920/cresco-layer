@@ -76,13 +76,13 @@ rf_assert( [ 'viewport_mobile', 'viewport_tablet', 'viewport_laptop', 'viewport_
 rf_assert( 767 === $settings['viewport_mobile'], 'Mobile breakpoint must be 767px.' );
 rf_assert( 1024 === $settings['viewport_tablet'], 'Tablet breakpoint must be 1024px.' );
 rf_assert( 1440 === $settings['viewport_laptop'], 'Laptop breakpoint must be 1440px.' );
-rf_assert( 1920 === $settings['viewport_widescreen'], 'Widescreen breakpoint must start at 1920px.' );
+rf_assert( 1920 === $settings['viewport_widescreen'], 'Widescreen / 4K breakpoint must start at 1920px.' );
 
 $widths = [
 	'container_width_mobile' => 767.0,
 	'container_width_tablet' => 960.0,
-	'container_width_laptop' => 1180.0,
-	'container_width' => 1320.0,
+	'container_width_laptop' => 1200.0,
+	'container_width' => 1400.0,
 	'container_width_widescreen' => 1500.0,
 ];
 foreach ( $widths as $control => $expected ) {
@@ -105,8 +105,9 @@ foreach ( $padding_prefix as $control => $expected ) {
 	rf_assert( false === $settings[ $control ]['isLinked'], "{$control} must not link vertical and horizontal sides." );
 }
 
-rf_assert( 1320.0 === (float) $settings['hello_header_custom_width']['size'], 'Hello header Desktop content width must be 1320px.' );
-rf_assert( 1500.0 === (float) $settings['hello_footer_custom_width_widescreen']['size'], 'Hello footer Widescreen content width must be 1500px.' );
+rf_assert( 1400.0 === (float) $settings['hello_header_custom_width']['size'], 'Hello header Desktop content width must be 1400px.' );
+rf_assert( 1200.0 === (float) $settings['hello_footer_custom_width_laptop']['size'], 'Hello footer Laptop content width must be 1200px.' );
+rf_assert( 1500.0 === (float) $settings['hello_footer_custom_width_widescreen']['size'], 'Hello footer Widescreen / 4K content width must be 1500px.' );
 
 $paths = array_column( $built['plan'], 'semanticPath', 'control' );
 rf_assert( 'settings.layout.contentWidth.laptop' === $paths['container_width_laptop'], 'Responsive content width must have a semantic verification path.' );

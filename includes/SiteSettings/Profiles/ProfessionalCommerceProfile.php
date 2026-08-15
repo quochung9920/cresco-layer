@@ -7,7 +7,7 @@ use CrescoLayer\SiteSettings\Contract\Spec;
  * The `professional-commerce` baseline expressed as semantic intent.
  *
  * Fluid typography and spacing scale continuously, while layout uses five device contexts:
- * Mobile, Tablet, Laptop, Desktop (base), and Widescreen.
+ * Mobile, Tablet, Laptop 13–14 inch, Desktop (base), and Widescreen / 4K.
  */
 final class ProfessionalCommerceProfile {
 	public const ID = 'professional-commerce';
@@ -87,11 +87,11 @@ final class ProfessionalCommerceProfile {
 	/** Fluid custom properties for sites where Global Custom CSS is available. */
 	private function tokens(): array {
 		return [
-			'--cresco-container-max' => '1320px',
+			'--cresco-container-max' => '1400px',
 			'--cresco-container-max-mobile' => '767px',
 			'--cresco-container-max-tablet' => '960px',
-			'--cresco-container-max-laptop' => '1180px',
-			'--cresco-container-max-desktop' => '1320px',
+			'--cresco-container-max-laptop' => '1200px',
+			'--cresco-container-max-desktop' => '1400px',
 			'--cresco-container-max-widescreen' => '1500px',
 			'--cresco-gutter' => 'clamp(32px, 2.5vw, 48px)',
 			'--cresco-gutter-mobile' => 'clamp(16px, 4vw, 20px)',
@@ -185,8 +185,8 @@ final class ProfessionalCommerceProfile {
 		return [
 			'mobile' => 767,
 			'tablet' => 960,
-			'laptop' => 1180,
-			'desktop' => 1320,
+			'laptop' => 1200,
+			'desktop' => 1400,
 			'widescreen' => 1500,
 		];
 	}

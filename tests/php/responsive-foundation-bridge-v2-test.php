@@ -55,8 +55,9 @@ namespace {
 	$built = $bridge->apply(['settings'=>['layout'=>$layout],'themeStyle'=>[]], ['settings'=>[],'plan'=>[],'skipped'=>[],'notes'=>[]]);
 	$s = $built['settings'];
 	b_assert(ResponsiveLayoutPolicy::active_breakpoint_controls() === $s['active_breakpoints'], 'exact active breakpoints');
-	b_assert(1320.0 === (float)$s['container_width']['size'] && 'px' === $s['container_width']['unit'], 'desktop width px');
-	b_assert(1500.0 === (float)$s['container_width_widescreen']['size'], 'widescreen width px');
+	b_assert(1400.0 === (float)$s['container_width']['size'] && 'px' === $s['container_width']['unit'], 'desktop width px');
+	b_assert(1200.0 === (float)$s['container_width_laptop']['size'], 'laptop 13-14 width px');
+	b_assert(1500.0 === (float)$s['container_width_widescreen']['size'], 'widescreen 4K width px');
 	$expected = [
 		'container_padding'=>'clamp(32px, 2.5vw, 48px)',
 		'container_padding_mobile'=>'clamp(16px, 4vw, 20px)',

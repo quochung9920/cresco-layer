@@ -38,5 +38,8 @@ foreach(ResponsiveLayoutPolicy::devices() as $device){
  gf_clamp($padding['fluid']??null,'settings.layout.containerPadding.'.$device);
  gf_assert($padding===$spec['settings']['layout']['pageGutter'][$device],$device.' global padding must equal page gutter');
 }
+gf_assert([ 'mobile'=>767,'tablet'=>960,'laptop'=>1200,'desktop'=>1400,'widescreen'=>1500 ]===$spec['settings']['layout']['contentWidthPx'],'professional content widths');
+gf_assert('desktop-4k'===($spec['settings']['layout']['deviceIntent']['widescreen']??''),'widescreen semantic intent');
+gf_assert('1400px'===($spec['fluid']['tokens']['--cresco-container-max']??''),'desktop container token');
 gf_assert(16===$spec['themeStyle']['formFields']['field']['fontSizePx'],'form field font size remains fixed 16px for mobile focus safety');
 echo "PASS: professional global fluid baseline\n";

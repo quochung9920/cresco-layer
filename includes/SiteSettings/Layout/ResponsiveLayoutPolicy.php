@@ -21,6 +21,22 @@ final class ResponsiveLayoutPolicy {
 	}
 
 	/**
+	 * Semantic hardware intent. Elementor still stores the native responsive keys above; these labels
+	 * tell Cresco/AI what each CSS viewport context represents without pretending CSS can detect inches.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function device_intent(): array {
+		return [
+			'mobile' => 'phone',
+			'tablet' => 'tablet',
+			'laptop' => 'laptop-13-14',
+			'desktop' => 'desktop-standard',
+			'widescreen' => 'desktop-4k',
+		];
+	}
+
+	/**
 	 * CSS-pixel contexts. Desktop is Elementor's implicit/base context; Widescreen is min-width.
 	 *
 	 * @return array<string,array{min:int,max:?int,direction:string,breakpoint:?int}>
@@ -50,13 +66,21 @@ final class ResponsiveLayoutPolicy {
 		return [ 'viewport_mobile', 'viewport_tablet', 'viewport_laptop', 'viewport_widescreen' ];
 	}
 
-	/** @return array<string,int> Native px content max-width per responsive context. */
+	/**
+	 * Native px content max-width per responsive context.
+	 *
+	 * These values are content canvases, not device widths: Laptop represents a 13–14 inch class at
+	 * 1025–1440 CSS px, Desktop gets a wider 1400px canvas, and Widescreen/4K stays at Elementor's
+	 * native 1500px slider ceiling so large displays remain readable instead of stretching to 3840px.
+	 *
+	 * @return array<string,int>
+	 */
 	public static function content_widths(): array {
 		return [
 			'mobile' => 767,
 			'tablet' => 960,
-			'laptop' => 1180,
-			'desktop' => 1320,
+			'laptop' => 1200,
+			'desktop' => 1400,
 			'widescreen' => 1500,
 		];
 	}
@@ -93,6 +117,7 @@ final class ResponsiveLayoutPolicy {
 			'policy' => self::ID,
 			'globalFluidStrategy' => self::GLOBAL_FLUID_STRATEGY,
 			'requiredDevices' => self::devices(),
+			'deviceIntent' => self::device_intent(),
 			'contexts' => self::contexts(),
 			'breakpoints' => self::breakpoints(),
 			'contentWidthPx' => self::content_widths(),
@@ -121,7 +146,7 @@ final class ResponsiveLayoutPolicy {
 
 	/** CSS variables are convenience mirrors only; native Elementor controls remain authoritative. */
 	public static function token_map(): array {
-		$tokens = [ '--cresco-container-max' => '1320px', '--cresco-gutter' => self::page_gutters()['desktop']['fluid'] ];
+		$tokens = [ '--cresco-container-max' => '1400px', '--cresco-gutter' => self::page_gutters()['desktop']['fluid'] ];
 		foreach ( self::content_widths() as $device => $width ) {
 			$tokens[ '--cresco-container-max-' . $device ] = $width . 'px';
 		}

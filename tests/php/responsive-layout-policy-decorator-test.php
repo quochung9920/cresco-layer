@@ -8,7 +8,11 @@ d_assert(20===$out['settings']['layout']['widgetGap']['fallbackPx'],'unrelated l
 d_assert('clamp(32px, 2.5vw, 48px)'===$out['settings']['layout']['containerPadding']['desktop']['fluid'],'global clamp upgraded');
 d_assert(40===$out['settings']['layout']['containerPadding']['desktop']['fallbackPx'],'global padding fallback upgraded');
 d_assert(!isset($out['settings']['layout']['containerPadding']['desktop']['fixedPx']),'global padding not zeroed');
-d_assert(1500===$out['themeStyle']['helloFooter']['contentWidthPx']['widescreen'],'Hello widths upgraded');
+d_assert(1200===$out['themeStyle']['helloHeader']['contentWidthPx']['laptop'],'Hello laptop width upgraded');
+d_assert(1400===$out['themeStyle']['helloHeader']['contentWidthPx']['desktop'],'Hello desktop width upgraded');
+d_assert(1500===$out['themeStyle']['helloFooter']['contentWidthPx']['widescreen'],'Hello widescreen width upgraded');
+d_assert('desktop-4k'===$out['settings']['layout']['deviceIntent']['widescreen'],'Widescreen intent exported');
 d_assert('clamp(1rem,2vw,1.1rem)'===$out['fluid']['tokens']['--cresco-fs-body'],'typography token preserved');
+d_assert('1400px'===$out['fluid']['tokens']['--cresco-container-max'],'desktop layout token replaced');
 d_assert('clamp(32px, 2.5vw, 48px)'===$out['fluid']['tokens']['--cresco-gutter'],'layout token replaced');
 echo "PASS: responsive layout policy decorator\n";
