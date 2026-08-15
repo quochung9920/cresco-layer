@@ -32,7 +32,8 @@ final class InternalPatchCompiler {
 		$normalized = $this->normalizer->normalize( $raw );
 
 		// A legacy patch is already in the internal format; pass it through untouched so existing
-		// saved results keep working.
+		// saved results keep working. ExchangeSafetyGuard still blocks serialization placeholders at
+		// the REST boundary before the patch can be previewed or applied.
 		if ( 'legacy-patch' === $normalized['kind'] ) {
 			return [
 				'patch' => $normalized['result'],
@@ -42,6 +43,18 @@ final class InternalPatchCompiler {
 
 		$result = $normalized['result'];
 		$target_id = $this->resolve_target( $result, $post_id, $elements, $selected );
+		$live_target = $this->locator->find( $elements, $target_id );
+
+		// A full-tree AI result necessarily means replace-element. That is safe by default for an
+		// empty construction target, but it is destructive for a target that already owns settings or
+		// children. Require an explicit replacement intent there so incremental requests cannot echo a
+		// read-only export back over live Elementor content by accident. Incremental work should use a
+		// delta cresco-layer-patch/v1 (insert-element / update-setting) instead.
+		if ( $this->has_live_content( $live_target ) && ! $this->explicit_replace_intent( $normalized['raw'] ) ) {
+			throw new \InvalidArgumentException(
+				'This target already contains live Elementor data, so Cresco will not compile a full-tree AI result into replace-element automatically. Return only the intended delta change using insert-element/update-setting, or set intent to "replace-target" only when the user explicitly requested a complete rebuild of this target.'
+			);
+		}
 
 		$generator = new ElementorIdGenerator( $elements );
 		$normalized_tree = $generator->normalize( $result['element'], $target_id );
@@ -68,6 +81,7 @@ final class InternalPatchCompiler {
 				'generatedIds' => $normalized_tree['generated'],
 				'reusedIds' => $normalized_tree['reused'],
 				'elementCount' => $this->count_elements( $normalized_tree['element'] ),
+				'destructiveReplace' => $this->has_live_content( $live_target ),
 			],
 		];
 	}
@@ -123,6 +137,26 @@ final class InternalPatchCompiler {
 		}
 
 		return $target;
+	}
+
+	private function has_live_content( ?array $target ): bool {
+		if ( ! is_array( $target ) ) { return false; }
+		if ( ! empty( $target['settings'] ) ) { return true; }
+		if ( ! empty( $target['elements'] ) ) { return true; }
+
+		// Preserve unknown persisted fields as another signal that this is not an empty construction
+		// shell. Metadata keys that define identity/type are not treated as authored content.
+		foreach ( $target as $key => $value ) {
+			if ( in_array( (string) $key, [ 'id', 'elType', 'widgetType', 'isInner', 'settings', 'elements' ], true ) ) { continue; }
+			if ( null !== $value && '' !== $value && [] !== $value ) { return true; }
+		}
+		return false;
+	}
+
+	private function explicit_replace_intent( array $raw ): bool {
+		if ( true === ( $raw['replaceTarget'] ?? false ) ) { return true; }
+		$intent = strtolower( trim( (string) ( $raw['intent'] ?? '' ) ) );
+		return in_array( $intent, [ 'replace', 'replace-target', 'full-rebuild', 'rebuild-target' ], true );
 	}
 
 	private function count_elements( array $element ): int {
