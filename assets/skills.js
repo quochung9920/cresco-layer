@@ -49,6 +49,7 @@
 		var selectors = [
 			'.elementor-element.elementor-selected[data-id]',
 			'.elementor-element.elementor-element-edit-mode[data-id]',
+			'.elementor-element.elementor-element-editable[data-id]',
 			'[data-id][aria-selected="true"]', '[data-e-id][aria-selected="true"]', '[data-element-id][aria-selected="true"]'
 		];
 		for (var i = 0; i < selectors.length; i++) {
@@ -61,6 +62,18 @@
 	}
 
 	function selectedId() {
+		// elementor.selection is the API the editor itself acts on, and it answers for containers and
+		// for Navigator-made selections that the legacy Marionette channel below can miss.
+		try {
+			if (window.elementor && elementor.selection && typeof elementor.selection.getElements === 'function') {
+				var containers = elementor.selection.getElements();
+				if (containers && containers.length) {
+					var container = containers[containers.length - 1];
+					var containerId = modelId(container) || modelId(container && container.model);
+					if (containerId) return containerId;
+				}
+			}
+		} catch (e) {}
 		try {
 			if (window.elementor && elementor.channels && elementor.channels.editor) {
 				var selected = elementor.channels.editor.request('selectedElement');
@@ -68,7 +81,7 @@
 				var id = modelId(model);
 				if (id) return id;
 			}
-		} catch (e) {}
+		} catch (e2) {}
 		var id = selectedFromDom(document);
 		if (id) return id;
 		try {

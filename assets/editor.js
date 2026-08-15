@@ -72,6 +72,7 @@
 		var selectors = [
 			'.elementor-element.elementor-selected[data-id]',
 			'.elementor-element.elementor-element-edit-mode[data-id]',
+			'.elementor-element.elementor-element-editable[data-id]',
 			'[data-id][aria-selected="true"]',
 			'[data-e-id][aria-selected="true"]',
 			'[data-element-id][aria-selected="true"]'
@@ -118,6 +119,25 @@
 	 * inside each preview iframe. Remembered state is deliberately excluded — see liveSelectedId.
 	 */
 	function liveSelectedId() {
+		/*
+		 * elementor.selection is the selection API the editor itself uses — document/elements/copy
+		 * reads it to know what to act on. It answers for containers and for selections made through
+		 * the Navigator, both of which the legacy Marionette channel below can miss entirely.
+		 */
+		try {
+			if (window.elementor && elementor.selection && typeof elementor.selection.getElements === 'function') {
+				var containers = elementor.selection.getElements();
+				if (containers && containers.length) {
+					var container = containers[containers.length - 1];
+					var containerId = modelId(container) || modelId(container && container.model);
+					if (containerId) {
+						if (container && container.model) selectedModel = container.model;
+						return rememberId(containerId);
+					}
+				}
+			}
+		} catch (e) {}
+
 		try {
 			if (window.elementor && elementor.channels && elementor.channels.editor) {
 				var selected = elementor.channels.editor.request('selectedElement');
@@ -127,7 +147,7 @@
 					return rememberId(modelId(model));
 				}
 			}
-		} catch (e) {}
+		} catch (e2) {}
 
 		var id = selectedFromDom(document);
 		if (id) return id;

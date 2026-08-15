@@ -109,4 +109,27 @@ drift_assert(
 	'The strict resolver must actually be used.'
 );
 
+/*
+ * elementor.selection is the API the editor itself acts on (document/elements/copy reads it). It is
+ * the only source that answers for containers and for Navigator-made selections, which is precisely
+ * when the legacy channel goes quiet and the old code fell back to a stale ID.
+ */
+foreach ( [ 'editor.js', 'skills.js' ] as $file ) {
+	$source = file_get_contents( dirname( __DIR__, 2 ) . '/assets/' . $file );
+	drift_assert(
+		str_contains( $source, 'elementor.selection.getElements' ),
+		$file . ' must read the current selection from Elementor\'s own selection API.'
+	);
+}
+
+// Elementor 4 marks the element being edited with its own class; missing it sent the DOM tier home
+// empty-handed on exactly the containers this bug was reported for.
+foreach ( [ 'editor.js', 'skills.js', 'semantic-ai.js' ] as $file ) {
+	$source = file_get_contents( dirname( __DIR__, 2 ) . '/assets/' . $file );
+	drift_assert(
+		str_contains( $source, 'elementor-element-editable' ),
+		$file . ' must recognise the Elementor 4 editable marker when reading the selection from the DOM.'
+	);
+}
+
 echo "Import target drift contract tests passed.\n";

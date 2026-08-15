@@ -53,6 +53,7 @@
 		var selectors = [
 			'.elementor-element.elementor-selected[data-id]',
 			'.elementor-element.elementor-element-edit-mode[data-id]',
+			'.elementor-element.elementor-element-editable[data-id]',
 			'[data-id][aria-selected="true"]', '[data-e-id][aria-selected="true"]', '[data-element-id][aria-selected="true"]'
 		];
 		for (var i = 0; i < selectors.length; i++) {
