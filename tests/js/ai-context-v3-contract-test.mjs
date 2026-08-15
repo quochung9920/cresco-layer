@@ -12,7 +12,12 @@ function expect(condition, message) {
 expect(source.includes("schema: 'cresco-ai-context/v3'"), 'AI export must use cresco-ai-context/v3.');
 expect(source.includes("schema: 'cresco-layout-graph/v1'"), 'AI export must include a layout graph.');
 expect(source.includes("schema: 'cresco-visual-snapshot/v1'"), 'AI export must include structured live visual metrics.');
-expect(source.includes("schema: 'cresco-context-quality/v1'"), 'AI export must include a context quality score.');
+expect(source.includes("schema: 'cresco-context-quality/v2'"), 'AI export must include a context quality score.');
+// Quality v2 scores each dimension rather than ticking off present fields: a non-null targetBounds is
+// produced even when the measurement describes the Navigator panel, so presence is not credit.
+expect(source.includes('visualConfidence'), 'Context quality must score visual confidence, not field presence.');
+expect(!source.includes('ok: !!visual.targetBounds'), 'Bounds existing must not award full visual credit.');
+expect(source.includes("'untrusted' === visual.status"), 'An untrusted visual snapshot must lower the score.');
 expect(source.includes("mode: source.mode || 'unknown'"), 'Runtime mode must come from the Exact Runtime package.');
 expect(source.includes("detailLoaded: entry.detailLoaded === true"), 'Detailed capability state must survive compaction.');
 expect(source.includes("operation: 'insert-element'"), 'Add output template must be delta insert-element.');
