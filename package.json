@@ -1,6 +1,6 @@
 {
   "name": "cresco-layer",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "private": true,
   "description": "Lossless scoped AI exchange, deterministic runtime widget skills, task-retrieved semantic local AI analysis and professional intelligence for Elementor and Elementor Pro.",
   "scripts": {
@@ -15,8 +15,10 @@
     "test:local-ai-admin": "node tests/js/local-ai-admin-contract-test.mjs",
     "test:semantic-ai": "node tests/js/semantic-ai-contract-test.mjs",
     "test:ai-result-import": "php tests/php/ai-result-import-test.php",
+    "test:ai-exchange-safety": "php tests/php/ai-exchange-safety-guard-test.php",
+    "test:serializable-sanitizer": "php tests/php/serializable-sanitizer-test.php",
     "test:site-settings-console": "node tests/js/site-settings-console-contract-test.mjs",
-    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:clipboard-guard && npm run test:exact-runtime-export && npm run test:exact-runtime-export-behavior && npm run test:editor-skills && npm run test:skills-accuracy && npm run test:local-ai-admin && npm run test:semantic-ai && npm run test:site-settings-console",
+    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:clipboard-guard && npm run test:exact-runtime-export && npm run test:exact-runtime-export-behavior && npm run test:editor-skills && npm run test:skills-accuracy && npm run test:local-ai-admin && npm run test:semantic-ai && npm run test:site-settings-console && npm run test:ai-result-import && npm run test:ai-exchange-safety && npm run test:serializable-sanitizer",
     "test:exact-runtime-export-behavior": "node tests/js/exact-runtime-export-behavior-test.mjs"
   },
   "engines": {
