@@ -12,6 +12,7 @@ final class Assets {
 		add_action( 'elementor/editor/after_enqueue_styles', [ $this, 'enqueue_editor_styles' ], 100 );
 		add_action( 'elementor/editor/before_enqueue_scripts', [ $this, 'enqueue_editor_scripts' ], 1 );
 		add_action( 'elementor/editor/after_enqueue_scripts', [ $this, 'enqueue_editor_scripts' ], 100 );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_clipboard_guard' ], 1 );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_editor_assets_fallback' ], 100 );
 	}
 
@@ -27,7 +28,8 @@ final class Assets {
 	}
 
 	public function enqueue_editor_scripts(): void {
-		wp_enqueue_script( 'cresco-layer-editor', CRESCO_LAYER_URL . 'assets/editor.js', [], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-clipboard-guard', CRESCO_LAYER_URL . 'assets/clipboard-guard.js', [], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-editor', CRESCO_LAYER_URL . 'assets/editor.js', [ 'cresco-layer-clipboard-guard' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-exact-runtime-export', CRESCO_LAYER_URL . 'assets/exact-runtime-export.js', [ 'cresco-layer-editor' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-exact-runtime-export' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-skills-accuracy', CRESCO_LAYER_URL . 'assets/skills-accuracy.js', [ 'cresco-layer-skills' ], CRESCO_LAYER_VERSION, false );
@@ -46,6 +48,11 @@ final class Assets {
 			'elementorProVersion' => defined( 'ELEMENTOR_PRO_VERSION' ) ? ELEMENTOR_PRO_VERSION : null,
 			'localAI'             => $local_ai,
 		] );
+	}
+
+	public function enqueue_admin_clipboard_guard( string $hook ): void {
+		if ( 'elementor_page_cresco-layer' !== $hook && ! $this->is_elementor_editor_request() ) { return; }
+		wp_enqueue_script( 'cresco-layer-clipboard-guard', CRESCO_LAYER_URL . 'assets/clipboard-guard.js', [], CRESCO_LAYER_VERSION, false );
 	}
 
 	public function enqueue_editor_assets_fallback(): void {
