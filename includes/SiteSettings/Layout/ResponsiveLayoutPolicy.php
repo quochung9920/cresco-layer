@@ -4,15 +4,16 @@ namespace CrescoLayer\SiteSettings\Layout;
 /**
  * Single source of truth for Cresco's five-context responsive layout foundation.
  *
- * Elementor Site Settings own structural breakpoints and content max-widths. The page-level gutter
- * is intentionally NOT stored as the global Container Padding because Elementor applies that value
- * to every `.e-con`, including nested containers. Cresco therefore keeps the global default at zero
- * and exposes the gutter as semantic policy for page/section shells managed by Layer patches.
+ * Elementor Site Settings own structural breakpoints, content max-widths and the global responsive
+ * horizontal gutter. Container Padding therefore stores the professional left/right clamp() baseline
+ * directly in the Active Kit, while top/bottom stay zero. Layer/container-role policy only resets or
+ * overrides that baseline where a nested structural/component container needs different spacing.
  */
 final class ResponsiveLayoutPolicy {
 	public const ID = 'cresco-responsive-foundation/v2';
 	public const ROLE_POLICY = 'cresco-container-role-policy/v1';
 	public const MIGRATION_POLICY = 'block-if-used';
+	public const GLOBAL_FLUID_STRATEGY = 'native-custom-unit-when-supported';
 
 	/** @return string[] Layout contexts in visual order from narrow to wide. */
 	public static function devices(): array {
@@ -61,7 +62,8 @@ final class ResponsiveLayoutPolicy {
 	}
 
 	/**
-	 * Horizontal page/section-shell gutter. This is page-level policy, not global Kit padding.
+	 * Horizontal page gutter used as the global Container Padding left/right baseline.
+	 * Top/bottom are intentionally zero when the adapter materializes the dimensions value.
 	 *
 	 * @return array<string,array{fluid:string,fallbackPx:int}>
 	 */
@@ -76,23 +78,20 @@ final class ResponsiveLayoutPolicy {
 	}
 
 	/**
-	 * Elementor's global Container Padding must stay explicit zero on every context. Without a stored
-	 * value Elementor falls back to 10px; with a non-zero value every nested `.e-con` receives it.
+	 * Global Elementor Container Padding is the real fluid site gutter, not an internal-only token.
+	 * The adapter writes each device as: top=0, right=clamp(...), bottom=0, left=clamp(...).
 	 *
-	 * @return array<string,array{fixedPx:int}>
+	 * @return array<string,array{fluid:string,fallbackPx:int}>
 	 */
 	public static function global_container_padding(): array {
-		$out = [];
-		foreach ( self::devices() as $device ) {
-			$out[ $device ] = [ 'fixedPx' => 0 ];
-		}
-		return $out;
+		return self::page_gutters();
 	}
 
 	/** Human/machine contract consumed by Site Settings and Layer patch tooling. */
 	public static function layout_contract(): array {
 		return [
 			'policy' => self::ID,
+			'globalFluidStrategy' => self::GLOBAL_FLUID_STRATEGY,
 			'requiredDevices' => self::devices(),
 			'contexts' => self::contexts(),
 			'breakpoints' => self::breakpoints(),
@@ -120,7 +119,7 @@ final class ResponsiveLayoutPolicy {
 		return $spec;
 	}
 
-	/** CSS variables are convenience tokens only; native Elementor controls remain authoritative. */
+	/** CSS variables are convenience mirrors only; native Elementor controls remain authoritative. */
 	public static function token_map(): array {
 		$tokens = [ '--cresco-container-max' => '1320px', '--cresco-gutter' => self::page_gutters()['desktop']['fluid'] ];
 		foreach ( self::content_widths() as $device => $width ) {

@@ -1,27 +1,2 @@
 <?php
-/** Aggregate the isolated v2 responsive-foundation regression scripts for CI. */
-$tests = [
-	'breakpoint-migration-guard-test.php',
-	'elementor-breakpoint-usage-scanner-test.php',
-	'container-role-policy-test.php',
-	'container-role-patch-advisor-test.php',
-	'layout-context-builder-test.php',
-	'package-builder-layout-context-contract-test.php',
-	'responsive-layout-policy-test.php',
-	'responsive-layout-policy-decorator-test.php',
-	'runtime-control-resolver-test.php',
-	'responsive-foundation-validator-test.php',
-	'responsive-foundation-coordinator-test.php',
-	'responsive-foundation-bridge-v2-test.php',
-	'site-settings-engine-responsive-guard-test.php',
-];
-foreach ( $tests as $test ) {
-	$path = __DIR__ . '/' . $test;
-	$command = escapeshellarg( PHP_BINARY ) . ' ' . escapeshellarg( $path );
-	passthru( $command, $status );
-	if ( 0 !== $status ) {
-		fwrite( STDERR, "FAIL: {$test} exited with {$status}.\n" );
-		exit( $status ?: 1 );
-	}
-}
-echo "PASS: responsive foundation v2 aggregate\n";
+$tests=['breakpoint-migration-guard-test.php','elementor-breakpoint-usage-scanner-test.php','container-role-policy-test.php','container-role-patch-advisor-test.php','layout-context-builder-test.php','package-builder-layout-context-contract-test.php','professional-global-fluid-baseline-test.php','responsive-layout-policy-test.php','responsive-layout-policy-decorator-test.php','runtime-control-resolver-test.php','responsive-foundation-validator-test.php','responsive-foundation-coordinator-test.php','responsive-foundation-bridge-v2-test.php','site-settings-engine-responsive-guard-test.php'];foreach($tests as $test){$path=__DIR__.'/'.$test;$command=escapeshellarg(PHP_BINARY).' '.escapeshellarg($path);passthru($command,$status);if(0!==$status){fwrite(STDERR,"FAIL: {$test} exited with {$status}.\n");exit($status?:1);}}echo "PASS: responsive foundation v2 aggregate\n";
