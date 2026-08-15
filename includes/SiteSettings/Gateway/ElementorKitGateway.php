@@ -7,12 +7,9 @@ use Elementor\Plugin as ElementorPlugin;
 /**
  * KitGateway backed by the live Elementor runtime.
  *
- * Writes go through the Kit document's own save(), not update_post_meta(). Elementor's Kit save
- * path does more than persist an array — it runs the document's own sanitisation and bookkeeping —
- * so writing the meta directly would produce a Kit that looks right in the database but is not
- * consistent with what Elementor expects to read back.
- *
- * The Kit ID is always resolved through the Kits manager. Nothing here assumes an ID.
+ * Raw Kit settings are the persistence/verification source. Display settings intentionally filter
+ * inactive and virtual responsive values, so using them for snapshots or verification can lose
+ * legitimate per-device settings even though Elementor stored them successfully.
  */
 final class ElementorKitGateway implements KitGateway {
 	private ?array $state = null;
@@ -33,14 +30,11 @@ final class ElementorKitGateway implements KitGateway {
 		$controls = is_array( $controls ) ? $controls : [];
 		$settings = HelloControlBridge::prepare_for_save( $settings, $controls );
 
-		// Kit::save() expects the document payload shape. A Kit carries no elements, but the key must
-		// be present or Elementor treats the save as a partial document write.
 		$result = $kit->save( [ 'elements' => [], 'settings' => $settings ] );
 		$this->refresh();
 		return false !== $result;
 	}
 
-	/** The active Kit document, or null when Elementor cannot give us an editable one. */
 	private function kit_document(): ?object {
 		try {
 			if ( ! class_exists( ElementorPlugin::class ) ) { return null; }
@@ -80,7 +74,10 @@ final class ElementorKitGateway implements KitGateway {
 			$post = method_exists( $kit, 'get_post' ) ? $kit->get_post() : null;
 			$state['postId'] = $post ? (int) $post->ID : 0;
 
-			if ( method_exists( $kit, 'get_settings_for_display' ) ) {
+			if ( method_exists( $kit, 'get_settings' ) ) {
+				$settings = $kit->get_settings();
+				$state['settings'] = is_array( $settings ) ? $settings : [];
+			} elseif ( method_exists( $kit, 'get_settings_for_display' ) ) {
 				$settings = $kit->get_settings_for_display();
 				$state['settings'] = is_array( $settings ) ? $settings : [];
 			}
@@ -89,13 +86,8 @@ final class ElementorKitGateway implements KitGateway {
 				$state['controls'] = is_array( $controls ) ? $controls : [];
 			}
 
-			// Hello exposes some controls in the stack even while their conditions make them inactive.
-			// Hiding those from capability discovery prevents Cresco from planning writes that Elementor
-			// will necessarily filter back out (for example logo width while logo type is `title`).
 			$state['controls'] = HelloControlBridge::filter_controls( $state['controls'], $state['settings'] );
 
-			// An unreadable control list is a hard stop: capability discovery is what keeps the engine
-			// from inventing setting keys, so writing without it is exactly the failure mode to avoid.
 			if ( ! $state['controls'] ) {
 				$state['errors'][] = [ 'stage' => 'kit-controls', 'message' => 'The active Kit exposed no controls, so capability discovery is not possible.' ];
 				return $this->state = $state;
