@@ -2,7 +2,6 @@
 namespace CrescoLayer\AI;
 
 use CrescoLayer\Audit\Auditor;
-use CrescoLayer\Support\DocumentChecksum;
 use CrescoLayer\Support\SerializableSanitizer;
 use Elementor\Plugin as ElementorPlugin;
 
@@ -46,8 +45,6 @@ final class PackageBuilder {
 			throw new \RuntimeException( 'One or more selected Elementor elements no longer exist. Re-select the elements and export again.' );
 		}
 
-		$checksum = DocumentChecksum::hash( $elements, $page_settings );
-		$scope_checksum = $this->locator->scope_checksum( $elements, $scope, $selected_ids );
 		$editable_ids = $this->locator->scope_ids( $elements, $scope, $selected_ids );
 		$layout_context = ( new LayoutContextBuilder() )->build( $elements, $editable_ids );
 		$post = get_post( $post_id );
@@ -71,8 +68,6 @@ final class PackageBuilder {
 				'isAutosave' => $working_post_id !== $post_id,
 				'documentType' => method_exists( $main_document, 'get_name' ) ? (string) $main_document->get_name() : get_post_type( $post_id ),
 				'documentVersion' => '0.5',
-				'baseChecksum' => $checksum,
-				'scopeChecksum' => $scope_checksum,
 				'exportedAt' => gmdate( 'c' ),
 				'scope' => $scope,
 				'contextProfile' => $context_profile,
@@ -83,7 +78,6 @@ final class PackageBuilder {
 				'rootElementId' => 1 === count( $selected_ids ) ? $selected_ids[0] : '',
 				'elementIds' => $selected_ids,
 				'editableElementIds' => $editable_ids,
-				'checksum' => $scope_checksum,
 				'pageSettingsEditable' => 'document' === $scope,
 				'preserveChildrenOnRootReplace' => 'widget' === $scope,
 			],
@@ -130,7 +124,9 @@ final class PackageBuilder {
 				'operations' => PatchValidator::ALLOWED_OPERATIONS,
 				'atomicElementsAware' => true,
 				'losslessUnknownElementFields' => true,
-				'scopedChecksumAware' => true,
+				'checksumFreePatchContract' => true,
+				'targetValidatedAtApply' => true,
+				'scopeValidatedAtApply' => true,
 				'classicalResponsiveSuffixes' => [ 'tablet', 'mobile', 'widescreen', 'laptop', 'tablet_extra', 'mobile_extra' ],
 				'preserveExistingElementIds' => true,
 				'preferGlobalStyles' => true,
@@ -142,7 +138,7 @@ final class PackageBuilder {
 				'responsiveFoundationPolicy' => (string) ( $layout_context['responsiveFoundation']['policy'] ?? '' ),
 			],
 			'audit' => $this->auditor->audit_elements( $export_elements ),
-			'instructions' => $this->instructions( $scope, $selected_ids, $scope_checksum, $context_profile ),
+			'instructions' => $this->instructions( $scope, $selected_ids, $context_profile ),
 		];
 
 		$sanitizer = new SerializableSanitizer();
@@ -252,18 +248,18 @@ final class PackageBuilder {
 		foreach ( $value as $child_key => $child ) { $this->collect_attachment_ids( $child, $ids, (string) $child_key ); }
 	}
 
-	private function instructions( string $scope, array $selected_ids, string $scope_checksum, string $context_profile ): string {
+	private function instructions( string $scope, array $selected_ids, string $context_profile ): string {
 		$scope_payload = wp_json_encode( [
 			'mode' => $scope,
 			'rootElementId' => 1 === count( $selected_ids ) ? $selected_ids[0] : '',
 			'elementIds' => $selected_ids,
-			'checksum' => $scope_checksum,
 		] );
 		return implode( "\n", [
 			'You are editing an Elementor document through Cresco Layer.',
 			'Return JSON only, using schema cresco-layer-patch/v1.',
-			'Use manifest.postId as base.postId and manifest.baseChecksum as base.checksum.',
-			'Copy this exact editable scope into the patch scope object: ' . $scope_payload,
+			'Use manifest.postId as base.postId. Do not include checksum fields in the patch.',
+			'Copy this exact editable scope identity into the patch scope object: ' . $scope_payload,
+			'Cresco validates the current post, selected scope, target element existence and runtime capability metadata at preview/apply time; checksum freshness is not part of the AI patch contract.',
 			'For scoped exports, modify only the IDs allowed by editableScope. Context parents/siblings are read-only unless they are also editable.',
 			'For widget scope, preserve existing children. Prefer update-setting/remove-setting; replace-element is allowed only when you preserve all unknown fields and the same root ID.',
 			'For subtree scope, inserted descendants are allowed only below an editable parent. Do not move the subtree into unrelated parts of the page.',
