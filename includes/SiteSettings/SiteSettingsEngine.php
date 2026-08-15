@@ -8,12 +8,17 @@ use CrescoLayer\SiteSettings\Cache\ElementorCache;
 use CrescoLayer\SiteSettings\Contract\Spec;
 use CrescoLayer\SiteSettings\Diff\DiffEngine;
 use CrescoLayer\SiteSettings\Gateway\KitGateway;
+use CrescoLayer\SiteSettings\Layout\ResponsiveLayoutPolicy;
+use CrescoLayer\SiteSettings\Migration\BreakpointUsageScanner;
+use CrescoLayer\SiteSettings\Migration\ElementorBreakpointUsageScanner;
 use CrescoLayer\SiteSettings\Profiles\ProfessionalCommerceProfile;
 use CrescoLayer\SiteSettings\Registry\OwnershipRegistry;
 use CrescoLayer\SiteSettings\Support\ClampValidator;
 use CrescoLayer\SiteSettings\Support\Logger;
 use CrescoLayer\SiteSettings\Support\ManagedCssBlock;
 use CrescoLayer\SiteSettings\Support\ValueFactory;
+use CrescoLayer\SiteSettings\Validation\ResponsiveFoundationCoordinator;
+use CrescoLayer\SiteSettings\Validation\ResponsiveFoundationValidator;
 use CrescoLayer\SiteSettings\Verify\ValueNormalizer;
 use CrescoLayer\SiteSettings\Verify\Verifier;
 
@@ -26,18 +31,21 @@ final class SiteSettingsEngine {
 	private CacheInvalidator $cache;
 	private Verifier $verifier;
 	private ValueNormalizer $normalizer;
+	private BreakpointUsageScanner $breakpointScanner;
 
 	public function __construct(
 		private KitGateway $gateway,
 		?DiffEngine $diff = null,
 		?OwnershipRegistry $registry = null,
-		?CacheInvalidator $cache = null
+		?CacheInvalidator $cache = null,
+		?BreakpointUsageScanner $breakpoint_scanner = null
 	) {
 		$this->diff = $diff ?? new DiffEngine();
 		$this->registry = $registry ?? new OwnershipRegistry();
 		$this->cache = $cache ?? new ElementorCache();
 		$this->normalizer = new ValueNormalizer();
 		$this->verifier = new Verifier( $this->normalizer );
+		$this->breakpointScanner = $breakpoint_scanner ?? new ElementorBreakpointUsageScanner();
 	}
 
 	private function value_factory(): ValueFactory {
@@ -53,10 +61,6 @@ final class SiteSettingsEngine {
 		);
 	}
 
-	/**
-	 * Build the normal Classic Kit mapping, then add the responsive foundation that needs to understand
-	 * Elementor's responsive-control duplication modes as well as explicit per-device controls.
-	 */
 	private function build_with_foundation( ElementorClassicKitAdapter $adapter, array $spec ): array {
 		$built = $adapter->build( $spec );
 		$bridge = new ResponsiveFoundationBridge(
@@ -67,11 +71,20 @@ final class SiteSettingsEngine {
 		return $bridge->apply( $spec, $built );
 	}
 
-	/** Lightweight environment report for the admin console; reads nothing beyond the Kit. */
+	private function foundation_validation( ElementorClassicKitAdapter $adapter, array $spec ): array {
+		return ( new ResponsiveFoundationValidator( $adapter->capabilities()->resolver() ) )->validate( $spec );
+	}
+
+	private function foundation_inspection( ElementorClassicKitAdapter $adapter, array $spec, array $current ): array {
+		return ( new ResponsiveFoundationCoordinator( $adapter->capabilities()->resolver(), $this->breakpointScanner ) )->inspect( $spec, $current );
+	}
+
+	/** Lightweight environment report for the admin console; no document migration scan is run here. */
 	public function health(): array {
 		$available = $this->gateway->is_available();
 		$adapter = $available ? $this->adapter() : null;
 		$supports = $adapter && $adapter->supports();
+		$foundation = $supports ? $this->foundation_validation( $adapter, $this->profile_spec() ) : null;
 		return [
 			'engineLoaded' => true,
 			'elementorLoaded' => class_exists( \Elementor\Plugin::class ),
@@ -84,24 +97,19 @@ final class SiteSettingsEngine {
 			'modes' => Spec::MODES,
 			'capabilitiesDiscovered' => $supports,
 			'capabilities' => $supports ? $adapter->capabilities()->summary() : [],
+			'responsiveFoundation' => $foundation,
 			'registryValid' => $this->registry->kit_id() === $this->gateway->kit_id() || 0 === $this->registry->kit_id(),
 			'errors' => $this->gateway->errors(),
 		];
 	}
 
-	/** The built-in profile spec, for callers that want to inspect before applying. */
+	/** Built-in profile, upgraded through the shared five-context layout policy. */
 	public function profile_spec(): array {
-		return ( new ProfessionalCommerceProfile() )->spec();
+		return ResponsiveLayoutPolicy::apply_to_spec( ( new ProfessionalCommerceProfile() )->spec() );
 	}
 
-	/** Build the desired settings and diff them without writing anything. */
-	public function preview( ?array $spec = null ): array {
-		return $this->run( $spec, false );
-	}
-
-	public function apply( ?array $spec = null ): array {
-		return $this->run( $spec, true );
-	}
+	public function preview( ?array $spec = null ): array { return $this->run( $spec, false ); }
+	public function apply( ?array $spec = null ): array { return $this->run( $spec, true ); }
 
 	private function run( ?array $spec, bool $write ): array {
 		$log = new Logger();
@@ -109,14 +117,12 @@ final class SiteSettingsEngine {
 
 		$invalid = $this->validate_spec( $spec );
 		if ( null !== $invalid ) { return $this->failure( $invalid, [], $log ); }
-
 		if ( ! $this->gateway->is_available() ) {
 			return $this->failure( 'Elementor has no writable active Kit.', $this->gateway->errors(), $log );
 		}
 
 		$kit_id = $this->gateway->kit_id();
 		$this->registry->bind_kit( $kit_id );
-
 		$adapter = $this->adapter();
 		if ( ! $adapter->supports() ) {
 			return $this->failure( 'The active Kit is not a Classic Elementor Kit; no adapter can drive it.', $this->gateway->errors(), $log );
@@ -131,6 +137,16 @@ final class SiteSettingsEngine {
 
 		$current = $this->gateway->settings();
 		$snapshot = $current;
+		$foundation = $this->foundation_inspection( $adapter, $spec, $current );
+		if ( ! empty( $foundation['applicable'] ) && empty( $foundation['compatible'] ) ) {
+			$messages = $this->issue_messages( (array) ( $foundation['validation']['errors'] ?? [] ) );
+			return array_merge( $this->failure( 'Responsive foundation validation failed before any Elementor write.', [], $log ), [
+				'status' => 'responsive_foundation_incompatible',
+				'responsiveFoundation' => $foundation['validation'],
+				'breakpointMigration' => $foundation['migration'],
+				'errors' => array_merge( [ 'Responsive foundation validation failed before any Elementor write.' ], $messages ),
+			] );
+		}
 
 		$built = $this->build_with_foundation( $adapter, $spec );
 		$desired = $built['settings'];
@@ -153,6 +169,11 @@ final class SiteSettingsEngine {
 			'skipped' => count( $skipped ),
 			'preserved' => count( $preserved ),
 		];
+		$warnings = $this->issue_messages( (array) ( $foundation['validation']['warnings'] ?? [] ) );
+		$migration = is_array( $foundation['migration'] ?? null ) ? $foundation['migration'] : null;
+		if ( $migration && ! empty( $migration['blocking'] ) && '' !== (string) ( $migration['message'] ?? '' ) ) {
+			$warnings[] = (string) $migration['message'];
+		}
 
 		$base = [
 			'schema' => Spec::SCHEMA,
@@ -164,32 +185,39 @@ final class SiteSettingsEngine {
 			'skipped' => $skipped,
 			'preserved' => $preserved,
 			'capabilities' => $adapter->capabilities()->summary(),
-			'warnings' => [],
+			'responsiveFoundation' => $foundation['validation'] ?? null,
+			'breakpointMigration' => $migration,
+			'warnings' => array_values( array_unique( $warnings ) ),
 			'errors' => [],
 		];
 
 		if ( ! $comparison['changed'] ) {
 			return array_merge( $base, [
-				'success' => true,
-				'status' => 'no_op',
-				'verification' => null,
-				'rollback' => null,
-				'cacheCleared' => false,
-				'log' => $log->render( 'no_op' ),
+				'success' => true, 'status' => 'no_op', 'verification' => null,
+				'rollback' => null, 'cacheCleared' => false, 'log' => $log->render( 'no_op' ),
 			] );
 		}
 
 		if ( ! $write ) {
 			return array_merge( $base, [
-				'success' => true,
-				'status' => 'preview',
+				'success' => true, 'status' => 'preview',
+				'created' => $comparison['created'], 'updated' => $comparison['updated'], 'unchanged' => $comparison['unchanged'],
+				'verification' => null, 'rollback' => null, 'cacheCleared' => false, 'log' => $log->render( 'preview' ),
+			] );
+		}
+
+		if ( $migration && ! empty( $migration['blocking'] ) ) {
+			return array_merge( $base, [
+				'success' => false,
+				'status' => 'breakpoint_migration_blocked',
 				'created' => $comparison['created'],
 				'updated' => $comparison['updated'],
 				'unchanged' => $comparison['unchanged'],
 				'verification' => null,
 				'rollback' => null,
 				'cacheCleared' => false,
-				'log' => $log->render( 'preview' ),
+				'errors' => [ (string) ( $migration['message'] ?? 'Breakpoint migration requires review.' ) ],
+				'log' => $log->render( 'breakpoint_migration_blocked' ),
 			] );
 		}
 
@@ -216,14 +244,10 @@ final class SiteSettingsEngine {
 		$this->registry->record_hash( $this->diff->hash( $desired ) );
 
 		return array_merge( $base, [
-			'success' => true,
-			'status' => 'updated',
-			'created' => $comparison['created'],
-			'updated' => $comparison['updated'],
-			'verification' => $verification,
-			'rollback' => null,
-			'cacheCleared' => $cleared,
-			'cacheClears' => $this->cache->clears(),
+			'success' => true, 'status' => 'updated',
+			'created' => $comparison['created'], 'updated' => $comparison['updated'],
+			'verification' => $verification, 'rollback' => null,
+			'cacheCleared' => $cleared, 'cacheClears' => $this->cache->clears(),
 			'log' => $log->render( 'success' ) . "\n\n" . $this->verifier->render( $verification, $skipped, $preserved, null ),
 		] );
 	}
@@ -241,10 +265,26 @@ final class SiteSettingsEngine {
 		if ( ! $adapter->supports() ) {
 			return $this->failure( 'The active Kit is not a Classic Elementor Kit.', $this->gateway->errors(), new Logger() );
 		}
+		$foundation = $this->foundation_validation( $adapter, $spec );
+		if ( empty( $foundation['compatible'] ) ) {
+			return [
+				'success' => false,
+				'status' => 'responsive_foundation_incompatible',
+				'schema' => Spec::SCHEMA,
+				'adapter' => $adapter->id(),
+				'profile' => (string) ( $spec['profile'] ?? '' ),
+				'kitId' => $this->gateway->kit_id(),
+				'responsiveFoundation' => $foundation,
+				'verification' => null,
+				'skipped' => [], 'preserved' => [], 'rollback' => null, 'cacheCleared' => false,
+				'warnings' => $this->issue_messages( (array) ( $foundation['warnings'] ?? [] ) ),
+				'errors' => $this->issue_messages( (array) ( $foundation['errors'] ?? [] ) ),
+				'log' => 'Responsive foundation validation failed before verification.',
+			];
+		}
 
 		$built = $this->build_with_foundation( $adapter, $spec );
 		$verification = $this->verifier->verify( $built['plan'], $this->gateway->settings() );
-
 		return [
 			'success' => 'pass' === $verification['status'],
 			'status' => 'pass' === $verification['status'] ? 'verified' : 'verification_failed',
@@ -252,33 +292,29 @@ final class SiteSettingsEngine {
 			'adapter' => $adapter->id(),
 			'profile' => (string) ( $spec['profile'] ?? '' ),
 			'kitId' => $this->gateway->kit_id(),
+			'responsiveFoundation' => $foundation,
 			'verification' => $verification,
 			'skipped' => $built['skipped'],
 			'preserved' => $built['preserved'],
 			'capabilities' => $adapter->capabilities()->summary(),
 			'rollback' => null,
 			'cacheCleared' => false,
-			'warnings' => [],
+			'warnings' => $this->issue_messages( (array) ( $foundation['warnings'] ?? [] ) ),
 			'errors' => [],
 			'log' => $this->verifier->render( $verification, $built['skipped'], $built['preserved'], null ),
 		];
 	}
 
-	/** Restore the pre-apply snapshot and confirm the restore actually took. */
 	private function rollback( array $snapshot, array $plan ): array {
 		$saved = $this->gateway->save( $snapshot );
-		if ( ! $saved ) {
-			return [ 'attempted' => true, 'success' => false, 'status' => 'failed', 'verified' => false ];
-		}
+		if ( ! $saved ) { return [ 'attempted' => true, 'success' => false, 'status' => 'failed', 'verified' => false ]; }
 		$this->gateway->refresh();
 		$restored = $this->gateway->settings();
 		$still_applied = 0;
 		foreach ( $plan as $entry ) {
 			$control = (string) ( $entry['control'] ?? '' );
 			if ( '' === $control || ! array_key_exists( $control, $snapshot ) ) { continue; }
-			if ( ! $this->normalizer->satisfies( $restored[ $control ] ?? null, $snapshot[ $control ], (string) ( $entry['controlType'] ?? '' ) ) ) {
-				$still_applied++;
-			}
+			if ( ! $this->normalizer->satisfies( $restored[ $control ] ?? null, $snapshot[ $control ], (string) ( $entry['controlType'] ?? '' ) ) ) { $still_applied++; }
 		}
 		return [ 'attempted' => true, 'success' => true, 'status' => 'success', 'verified' => 0 === $still_applied ];
 	}
@@ -305,14 +341,11 @@ final class SiteSettingsEngine {
 		}
 	}
 
-	/** @return array<string,string> semantic key => display title, from the active profile. */
 	private function semantic_keys( string $bucket ): array {
 		$spec = $this->profile_spec();
 		$source = 'colors' === $bucket ? ( $spec['designSystem']['colors']['custom'] ?? [] ) : ( $spec['designSystem']['typography']['custom'] ?? [] );
 		$out = [];
-		foreach ( (array) $source as $key => $definition ) {
-			$out[ (string) $key ] = (string) ( $definition['title'] ?? ucfirst( (string) $key ) );
-		}
+		foreach ( (array) $source as $key => $definition ) { $out[ (string) $key ] = (string) ( $definition['title'] ?? ucfirst( (string) $key ) ); }
 		return $out;
 	}
 
@@ -326,6 +359,15 @@ final class SiteSettingsEngine {
 			if ( ! in_array( $key, Spec::SECTIONS, true ) ) { return 'Unknown spec section: ' . $key; }
 		}
 		return null;
+	}
+
+	private function issue_messages( array $issues ): array {
+		$messages = [];
+		foreach ( $issues as $issue ) {
+			$message = is_array( $issue ) ? (string) ( $issue['message'] ?? '' ) : (string) $issue;
+			if ( '' !== $message ) { $messages[] = $message; }
+		}
+		return array_values( array_unique( $messages ) );
 	}
 
 	private function failure( string $message, array $errors, Logger $log ): array {

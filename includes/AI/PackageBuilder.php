@@ -49,6 +49,7 @@ final class PackageBuilder {
 		$checksum = DocumentChecksum::hash( $elements, $page_settings );
 		$scope_checksum = $this->locator->scope_checksum( $elements, $scope, $selected_ids );
 		$editable_ids = $this->locator->scope_ids( $elements, $scope, $selected_ids );
+		$layout_context = ( new LayoutContextBuilder() )->build( $elements, $editable_ids );
 		$post = get_post( $post_id );
 		$theme = wp_get_theme();
 		$element_context = 'document' === $scope ? [] : $this->locator->context( $elements, $selected_ids );
@@ -103,6 +104,7 @@ final class PackageBuilder {
 				'breakpoints' => (array) ( $resolved['siteContext']['breakpoints'] ?? [] ),
 			],
 			'designSystem' => (array) ( $resolved['siteContext']['designSystem'] ?? [] ),
+			'layoutContext' => $layout_context,
 			'registryIndex' => (array) ( $resolved['registryIndex'] ?? [] ),
 			'widgetCatalog' => $catalog['widgets'],
 			'elementCatalog' => $catalog['elements'],
@@ -136,6 +138,8 @@ final class PackageBuilder {
 				'publishedDocumentsUseAutosave' => true,
 				'contextResolved' => true,
 				'fullRuntimeSnapshotIsSeparate' => true,
+				'containerRoleAware' => true,
+				'responsiveFoundationPolicy' => (string) ( $layout_context['responsiveFoundation']['policy'] ?? '' ),
 			],
 			'audit' => $this->auditor->audit_elements( $export_elements ),
 			'instructions' => $this->instructions( $scope, $selected_ids, $scope_checksum, $context_profile ),
@@ -266,6 +270,9 @@ final class PackageBuilder {
 			'This package uses Context Resolver profile "' . $context_profile . '". widgetCatalog and elementCatalog contain detailed controls selected for this task; registryIndex is the compact list of all registered types.',
 			'Never invent a setting name. Only write settings backed by a detailed capability entry. If a type exists only in registryIndex, leave its settings at Elementor defaults or request a full-context export.',
 			'Use capabilityCoverage before relying on controls, Active Kit, breakpoints, Dynamic Tags or Elementor Pro runtime modules. Do not guess data marked partial or unavailable.',
+			'Use layoutContext.containerRoles when editing Containers. A section-shell owns the responsive horizontal page gutter and should keep vertical padding at zero; its inner content container owns vertical section rhythm.',
+			'Global Elementor Container Padding is intentionally zero in the Cresco responsive foundation. Do not repeat the page gutter on structural nested containers; local component/card padding is allowed.',
+			'Respect layoutContext.responsiveFoundation for Mobile, Tablet, Laptop, Desktop and Widescreen geometry instead of inventing additional breakpoint semantics.',
 			'Preserve existing element IDs unless inserting new elements. Generate unique IDs for inserted elements.',
 			'Respect Elementor responsive suffix semantics and the active breakpoints supplied by the package.',
 			'Preserve Dynamic Tags, global style references, Atomic/V4 fields, classes, variables, interactions, editor_settings and unknown Elementor fields unless intentionally changing them.',
