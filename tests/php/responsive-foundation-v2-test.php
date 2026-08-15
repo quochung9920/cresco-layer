@@ -7,6 +7,7 @@ $tests = [
 	'container-role-patch-advisor-test.php',
 	'layout-context-builder-test.php',
 	'package-builder-layout-context-contract-test.php',
+	'professional-global-fluid-baseline-test.php',
 	'responsive-layout-policy-test.php',
 	'responsive-layout-policy-decorator-test.php',
 	'runtime-control-resolver-test.php',

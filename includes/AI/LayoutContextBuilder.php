@@ -25,10 +25,11 @@ final class LayoutContextBuilder {
 				'roles' => $roles,
 			],
 			'rules' => [
-				'globalContainerPadding' => 'zero',
+				'globalContainerPadding' => 'responsive-horizontal-clamp',
+				'globalFluidControlsAreNative' => true,
 				'sectionShellOwnsHorizontalGutter' => true,
 				'contentContainerOwnsVerticalRhythm' => true,
-				'nestedStructuralPaddingDefault' => 'zero',
+				'nestedStructuralPaddingDefault' => 'reset-global-horizontal-to-zero',
 				'componentPaddingIsLocal' => true,
 			],
 		];

@@ -21,28 +21,13 @@ final class CapabilityReport {
 	public function is_responsive( string $control ): bool { return $this->resolver->is_responsive( $control ); }
 	public function explicit_range( string $control, string $unit ): ?array { return $this->resolver->explicit_range( $control, $unit ); }
 
-	/** Allowed option keys for a select/choose control, empty when the control has no options. */
 	public function options( string $control ): array {
 		$options = $this->control( $control )['options'] ?? [];
 		return is_array( $options ) ? array_map( 'strval', array_keys( $options ) ) : [];
 	}
-
-	public function allows_option( string $control, string $value ): bool {
-		$options = $this->options( $control );
-		return ! $options || in_array( $value, $options, true );
-	}
-
-	/** @param string[] $controls */
-	public function has_any( array $controls ): bool {
-		foreach ( $controls as $control ) { if ( $this->has( $control ) ) { return true; } }
-		return false;
-	}
-
-	/** @return string[] */
-	public function present( array $controls ): array {
-		return array_values( array_filter( $controls, fn( string $control ): bool => $this->has( $control ) ) );
-	}
-
+	public function allows_option( string $control, string $value ): bool { $options = $this->options( $control ); return ! $options || in_array( $value, $options, true ); }
+	public function has_any( array $controls ): bool { foreach ( $controls as $control ) { if ( $this->has( $control ) ) { return true; } } return false; }
+	public function present( array $controls ): array { return array_values( array_filter( $controls, fn( string $control ): bool => $this->has( $control ) ) ); }
 	public function count(): int { return count( $this->controls ); }
 
 	public function summary(): array {
@@ -59,6 +44,8 @@ final class CapabilityReport {
 				'exactFiveContexts' => 4 === count( $foundation_breakpoints ) && $this->has( 'active_breakpoints' ),
 				'contentWidthResponsive' => $this->has( 'container_width' ) && $this->is_responsive( 'container_width' ),
 				'containerPaddingResponsive' => $this->has( 'container_padding' ) && $this->is_responsive( 'container_padding' ),
+				'containerPaddingCustomUnit' => $this->has( 'container_padding' ) && $this->supports_custom_unit( 'container_padding' ),
+				'globalFluidStrategy' => 'native-custom-unit-when-supported',
 			],
 		];
 	}

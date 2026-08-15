@@ -26,18 +26,26 @@ final class ContainerRolePatchAdvisor {
 			if ( 'update-setting' === $type && $this->is_padding_setting( (string) ( $operation['setting'] ?? '' ) ) ) {
 				$this->inspect_padding( $index, $element_id, $role, $operation['value'] ?? null, $warnings );
 			}
-			if ( 'remove-setting' === $type && $this->is_padding_setting( (string) ( $operation['setting'] ?? '' ) ) && ContainerRolePolicy::ROLE_SECTION_SHELL === $role ) {
-				$warnings[] = $this->warning( 'section_shell_gutter_removed', 'Removing section-shell padding can remove the page gutter because global Container Padding is intentionally zero.', $index, $element_id, $role );
+			if ( 'remove-setting' === $type && $this->is_padding_setting( (string) ( $operation['setting'] ?? '' ) ) && in_array( $role, [ ContainerRolePolicy::ROLE_CONTENT, ContainerRolePolicy::ROLE_NESTED ], true ) ) {
+				$warnings[] = $this->warning(
+					'nested_global_gutter_inherited',
+					'Removing a structural nested padding override can make the container inherit the global responsive gutter again. Keep horizontal padding explicitly zero when this container must not repeat the page gutter.',
+					$index, $element_id, $role
+				);
 			}
 			if ( 'replace-settings' === $type ) {
-				foreach ( (array) ( $operation['settings'] ?? [] ) as $setting => $value ) {
+				$replacement = (array) ( $operation['settings'] ?? [] );
+				foreach ( $replacement as $setting => $value ) {
 					if ( $this->is_padding_setting( (string) $setting ) ) { $this->inspect_padding( $index, $element_id, $role, $value, $warnings ); }
 				}
+				$this->inspect_missing_reset( $index, $element_id, $role, $replacement, $warnings );
 			}
 			if ( 'replace-element' === $type ) {
-				foreach ( (array) ( $operation['element']['settings'] ?? [] ) as $setting => $value ) {
+				$replacement = (array) ( $operation['element']['settings'] ?? [] );
+				foreach ( $replacement as $setting => $value ) {
 					if ( $this->is_padding_setting( (string) $setting ) ) { $this->inspect_padding( $index, $element_id, $role, $value, $warnings ); }
 				}
+				$this->inspect_missing_reset( $index, $element_id, $role, $replacement, $warnings );
 			}
 		}
 
@@ -59,17 +67,29 @@ final class ContainerRolePatchAdvisor {
 		if ( ContainerRolePolicy::ROLE_SECTION_SHELL === $role && ( $top || $bottom ) ) {
 			$warnings[] = $this->warning(
 				'section_shell_vertical_padding',
-				'Section-shell containers should own the horizontal page gutter only; put vertical section rhythm on the inner content container.',
+				'Section-shell containers should inherit the global horizontal page gutter only; put vertical section rhythm on the inner content container.',
 				$index, $element_id, $role
 			);
 		}
 		if ( in_array( $role, [ ContainerRolePolicy::ROLE_CONTENT, ContainerRolePolicy::ROLE_NESTED ], true ) && ( $left || $right ) ) {
 			$warnings[] = $this->warning(
 				'nested_page_gutter_candidate',
-				'A structural nested container has horizontal padding. Avoid repeating the page gutter unless this is intentionally local component spacing.',
+				'A structural nested container has horizontal padding. Reset horizontal padding to zero unless this is intentionally local component spacing.',
 				$index, $element_id, $role
 			);
 		}
+	}
+
+	private function inspect_missing_reset( int $index, string $element_id, string $role, array $settings, array &$warnings ): void {
+		if ( ! in_array( $role, [ ContainerRolePolicy::ROLE_CONTENT, ContainerRolePolicy::ROLE_NESTED ], true ) ) { return; }
+		foreach ( array_keys( $settings ) as $setting ) {
+			if ( $this->is_padding_setting( (string) $setting ) ) { return; }
+		}
+		$warnings[] = $this->warning(
+			'nested_padding_reset_missing',
+			'Replacing all settings on a structural nested container without an explicit padding reset can expose the global responsive gutter. Preserve or write a zero horizontal padding override.',
+			$index, $element_id, $role
+		);
 	}
 
 	private function is_padding_setting( string $setting ): bool {

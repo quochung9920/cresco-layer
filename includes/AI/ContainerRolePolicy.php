@@ -4,7 +4,8 @@ namespace CrescoLayer\AI;
 use CrescoLayer\SiteSettings\Layout\ResponsiveLayoutPolicy;
 
 /**
- * Classifies Elementor Containers so Layer patches know where page gutters and vertical rhythm live.
+ * Classifies Elementor Containers so Layer patches know where global gutter inheritance ends and
+ * local vertical/component spacing begins.
  *
  * The classifier is deliberately conservative. Depth gives the structural default; explicit
  * `cresco-role-*` classes override it; visual component cues only promote nested containers to a
@@ -32,7 +33,7 @@ final class ContainerRolePolicy {
 			'schema' => self::SCHEMA,
 			'layoutPolicy' => ResponsiveLayoutPolicy::ID,
 			'pageGutter' => ResponsiveLayoutPolicy::page_gutters(),
-			'globalContainerPadding' => 'zero',
+			'globalContainerPadding' => 'responsive-horizontal-clamp',
 			'roles' => $roles,
 		];
 	}
@@ -64,30 +65,34 @@ final class ContainerRolePolicy {
 			case self::ROLE_SECTION_SHELL:
 				return [
 					'pageGutter' => true,
-					'horizontal' => 'responsive-page-gutter',
+					'horizontal' => 'inherit-global-responsive-gutter',
 					'vertical' => '0',
 					'verticalSpacingOwner' => 'content',
+					'requiresHorizontalReset' => false,
 				];
 			case self::ROLE_CONTENT:
 				return [
 					'pageGutter' => false,
-					'horizontal' => '0-by-default',
+					'horizontal' => 'reset-global-horizontal-to-0',
 					'vertical' => 'section-rhythm-allowed',
 					'verticalSpacingOwner' => 'self',
+					'requiresHorizontalReset' => true,
 				];
 			case self::ROLE_COMPONENT:
 				return [
 					'pageGutter' => false,
-					'horizontal' => 'component-local',
+					'horizontal' => 'component-local-override',
 					'vertical' => 'component-local',
 					'verticalSpacingOwner' => 'self',
+					'requiresHorizontalReset' => false,
 				];
 			default:
 				return [
 					'pageGutter' => false,
-					'horizontal' => '0-by-default',
+					'horizontal' => 'reset-global-horizontal-to-0',
 					'vertical' => '0-by-default',
 					'verticalSpacingOwner' => 'ancestor-content',
+					'requiresHorizontalReset' => true,
 				];
 		}
 	}

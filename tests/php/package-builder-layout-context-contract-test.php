@@ -6,7 +6,8 @@ $checks = [
 	"( new LayoutContextBuilder() )->build( \$elements, \$editable_ids )" => 'PackageBuilder must build layout context from the full document and editable scope.',
 	"'layoutContext' => \$layout_context" => 'PackageBuilder must expose layoutContext in the AI package.',
 	"'containerRoleAware' => true" => 'PackageBuilder capabilities must advertise container-role awareness.',
-	'Global Elementor Container Padding is intentionally zero' => 'AI instructions must explain the zero global padding policy.',
+	'Global Elementor Container Padding carries the Cresco responsive clamp gutter' => 'AI instructions must explain the native global clamp baseline.',
+	'structural content/nested containers should explicitly reset horizontal padding to zero' => 'AI instructions must explain nested gutter reset.',
 	'inner content container owns vertical section rhythm' => 'AI instructions must assign vertical rhythm to content containers.',
 ];
 foreach ( $checks as $needle => $message ) {

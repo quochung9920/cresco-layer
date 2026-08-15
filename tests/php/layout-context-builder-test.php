@@ -1,11 +1,15 @@
 <?php
 $base=dirname(__DIR__,2).'/includes/';
-require_once $base.'SiteSettings/Layout/ResponsiveLayoutPolicy.php'; require_once $base.'AI/ContainerRolePolicy.php'; require_once $base.'AI/LayoutContextBuilder.php';
+require_once $base.'SiteSettings/Layout/ResponsiveLayoutPolicy.php';
+require_once $base.'AI/ContainerRolePolicy.php';
+require_once $base.'AI/LayoutContextBuilder.php';
 use CrescoLayer\AI\LayoutContextBuilder;
 function lc_assert(bool $x,string $m):void{if(!$x){fwrite(STDERR,"FAIL: $m\n");exit(1);}}
 $elements=[[ 'id'=>'outer','elType'=>'container','settings'=>[],'elements'=>[[ 'id'=>'inner','elType'=>'container','settings'=>[],'elements'=>[[ 'id'=>'private','elType'=>'container','settings'=>[],'elements'=>[] ]] ]] ]];
 $r=(new LayoutContextBuilder())->build($elements,['outer','inner']);
 lc_assert(isset($r['containerRoles']['roles']['outer'],$r['containerRoles']['roles']['inner']),'editable roles present');
 lc_assert(!isset($r['containerRoles']['roles']['private']),'non-editable role filtered');
-lc_assert('zero'===$r['rules']['globalContainerPadding'],'global padding contract');
+lc_assert('responsive-horizontal-clamp'===$r['rules']['globalContainerPadding'],'global padding contract');
+lc_assert(true===$r['rules']['globalFluidControlsAreNative'],'global fluid controls native');
+lc_assert('reset-global-horizontal-to-zero'===$r['rules']['nestedStructuralPaddingDefault'],'nested containers reset gutter');
 echo "PASS: layout context builder\n";

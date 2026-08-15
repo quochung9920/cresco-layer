@@ -57,11 +57,19 @@ namespace {
 	b_assert(ResponsiveLayoutPolicy::active_breakpoint_controls() === $s['active_breakpoints'], 'exact active breakpoints');
 	b_assert(1320.0 === (float)$s['container_width']['size'] && 'px' === $s['container_width']['unit'], 'desktop width px');
 	b_assert(1500.0 === (float)$s['container_width_widescreen']['size'], 'widescreen width px');
-	foreach (['container_padding','container_padding_mobile','container_padding_tablet','container_padding_laptop','container_padding_widescreen'] as $key) {
+	$expected = [
+		'container_padding'=>'clamp(32px, 2.5vw, 48px)',
+		'container_padding_mobile'=>'clamp(16px, 4vw, 20px)',
+		'container_padding_tablet'=>'clamp(20px, 2.5vw, 28px)',
+		'container_padding_laptop'=>'clamp(24px, 2.2vw, 32px)',
+		'container_padding_widescreen'=>'clamp(48px, 3vw, 80px)',
+	];
+	foreach ($expected as $key=>$clamp) {
 		b_assert(isset($s[$key]), "$key written");
-		b_assert('px' === $s[$key]['unit'], "$key native px");
-		b_assert('0' === $s[$key]['top'] && '0' === $s[$key]['right'] && '0' === $s[$key]['bottom'] && '0' === $s[$key]['left'], "$key zero on all sides");
+		b_assert('custom' === $s[$key]['unit'], "$key native custom");
+		b_assert('0' === $s[$key]['top'] && '0' === $s[$key]['bottom'], "$key vertical zero");
+		b_assert($clamp === $s[$key]['left'] && $clamp === $s[$key]['right'], "$key horizontal clamp");
+		b_assert(false === $s[$key]['isLinked'], "$key unlinked axes");
 	}
-	b_assert('clamp(32px, 2.5vw, 48px)' === $layout['pageGutter']['desktop']['fluid'], 'page gutter preserved as semantic layer policy');
 	echo "PASS: responsive foundation bridge v2\n";
 }
