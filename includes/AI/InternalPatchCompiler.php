@@ -27,8 +27,6 @@ final class InternalPatchCompiler {
 	public function compile( string $raw, int $post_id, array $elements, string $selected = '' ): array {
 		$normalized = $this->normalizer->normalize( $raw );
 
-		// Delta patches remain a supported AI output because they are the safest representation for
-		// add/edit/move work. Normalize inserted subtree IDs here so models do not need to invent them.
 		if ( 'legacy-patch' === $normalized['kind'] ) {
 			return $this->normalize_delta_patch( $normalized['result'], $elements );
 		}
@@ -36,10 +34,8 @@ final class InternalPatchCompiler {
 		$result = $normalized['result'];
 		$target_id = $this->resolve_target( $result, $post_id, $elements, $selected );
 		$live_target = $this->locator->find( $elements, $target_id );
+		$scope_mode = is_array( $live_target ) && 'widget' === (string) ( $live_target['elType'] ?? '' ) ? 'widget' : 'subtree';
 
-		// A full-tree AI result necessarily means replace-element. That is safe by default for an
-		// empty construction target, but destructive for a populated target. Require explicit intent
-		// so an incremental request can never echo read-only source context over live Elementor data.
 		if ( $this->has_live_content( $live_target ) && ! $this->explicit_replace_intent( $normalized['raw'] ) ) {
 			throw new \InvalidArgumentException(
 				'This target already contains live Elementor data, so Cresco will not compile a full-tree AI result into replace-element automatically. Return only the intended delta change using insert-element/update-setting, or set intent to "replace-target" only when the user explicitly requested a complete rebuild of this target.'
@@ -52,13 +48,14 @@ final class InternalPatchCompiler {
 		$patch = [
 			'schema' => 'cresco-layer-patch/v1',
 			'base' => [ 'postId' => $post_id ],
-			'scope' => [ 'mode' => 'subtree', 'rootElementId' => $target_id, 'elementIds' => [ $target_id ] ],
+			'scope' => [ 'mode' => $scope_mode, 'rootElementId' => $target_id, 'elementIds' => [ $target_id ] ],
 			'label' => (string) ( $result['label'] ?? 'AI design import' ),
 			'operations' => [
 				[
 					'operation' => 'replace-element',
 					'elementId' => $target_id,
 					'element' => $normalized_tree['element'],
+					'preserveChildren' => 'widget' === $scope_mode,
 				],
 			],
 		];
@@ -72,14 +69,12 @@ final class InternalPatchCompiler {
 				'reusedIds' => $normalized_tree['reused'],
 				'elementCount' => $this->count_elements( $normalized_tree['element'] ),
 				'destructiveReplace' => $this->has_live_content( $live_target ),
+				'scopeMode' => $scope_mode,
 			],
 		];
 	}
 
-	/**
-	 * Normalize IDs only for new inserted subtrees. Existing element IDs in update/move/remove
-	 * operations are never rewritten because they identify live Elementor data.
-	 */
+	/** Normalize IDs only for new inserted subtrees; existing IDs remain authoritative. */
 	private function normalize_delta_patch( array $patch, array $elements ): array {
 		$generator = new ElementorIdGenerator( $elements );
 		$generated = [];
@@ -118,11 +113,6 @@ final class InternalPatchCompiler {
 		];
 	}
 
-	/**
-	 * Decide which element the result applies to, and refuse when that is ambiguous.
-	 * Silently applying to the current selection when the result names a different element would
-	 * rewrite something the user never asked to change.
-	 */
 	private function resolve_target( array $result, int $post_id, array $elements, string $selected ): string {
 		$declared_post = absint( $result['target']['postId'] ?? 0 );
 		if ( $declared_post && $declared_post !== $post_id ) {
@@ -174,7 +164,6 @@ final class InternalPatchCompiler {
 		if ( ! is_array( $target ) ) { return false; }
 		if ( ! empty( $target['settings'] ) ) { return true; }
 		if ( ! empty( $target['elements'] ) ) { return true; }
-
 		foreach ( $target as $key => $value ) {
 			if ( in_array( (string) $key, [ 'id', 'elType', 'widgetType', 'isInner', 'settings', 'elements' ], true ) ) { continue; }
 			if ( null !== $value && '' !== $value && [] !== $value ) { return true; }
