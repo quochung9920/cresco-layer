@@ -4,8 +4,9 @@ namespace CrescoLayer\AI;
 /**
  * Compiles the AI-facing semantic mutation contract into scoped patch/v1 operations.
  *
- * The external model chooses semantic widget intent and exact runtime-backed settings. Cresco owns
- * placement, target validation and final Elementor IDs (assigned later by InternalPatchCompiler).
+ * The external model chooses semantic intent, but it may only name widget/element types that the
+ * active Elementor runtime actually exposes. Cresco owns placement, target validation and final
+ * Elementor IDs (assigned later by InternalPatchCompiler).
  */
 final class AIMutationCompiler {
 	public const SCHEMA = 'cresco-ai-mutation/v2';
@@ -15,8 +16,12 @@ final class AIMutationCompiler {
 		'query_id', 'template_id', 'product_id', 'menu_id', 'shortcode', 'html', 'code',
 	];
 
-	public function __construct( private ?ElementLocator $locator = null ) {
-		$this->locator ??= new ElementLocator();
+	private ElementLocator $locator;
+	private CapabilityScanner $scanner;
+
+	public function __construct( ?ElementLocator $locator = null, ?CapabilityScanner $scanner = null ) {
+		$this->locator = $locator ?? new ElementLocator();
+		$this->scanner = $scanner ?? new CapabilityScanner();
 	}
 
 	/** @return array{patch:array,report:array} */
@@ -34,11 +39,12 @@ final class AIMutationCompiler {
 		$live_target = $this->locator->find( $elements, $target_id );
 		$scope_mode = is_array( $live_target ) && 'widget' === (string) ( $live_target['elType'] ?? '' ) ? 'widget' : 'subtree';
 		$scope_ids = $this->locator->scope_ids( $elements, $scope_mode, [ $target_id ] );
+		$catalog = $this->scanner->catalog();
 		$operations = [];
 
 		switch ( $intent ) {
 			case 'add':
-				$operations = $this->compile_add( $mutation, $target_id, $scope_mode );
+				$operations = $this->compile_add( $mutation, $target_id, $scope_mode, $catalog );
 				break;
 			case 'edit':
 				$operations = $this->compile_edit( $mutation, $scope_ids );
@@ -50,7 +56,7 @@ final class AIMutationCompiler {
 				$operations = $this->compile_remove( $mutation, $scope_ids, $target_id );
 				break;
 			case 'rebuild':
-				$operations = $this->compile_rebuild( $mutation, $target_id, $scope_mode, $live_target );
+				$operations = $this->compile_rebuild( $mutation, $target_id, $scope_mode, $live_target, $catalog );
 				break;
 		}
 
@@ -70,11 +76,12 @@ final class AIMutationCompiler {
 				'targetId' => $target_id,
 				'scopeMode' => $scope_mode,
 				'operationCount' => count( $operations ),
+				'runtimeValidatedWidgetIntent' => in_array( $intent, [ 'add', 'rebuild' ], true ),
 			],
 		];
 	}
 
-	private function compile_add( array $mutation, string $target_id, string $scope_mode ): array {
+	private function compile_add( array $mutation, string $target_id, string $scope_mode, array $catalog ): array {
 		if ( 'widget' === $scope_mode ) {
 			throw new \InvalidArgumentException( 'A widget cannot own newly inserted child UI. Select/export its parent Container and try Add again.' );
 		}
@@ -94,7 +101,7 @@ final class AIMutationCompiler {
 				'operation' => 'insert-element',
 				'parentId' => $target_id,
 				'position' => 999999 === $position ? $position : $position + $offset,
-				'element' => $this->node_to_element( $node ),
+				'element' => $this->node_to_element( $node, $catalog ),
 			];
 		}
 		return $out;
@@ -157,12 +164,12 @@ final class AIMutationCompiler {
 		return $out;
 	}
 
-	private function compile_rebuild( array $mutation, string $target_id, string $scope_mode, ?array $live_target ): array {
+	private function compile_rebuild( array $mutation, string $target_id, string $scope_mode, ?array $live_target, array $catalog ): array {
 		$nodes = is_array( $mutation['nodes'] ?? null ) ? $mutation['nodes'] : [];
 		if ( 1 !== count( $nodes ) || ! is_array( $nodes[0] ) ) {
 			throw new \InvalidArgumentException( 'Rebuild mutation requires exactly one root node.' );
 		}
-		$element = $this->node_to_element( $nodes[0] );
+		$element = $this->node_to_element( $nodes[0], $catalog );
 		$element['id'] = $target_id;
 		if ( is_array( $live_target ) ) {
 			$live_type = (string) ( $live_target['elType'] ?? '' );
@@ -182,12 +189,15 @@ final class AIMutationCompiler {
 		]];
 	}
 
-	private function node_to_element( array $node ): array {
+	private function node_to_element( array $node, array $catalog ): array {
 		$intent = trim( (string) ( $node['widgetIntent'] ?? $node['widgetType'] ?? $node['elType'] ?? '' ) );
 		if ( '' === $intent ) { throw new \InvalidArgumentException( 'Semantic node is missing widgetIntent.' ); }
 		$is_layout = in_array( $intent, [ 'container', 'section', 'column' ], true ) || ( isset( $node['elType'] ) && 'widget' !== (string) $node['elType'] );
+		$el_type = $is_layout ? (string) ( $node['elType'] ?? $intent ) : 'widget';
+		$this->assert_runtime_type( $is_layout ? 'element' : 'widget', $is_layout ? $el_type : $intent, $catalog );
+
 		$element = [
-			'elType' => $is_layout ? (string) ( $node['elType'] ?? $intent ) : 'widget',
+			'elType' => $el_type,
 			'settings' => is_array( $node['settings'] ?? null ) ? $node['settings'] : [],
 			'elements' => [],
 		];
@@ -198,9 +208,19 @@ final class AIMutationCompiler {
 
 		$element['settings'] = array_replace( $this->content_settings( $intent, is_array( $node['content'] ?? null ) ? $node['content'] : [] ), $element['settings'] );
 		foreach ( (array) ( $node['children'] ?? $node['elements'] ?? [] ) as $child ) {
-			if ( is_array( $child ) ) { $element['elements'][] = $this->node_to_element( $child ); }
+			if ( is_array( $child ) ) { $element['elements'][] = $this->node_to_element( $child, $catalog ); }
 		}
 		return $element;
+	}
+
+	private function assert_runtime_type( string $kind, string $name, array $catalog ): void {
+		$group = 'widget' === $kind ? 'widgets' : 'elements';
+		if ( '' !== $name && isset( $catalog[ $group ][ $name ] ) && is_array( $catalog[ $group ][ $name ] ) ) { return; }
+		throw new \InvalidArgumentException( sprintf(
+			'Semantic %s intent "%s" is not present in the active Elementor runtime. Use widgetIntelligence/runtime from the exported Cresco context instead of inventing a type.',
+			$kind,
+			$name
+		) );
 	}
 
 	private function content_settings( string $intent, array $content ): array {
