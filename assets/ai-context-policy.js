@@ -47,6 +47,15 @@
 		pkg.runtime = runtime;
 		return pkg;
 	}
+	function rebuildSkeleton(pkg, target) {
+		var current = pkg && pkg.currentInterface ? pkg.currentInterface.element : null;
+		var element = { id: target.id || '', elType: 'container', settings: {}, elements: [] };
+		if (!current || typeof current !== 'object') return element;
+		if (current.elType) element.elType = current.elType;
+		if (current.widgetType) element.widgetType = current.widgetType;
+		if (Object.prototype.hasOwnProperty.call(current, 'isInner')) element.isInner = !!current.isInner;
+		return element;
+	}
 	function patchContract(pkg) {
 		if (!pkg || pkg.schema !== 'cresco-ai-context/v3') return pkg;
 		var target = pkg.target || {};
@@ -64,8 +73,12 @@
 				contract.templates.add.scope.mode = 'subtree';
 			}
 		}
+		if (contract.templates && contract.templates.rebuild) {
+			contract.templates.rebuild.target = { postId: target.postId || 0, id: target.id || '' };
+			contract.templates.rebuild.element = rebuildSkeleton(pkg, target);
+		}
 		contract.rules = Array.isArray(contract.rules) ? contract.rules : [];
-		if (mode === 'widget') contract.rules.unshift('Widget target: edit native settings or explicitly rebuild this widget. Do not insert child UI under a widget; select a Container for additions.');
+		if (mode === 'widget') contract.rules.unshift('Widget target: edit native settings or explicitly rebuild this same widget type. Do not insert child UI under a widget; select a Container for additions.');
 		pkg.outputContract = contract;
 		target.canAcceptChildren = mode !== 'widget';
 		pkg.target = target;
@@ -87,5 +100,5 @@
 		};
 	}
 
-	window.CrescoLayerAIContextPolicy = { version: '1.1.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes };
+	window.CrescoLayerAIContextPolicy = { version: '1.2.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes };
 }());
