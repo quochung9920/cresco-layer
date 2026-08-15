@@ -17,5 +17,8 @@ expect(source.includes('Widget target: edit native settings'), 'Widget-safe outp
 expect(source.includes('control.emittableKeys = keys'), 'Every compact runtime control must expose exact emittable keys.');
 expect(source.includes('runtime.activeResponsiveSuffixes = suffixes'), 'Active responsive suffixes must be exported once for AI reference.');
 expect(source.includes("name !== 'desktop'"), 'Desktop must remain the base control rather than an invented suffix.');
+expect(source.includes('function rebuildSkeleton(pkg, target)'), 'Rebuild contract must derive its skeleton from the selected live target.');
+expect(source.includes('if (current.widgetType) element.widgetType = current.widgetType'), 'Widget rebuilds must preserve the widget type rather than becoming a container.');
+expect(source.includes('contract.templates.rebuild.element = rebuildSkeleton(pkg, target)'), 'Rebuild template must use the selected target skeleton.');
 
-console.log('AI context scope and responsive emission policy tests passed.');
+console.log('AI context scope, responsive emission and rebuild policy tests passed.');
