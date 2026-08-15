@@ -27,10 +27,11 @@ final class Presets {
 				'containerPx' => 1320,
 				'buttonRadiusPx' => 6,
 				'imageRadiusPx' => 10,
-				'laptopBreakpointPx' => 1366,
+				'buttonPaddingPx' => [ 14, 22 ],
 				'breakpoints' => [ 'mobile' => 767, 'tablet' => 1024, 'laptop' => 1366 ],
 				'gutterPx' => [ 'desktop' => 48, 'laptop' => 40, 'tablet' => 32, 'mobile' => 20 ],
 				'sectionPaddingYPx' => [ 'desktop' => 96, 'laptop' => 80, 'tablet' => 64, 'mobile' => 48 ],
+				'paragraphSpacingPx' => [ 'desktop' => 16, 'mobile' => 12 ],
 				'headingRanges' => [
 					'h1_typography_font_size' => [ 36, 56 ],
 					'h2_typography_font_size' => [ 30, 44 ],
@@ -83,7 +84,7 @@ final class Presets {
 				'containerPx' => $definition['containerPx'],
 				'typeScale' => $scale,
 			];
-			foreach ( [ 'breakpoints', 'gutterPx', 'sectionPaddingYPx', 'headingRanges' ] as $key ) {
+			foreach ( [ 'breakpoints', 'gutterPx', 'sectionPaddingYPx', 'paragraphSpacingPx', 'headingRanges' ] as $key ) {
 				if ( isset( $definition[ $key ] ) ) { $item[ $key ] = $definition[ $key ]; }
 			}
 			$out[] = $item;
@@ -148,9 +149,13 @@ final class Presets {
 		$out = [];
 
 		$active = array_values( array_map( 'strval', (array) ( $kit['settings']['active_breakpoints'] ?? [] ) ) );
-		if ( ! in_array( 'viewport_laptop', $active, true ) ) { $active[] = 'viewport_laptop'; }
-		$out[] = [ 'active_breakpoints', $active, 'Enable Elementor\'s laptop breakpoint while preserving the site\'s already-active responsive breakpoints.' ];
-		$out[] = [ 'viewport_laptop', (int) $definition['laptopBreakpointPx'], 'Set the laptop breakpoint to 1366px for the four-device responsive baseline.' ];
+		foreach ( [ 'viewport_mobile', 'viewport_tablet', 'viewport_laptop' ] as $breakpoint ) {
+			if ( ! in_array( $breakpoint, $active, true ) ) { $active[] = $breakpoint; }
+		}
+		$out[] = [ 'active_breakpoints', $active, 'Enable mobile, tablet and laptop responsive tiers while preserving any already-active Elementor breakpoints.' ];
+		$out[] = [ 'viewport_mobile', (int) $definition['breakpoints']['mobile'], 'Use 767px as the mobile breakpoint.' ];
+		$out[] = [ 'viewport_tablet', (int) $definition['breakpoints']['tablet'], 'Use 1024px as the tablet breakpoint.' ];
+		$out[] = [ 'viewport_laptop', (int) $definition['breakpoints']['laptop'], 'Use 1366px as the laptop breakpoint.' ];
 
 		$breakpoints = [
 			'mobile' => (float) $definition['breakpoints']['mobile'],
@@ -160,16 +165,26 @@ final class Presets {
 		[ $min_viewport, $max_viewport ] = FluidScale::viewport_range( $breakpoints );
 
 		foreach ( $definition['headingRanges'] as $setting => [ $min, $max ] ) {
-			if ( ! $this->kit->has_control( $setting ) || ! $this->kit->supports_custom_unit( $setting ) ) {
-				continue;
-			}
+			if ( ! $this->kit->has_control( $setting ) || ! $this->kit->supports_custom_unit( $setting ) ) { continue; }
 			$expression = FluidScale::clamp( (float) $min, (float) $max, $min_viewport, $max_viewport );
 			if ( null === $expression ) { continue; }
-			$out[] = [
-				$setting,
-				[ 'unit' => 'custom', 'size' => $expression ],
-				sprintf( 'Scale %s fluidly from %spx on small screens to %spx on large screens.', $setting, $min, $max ),
-			];
+			$out[] = [ $setting, [ 'unit' => 'custom', 'size' => $expression ], sprintf( 'Scale %s fluidly from %spx on small screens to %spx on large screens.', $setting, $min, $max ) ];
+		}
+
+		$out[] = [ 'button_padding', $this->button_padding( (int) $definition['buttonPaddingPx'][0], (int) $definition['buttonPaddingPx'][1] ), 'Use a consistent touch-friendly global button rhythm.' ];
+
+		$gutter = FluidScale::clamp( (float) $definition['gutterPx']['mobile'], (float) $definition['gutterPx']['desktop'], $min_viewport, $max_viewport );
+		if ( null !== $gutter && $this->kit->supports_custom_unit( 'container_padding' ) ) {
+			$out[] = [ 'container_padding', [ 'unit' => 'custom', 'top' => '0', 'right' => $gutter, 'bottom' => '0', 'left' => $gutter, 'isLinked' => false ], 'Scale the global horizontal container gutter fluidly from 20px to 48px.' ];
+		} else {
+			$out[] = [ 'container_padding', $this->horizontal_dimension( (int) $definition['gutterPx']['desktop'] ), 'Use a 48px desktop container gutter when this Elementor control cannot store clamp().' ];
+		}
+
+		$paragraph = FluidScale::clamp( (float) $definition['paragraphSpacingPx']['mobile'], (float) $definition['paragraphSpacingPx']['desktop'], $min_viewport, $max_viewport );
+		if ( null !== $paragraph && $this->kit->supports_custom_unit( 'paragraph_spacing' ) ) {
+			$out[] = [ 'paragraph_spacing', [ 'unit' => 'custom', 'size' => $paragraph ], 'Scale paragraph rhythm fluidly from 12px to 16px.' ];
+		} else {
+			$out[] = [ 'paragraph_spacing', [ 'unit' => 'px', 'size' => (int) $definition['paragraphSpacingPx']['desktop'] ], 'Use 16px paragraph spacing when this Elementor control cannot store clamp().' ];
 		}
 
 		return $out;
@@ -182,13 +197,22 @@ final class Presets {
 			'breakpoints' => $definition['breakpoints'],
 			'gutterPx' => $definition['gutterPx'],
 			'sectionPaddingYPx' => $definition['sectionPaddingYPx'],
+			'paragraphSpacingPx' => $definition['paragraphSpacingPx'],
 			'headingRanges' => $definition['headingRanges'],
-			'note' => 'Typography is written with clamp() when the live Elementor control accepts the custom unit. Gutter and section spacing remain profile guidance unless the active Kit exposes native controls for them.',
+			'note' => 'Typography, global container gutter and paragraph spacing use clamp() when the live Elementor control accepts the custom unit. Structural layout and per-section vertical spacing remain breakpoint/native-element concerns.',
 		];
 	}
 
 	/** Elementor dimension controls carry all four sides plus a linked flag. */
 	private function dimension( int $px ): array {
 		return [ 'unit' => 'px', 'top' => $px, 'right' => $px, 'bottom' => $px, 'left' => $px, 'isLinked' => true ];
+	}
+
+	private function horizontal_dimension( int $px ): array {
+		return [ 'unit' => 'px', 'top' => 0, 'right' => $px, 'bottom' => 0, 'left' => $px, 'isLinked' => false ];
+	}
+
+	private function button_padding( int $vertical, int $horizontal ): array {
+		return [ 'unit' => 'px', 'top' => $vertical, 'right' => $horizontal, 'bottom' => $vertical, 'left' => $horizontal, 'isLinked' => false ];
 	}
 }

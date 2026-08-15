@@ -58,9 +58,9 @@ $kit = new StubKitReader( [
 	],
 	'settings' => [
 		'system_colors' => [
-			[ '_id' => 'primary', 'title' => 'Primary', 'color' => '#D8A6FF' ],   // fails AA on white
-			[ '_id' => 'text', 'title' => 'Text', 'color' => '#1A1A1A' ],          // passes
-			[ '_id' => 'surface', 'title' => 'Background', 'color' => '#FAFAFA' ], // background token, exempt
+			[ '_id' => 'primary', 'title' => 'Primary', 'color' => '#D8A6FF' ],
+			[ '_id' => 'text', 'title' => 'Text', 'color' => '#1A1A1A' ],
+			[ '_id' => 'surface', 'title' => 'Background', 'color' => '#FAFAFA' ],
 		],
 		'system_typography' => [ [ '_id' => 'primary', 'title' => 'Primary', 'typography_font_family' => 'Inter' ] ],
 		'body_typography_font_size' => [ 'unit' => 'px', 'size' => 14 ],
@@ -105,7 +105,7 @@ foreach ( $proposed as $op ) {
 /* ---------- Auditor: never propose a setting the Kit does not register ---------- */
 
 $bare = new StubKitReader( [
-	'controls' => [ 'system_colors' => [ 'type' => 'repeater' ] ],  // no container_width, no body size
+	'controls' => [ 'system_colors' => [ 'type' => 'repeater' ] ],
 	'settings' => [
 		'system_colors' => [ [ '_id' => 'primary', 'title' => 'Primary', 'color' => '#000000' ] ],
 		'system_typography' => [ [ '_id' => 'p', 'title' => 'P', 'typography_font_family' => 'Inter' ] ],
@@ -132,7 +132,7 @@ $fluid_kit = new StubKitReader( [
 		'body_typography_font_size' => [ 'type' => 'slider', 'size_units' => [ 'px', 'rem', 'custom' ] ],
 		'body_typography_font_size_mobile' => [ 'type' => 'slider', 'size_units' => [ 'px', 'custom' ] ],
 		'h1_typography_font_size' => [ 'type' => 'slider', 'size_units' => [ 'px', 'rem', 'custom' ] ],
-		'legacy_font_size' => [ 'type' => 'slider', 'size_units' => [ 'px' ] ],  // no custom unit
+		'legacy_font_size' => [ 'type' => 'slider', 'size_units' => [ 'px' ] ],
 	],
 	'settings' => [
 		'body_typography_font_size' => [ 'unit' => 'px', 'size' => 18 ],
@@ -176,7 +176,7 @@ plan_assert( [] !== ops_for( $removals, 'body_typography_font_size_mobile' ), 'A
 
 $presets = new Presets( $fluid_kit );
 $catalog = $presets->catalog();
-plan_assert( 3 === count( $catalog['presets'] ), 'Three presets must be offered.' );
+plan_assert( 4 === count( $catalog['presets'] ), 'Four presets must be offered.' );
 
 $saas = $presets->plan( 'saas' );
 plan_assert( true === $saas['preservesBrandColors'], 'Presets must declare that they leave brand colours alone.' );

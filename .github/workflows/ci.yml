@@ -56,5 +56,11 @@ jobs:
         run: php tests/php/semantic-plan-validator-test.php
       - name: Accuracy Core tests
         run: php tests/php/accuracy-core-test.php
+      - name: Design standard math tests
+        run: php tests/php/design-standard-math-test.php
+      - name: Design standard planning tests
+        run: php tests/php/design-standard-plan-test.php
+      - name: Balanced responsive design standard tests
+        run: php tests/php/design-standard-responsive-test.php
       - name: JavaScript quality
         run: npm run check
