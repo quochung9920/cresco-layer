@@ -9,6 +9,44 @@
 		var url = typeof input === 'string' ? input : (input && input.url ? String(input.url) : '');
 		return !!url && url.indexOf(root() + '/documents/') === 0 && url.indexOf('/export') !== -1;
 	}
+	function unique(values) {
+		return Array.from(new Set((values || []).filter(Boolean).map(function (value) { return String(value).toLowerCase(); })));
+	}
+	function responsiveSuffixes(pkg) {
+		var source = pkg && pkg.designSystem && pkg.designSystem.layout ? pkg.designSystem.layout.breakpoints : null;
+		var names = [];
+		if (Array.isArray(source)) {
+			source.forEach(function (item) {
+				if (typeof item === 'string') names.push(item);
+				else if (item && typeof item === 'object') names.push(item.id || item.name || item.key || '');
+			});
+		} else if (source && typeof source === 'object') {
+			names = Object.keys(source);
+		}
+		return unique(names).filter(function (name) { return name && name !== 'desktop' && /^[a-z0-9_]+$/.test(name); });
+	}
+	function addEmittableKeys(pkg) {
+		var suffixes = responsiveSuffixes(pkg);
+		var runtime = pkg.runtime || {};
+		['widgets', 'elements'].forEach(function (groupName) {
+			var group = runtime[groupName] || {};
+			Object.keys(group).forEach(function (typeName) {
+				var controls = group[typeName] && group[typeName].controls ? group[typeName].controls : {};
+				Object.keys(controls).forEach(function (key) {
+					var control = controls[key];
+					if (!control || typeof control !== 'object') return;
+					var keys = [key];
+					if (control.responsive === true || control.responsive === 'yes' || control.responsive === 1) {
+						suffixes.forEach(function (suffix) { keys.push(key + '_' + suffix); });
+					}
+					control.emittableKeys = keys;
+				});
+			});
+		});
+		runtime.activeResponsiveSuffixes = suffixes;
+		pkg.runtime = runtime;
+		return pkg;
+	}
 	function patchContract(pkg) {
 		if (!pkg || pkg.schema !== 'cresco-ai-context/v3') return pkg;
 		var target = pkg.target || {};
@@ -31,7 +69,7 @@
 		pkg.outputContract = contract;
 		target.canAcceptChildren = mode !== 'widget';
 		pkg.target = target;
-		return pkg;
+		return addEmittableKeys(pkg);
 	}
 	function jsonResponse(original, payload) {
 		var headers = new Headers(original.headers || {});
@@ -49,5 +87,5 @@
 		};
 	}
 
-	window.CrescoLayerAIContextPolicy = { version: '1.0.0', patch: patchContract };
+	window.CrescoLayerAIContextPolicy = { version: '1.1.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes };
 }());
