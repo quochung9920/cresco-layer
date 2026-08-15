@@ -46,7 +46,7 @@ namespace {
 	$controls = [
 		'active_breakpoints'=>['type'=>'select2'],
 		'viewport_mobile'=>['type'=>'number'], 'viewport_tablet'=>['type'=>'number'], 'viewport_laptop'=>['type'=>'number'], 'viewport_widescreen'=>['type'=>'number'],
-		'container_width'=>['type'=>'slider','is_responsive'=>true,'size_units'=>['px','custom'],'range'=>['px'=>['min'=>300,'max'=>1500]]],
+		'container_width'=>['type'=>'slider','is_responsive'=>true,'size_units'=>['px','%','custom'],'range'=>['px'=>['min'=>300,'max'=>1500]]],
 		'container_padding'=>['type'=>'dimensions','is_responsive'=>true,'size_units'=>['px','custom']],
 	];
 	$gateway = new V2Gateway($controls, ['active_breakpoints'=>['viewport_mobile','viewport_mobile_extra','viewport_tablet']]);
@@ -55,9 +55,13 @@ namespace {
 	$built = $bridge->apply(['settings'=>['layout'=>$layout],'themeStyle'=>[]], ['settings'=>[],'plan'=>[],'skipped'=>[],'notes'=>[]]);
 	$s = $built['settings'];
 	b_assert(ResponsiveLayoutPolicy::active_breakpoint_controls() === $s['active_breakpoints'], 'exact active breakpoints');
-	b_assert(1400.0 === (float)$s['container_width']['size'] && 'px' === $s['container_width']['unit'], 'desktop width px');
-	b_assert(1200.0 === (float)$s['container_width_laptop']['size'], 'laptop 13-14 width px');
-	b_assert(1500.0 === (float)$s['container_width_widescreen']['size'], 'widescreen 4K width px');
+	b_assert('px' === $s['container_width_mobile']['unit'] && 767.0 === (float)$s['container_width_mobile']['size'], 'mobile width px');
+	b_assert('px' === $s['container_width_tablet']['unit'] && 1024.0 === (float)$s['container_width_tablet']['size'], 'tablet width px');
+	b_assert('px' === $s['container_width_laptop']['unit'] && 1440.0 === (float)$s['container_width_laptop']['size'], 'laptop width px');
+	b_assert('%' === $s['container_width']['unit'] && 100.0 === (float)$s['container_width']['size'], 'desktop base width 100 percent');
+	b_assert('custom' === $s['container_width_widescreen']['unit'] && '1920px' === $s['container_width_widescreen']['size'], 'widescreen overflow stored as custom 1920px');
+	$width_notes = array_values(array_filter($built['notes'], static fn($note): bool => 'settings.layout.contentWidth.widescreen' === ($note['key'] ?? '')));
+	b_assert('native_px_range_exceeded_used_custom_unit' === ($width_notes[0]['note'] ?? ''), 'widescreen custom overflow note');
 	$expected = [
 		'container_padding'=>'clamp(32px, 2.5vw, 48px)',
 		'container_padding_mobile'=>'clamp(16px, 4vw, 20px)',

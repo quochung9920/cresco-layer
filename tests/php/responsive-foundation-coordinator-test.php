@@ -14,8 +14,8 @@ function co_assert(bool $ok, string $message): void { if (!$ok) { fwrite(STDERR,
 $controls = [
   'active_breakpoints'=>['type'=>'select2'],
   'viewport_mobile'=>['type'=>'number'], 'viewport_tablet'=>['type'=>'number'], 'viewport_laptop'=>['type'=>'number'], 'viewport_widescreen'=>['type'=>'number'],
-  'container_width'=>['type'=>'slider','is_responsive'=>true,'size_units'=>['px'],'range'=>['px'=>['min'=>300,'max'=>1500]]],
-  'container_padding'=>['type'=>'dimensions','is_responsive'=>true,'size_units'=>['px']],
+  'container_width'=>['type'=>'slider','is_responsive'=>true,'size_units'=>['px','%','custom'],'range'=>['px'=>['min'=>300,'max'=>1500]]],
+  'container_padding'=>['type'=>'dimensions','is_responsive'=>true,'size_units'=>['px','custom']],
 ];
 $scanner = new class implements BreakpointUsageScanner {
   public function scan(array $devices): array {

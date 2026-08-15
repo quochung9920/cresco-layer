@@ -38,8 +38,14 @@ foreach(ResponsiveLayoutPolicy::devices() as $device){
  gf_clamp($padding['fluid']??null,'settings.layout.containerPadding.'.$device);
  gf_assert($padding===$spec['settings']['layout']['pageGutter'][$device],$device.' global padding must equal page gutter');
 }
-gf_assert([ 'mobile'=>767,'tablet'=>960,'laptop'=>1200,'desktop'=>1400,'widescreen'=>1500 ]===$spec['settings']['layout']['contentWidthPx'],'professional content widths');
-gf_assert('desktop-4k'===($spec['settings']['layout']['deviceIntent']['widescreen']??''),'widescreen semantic intent');
-gf_assert('1400px'===($spec['fluid']['tokens']['--cresco-container-max']??''),'desktop container token');
+$widths=$spec['settings']['layout']['contentWidth']??[];
+gf_assert('px'===($widths['mobile']['unit']??'')&&767===($widths['mobile']['size']??null),'Mobile Content Width follows 767px canvas');
+gf_assert('px'===($widths['tablet']['unit']??'')&&1024===($widths['tablet']['size']??null),'Tablet Content Width follows 1024px canvas');
+gf_assert('px'===($widths['laptop']['unit']??'')&&1440===($widths['laptop']['size']??null),'Laptop Content Width follows 1440px canvas');
+gf_assert('%'===($widths['desktop']['unit']??'')&&100===($widths['desktop']['size']??null),'Desktop Content Width is the 100% base canvas');
+gf_assert('px'===($widths['widescreen']['unit']??'')&&1920===($widths['widescreen']['size']??null)&&'custom'===($widths['widescreen']['overflowUnit']??''),'Widescreen Content Width preserves 1920px through custom overflow');
+gf_assert(!isset($spec['settings']['layout']['contentWidthPx']),'legacy numeric width contract removed');
+gf_assert('100%'===($spec['fluid']['tokens']['--cresco-container-max']??''),'desktop container token mirrors base canvas');
+gf_assert('1920px'===($spec['fluid']['tokens']['--cresco-container-max-widescreen']??''),'widescreen token mirrors 1920px canvas');
 gf_assert(16===$spec['themeStyle']['formFields']['field']['fontSizePx'],'form field font size remains fixed 16px for mobile focus safety');
 echo "PASS: professional global fluid baseline\n";

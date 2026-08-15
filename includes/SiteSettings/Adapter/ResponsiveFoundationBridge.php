@@ -23,9 +23,10 @@ final class ResponsiveFoundationBridge {
 		$notes = is_array( $built['notes'] ?? null ) ? $built['notes'] : [];
 		$this->discover_enabled_devices( $layout );
 
-		if ( ! empty( $layout['contentWidthPx'] ) ) {
+		$widths = $this->width_definitions( $layout );
+		if ( $widths ) {
 			$this->remove_control_family( $settings, $plan, 'container_width' );
-			$this->map_widths( (array) $layout['contentWidthPx'], 'container_width', 'settings.layout.contentWidth', $settings, $plan, $skipped );
+			$this->map_widths( $widths, 'container_width', 'settings.layout.contentWidth', $settings, $plan, $skipped, $notes );
 		}
 		if ( ! empty( $layout['containerPadding'] ) ) {
 			$this->remove_control_family( $settings, $plan, 'container_padding' );
@@ -35,16 +36,29 @@ final class ResponsiveFoundationBridge {
 
 		foreach ( [ 'helloHeader' => 'hello_header', 'helloFooter' => 'hello_footer' ] as $section => $prefix ) {
 			$definition = (array) ( $spec['themeStyle'][ $section ] ?? [] );
-			if ( empty( $definition['contentWidthPx'] ) ) { continue; }
+			$section_widths = $this->width_definitions( $definition );
+			if ( ! $section_widths ) { continue; }
 			$base = $prefix . '_custom_width';
 			$this->remove_control_family( $settings, $plan, $base );
-			$this->map_widths( (array) $definition['contentWidthPx'], $base, 'themeStyle.' . $section . '.contentWidth', $settings, $plan, $skipped );
+			$this->map_widths( $section_widths, $base, 'themeStyle.' . $section . '.contentWidth', $settings, $plan, $skipped, $notes );
 		}
 		$built['settings'] = $settings;
 		$built['plan'] = array_values( $plan );
 		$built['skipped'] = array_values( $skipped );
 		$built['notes'] = array_values( $notes );
 		return $built;
+	}
+
+	private function width_definitions( array $source ): array {
+		if ( ! empty( $source['contentWidth'] ) && is_array( $source['contentWidth'] ) ) {
+			return (array) $source['contentWidth'];
+		}
+		if ( empty( $source['contentWidthPx'] ) || ! is_array( $source['contentWidthPx'] ) ) { return []; }
+		$out = [];
+		foreach ( (array) $source['contentWidthPx'] as $device => $size ) {
+			$out[ (string) $device ] = [ 'unit' => 'px', 'size' => $size ];
+		}
+		return $out;
 	}
 
 	private function discover_enabled_devices( array $layout ): void {
@@ -57,19 +71,78 @@ final class ResponsiveFoundationBridge {
 		}
 	}
 
-	private function map_widths( array $definitions, string $base, string $semantic, array &$settings, array &$plan, array &$skipped ): void {
+	private function map_widths( array $definitions, string $base, string $semantic, array &$settings, array &$plan, array &$skipped, array &$notes ): void {
 		foreach ( self::DEVICES as $device ) {
 			if ( ! array_key_exists( $device, $definitions ) ) { continue; }
 			if ( empty( $this->enabledDevices[ $device ] ) ) { $this->skip_once( $skipped, $semantic . '.' . $device, 'breakpoint_unsupported' ); continue; }
 			$control = $this->responsive_control( $base, $device );
 			if ( null === $control ) { $this->skip_once( $skipped, $semantic . '.' . $device, 'unsupported_control' ); continue; }
-			if ( ! $this->capabilities->supports_unit( $control['capabilityName'], 'px' ) ) { $this->skip_once( $skipped, $semantic . '.' . $device, 'px_unit_unsupported' ); continue; }
+			$definition = $this->normalize_width_definition( $definitions[ $device ] );
+			if ( null === $definition ) { $this->skip_once( $skipped, $semantic . '.' . $device, 'invalid_width_definition' ); continue; }
+			$materialized = $this->materialize_width( $definition, $control['capabilityName'] );
+			if ( empty( $materialized['ok'] ) ) { $this->skip_once( $skipped, $semantic . '.' . $device, (string) $materialized['reason'] ); continue; }
 			$name = $control['name'];
-			$data = $control['data'];
-			$value = $this->factory->slider_shape( 'px', (float) $definitions[ $device ] );
+			$value = $materialized['value'];
 			$settings[ $name ] = $value;
-			$this->replace_plan( $plan, $name, $semantic . '.' . $device, (string) ( $data['type'] ?? 'slider' ), $value );
+			if ( ! empty( $materialized['note'] ) ) {
+				$notes[] = [
+					'key' => $semantic . '.' . $device,
+					'note' => (string) $materialized['note'],
+					'requested' => $definition,
+					'written' => $value,
+				];
+			}
+			$this->replace_plan( $plan, $name, $semantic . '.' . $device, (string) ( $control['data']['type'] ?? 'slider' ), $value );
 		}
+	}
+
+	private function normalize_width_definition( $definition ): ?array {
+		if ( is_numeric( $definition ) ) { return [ 'unit' => 'px', 'size' => (float) $definition ]; }
+		if ( ! is_array( $definition ) || ! array_key_exists( 'size', $definition ) ) { return null; }
+		$unit = (string) ( $definition['unit'] ?? 'px' );
+		if ( ! in_array( $unit, [ 'px', '%', 'custom' ], true ) ) { return null; }
+		if ( 'custom' === $unit ) {
+			if ( ! is_string( $definition['size'] ) || '' === trim( $definition['size'] ) ) { return null; }
+			return $definition;
+		}
+		if ( ! is_numeric( $definition['size'] ) ) { return null; }
+		$definition['size'] = (float) $definition['size'];
+		return $definition;
+	}
+
+	private function materialize_width( array $definition, string $capability_name ): array {
+		$unit = (string) $definition['unit'];
+		$size = $definition['size'];
+		if ( 'custom' === $unit ) {
+			if ( ! $this->capabilities->supports_custom_unit( $capability_name ) ) { return [ 'ok' => false, 'reason' => 'custom_unit_unsupported' ]; }
+			return [ 'ok' => true, 'value' => $this->factory->slider_shape( 'custom', (string) $size ) ];
+		}
+		if ( ! $this->capabilities->supports_unit( $capability_name, $unit ) ) { return [ 'ok' => false, 'reason' => $unit . '_unit_unsupported' ]; }
+		if ( '%' === $unit ) {
+			return [ 'ok' => true, 'value' => $this->factory->slider_shape( '%', (float) $size ) ];
+		}
+
+		$range = $this->capabilities->explicit_range( $capability_name, 'px' );
+		$max = is_array( $range ) && isset( $range['max'] ) ? (float) $range['max'] : ( isset( $definition['nativeMaxPxHint'] ) ? (float) $definition['nativeMaxPxHint'] : null );
+		$min = is_array( $range ) && isset( $range['min'] ) ? (float) $range['min'] : null;
+		$numeric = (float) $size;
+		if ( null !== $min && $numeric < $min ) { return [ 'ok' => false, 'reason' => 'content_width_below_px_range' ]; }
+		if ( null !== $max && $numeric > $max ) {
+			if ( 'custom' !== (string) ( $definition['overflowUnit'] ?? '' ) || ! $this->capabilities->supports_custom_unit( $capability_name ) ) {
+				return [ 'ok' => false, 'reason' => 'content_width_above_px_range_custom_unsupported' ];
+			}
+			return [
+				'ok' => true,
+				'value' => $this->factory->slider_shape( 'custom', $this->px_css( $numeric ) ),
+				'note' => 'native_px_range_exceeded_used_custom_unit',
+			];
+		}
+		return [ 'ok' => true, 'value' => $this->factory->slider_shape( 'px', $numeric ) ];
+	}
+
+	private function px_css( float $value ): string {
+		$formatted = floor( $value ) === $value ? (string) (int) $value : rtrim( rtrim( sprintf( '%.4F', $value ), '0' ), '.' );
+		return $formatted . 'px';
 	}
 
 	private function map_padding( array $definitions, string $base, string $semantic, array &$settings, array &$plan, array &$skipped, array &$notes ): void {

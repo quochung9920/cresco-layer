@@ -4,28 +4,24 @@ namespace CrescoLayer\SiteSettings\Layout;
 /**
  * Single source of truth for Cresco's five-context responsive layout foundation.
  *
- * Elementor Site Settings own structural breakpoints, content max-widths and the global responsive
- * horizontal gutter. Container Padding therefore stores the professional left/right clamp() baseline
- * directly in the Active Kit, while top/bottom stay zero. Layer/container-role policy only resets or
- * overrides that baseline where a nested structural/component container needs different spacing.
+ * Breakpoints define the responsive canvas. Content Width follows the same canvas contract:
+ * Mobile 767px, Tablet 1024px, Laptop 1440px, Desktop as Elementor's base 100% context, and
+ * Widescreen 1920px. Widths stay native when the running control accepts them; a value above the
+ * native px range is stored through Elementor Custom Unit rather than silently clamped down.
  */
 final class ResponsiveLayoutPolicy {
 	public const ID = 'cresco-responsive-foundation/v2';
 	public const ROLE_POLICY = 'cresco-container-role-policy/v1';
 	public const MIGRATION_POLICY = 'block-if-used';
 	public const GLOBAL_FLUID_STRATEGY = 'native-custom-unit-when-supported';
+	public const CONTENT_WIDTH_STRATEGY = 'canvas-aligned-native-with-custom-overflow';
 
 	/** @return string[] Layout contexts in visual order from narrow to wide. */
 	public static function devices(): array {
 		return [ 'mobile', 'tablet', 'laptop', 'desktop', 'widescreen' ];
 	}
 
-	/**
-	 * Semantic hardware intent. Elementor still stores the native responsive keys above; these labels
-	 * tell Cresco/AI what each CSS viewport context represents without pretending CSS can detect inches.
-	 *
-	 * @return array<string,string>
-	 */
+	/** @return array<string,string> */
 	public static function device_intent(): array {
 		return [
 			'mobile' => 'phone',
@@ -67,22 +63,34 @@ final class ResponsiveLayoutPolicy {
 	}
 
 	/**
-	 * Native px content max-width per responsive context.
+	 * Desired Content Width value per responsive context.
 	 *
-	 * These values are content canvases, not device widths: Laptop represents a 13–14 inch class at
-	 * 1025–1440 CSS px, Desktop gets a wider 1400px canvas, and Widescreen/4K stays at Elementor's
-	 * native 1500px slider ceiling so large displays remain readable instead of stretching to 3840px.
+	 * `unit=px` is the preferred native representation. Widescreen carries a conservative 1500px
+	 * range hint only for runtimes that fail to expose their slider range; live runtime metadata wins
+	 * whenever it is available. If 1920px is above the native range, the bridge writes Custom Unit
+	 * with the CSS value `1920px`. Desktop is the implicit Elementor base context and stays at 100%.
 	 *
-	 * @return array<string,int>
+	 * @return array<string,array{unit:string,size:int|float,nativeMaxPxHint?:int,overflowUnit?:string}>
 	 */
 	public static function content_widths(): array {
 		return [
-			'mobile' => 767,
-			'tablet' => 960,
-			'laptop' => 1200,
-			'desktop' => 1400,
-			'widescreen' => 1500,
+			'mobile' => [ 'unit' => 'px', 'size' => 767 ],
+			'tablet' => [ 'unit' => 'px', 'size' => 1024 ],
+			'laptop' => [ 'unit' => 'px', 'size' => 1440 ],
+			'desktop' => [ 'unit' => '%', 'size' => 100 ],
+			'widescreen' => [ 'unit' => 'px', 'size' => 1920, 'nativeMaxPxHint' => 1500, 'overflowUnit' => 'custom' ],
 		];
+	}
+
+	/** @return array<string,string> CSS mirrors for managed custom properties. */
+	public static function content_width_css_values(): array {
+		$out = [];
+		foreach ( self::content_widths() as $device => $definition ) {
+			$unit = (string) ( $definition['unit'] ?? 'px' );
+			$size = $definition['size'] ?? 0;
+			$out[ $device ] = $size . $unit;
+		}
+		return $out;
 	}
 
 	/**
@@ -101,12 +109,7 @@ final class ResponsiveLayoutPolicy {
 		];
 	}
 
-	/**
-	 * Global Elementor Container Padding is the real fluid site gutter, not an internal-only token.
-	 * The adapter writes each device as: top=0, right=clamp(...), bottom=0, left=clamp(...).
-	 *
-	 * @return array<string,array{fluid:string,fallbackPx:int}>
-	 */
+	/** @return array<string,array{fluid:string,fallbackPx:int}> */
 	public static function global_container_padding(): array {
 		return self::page_gutters();
 	}
@@ -116,11 +119,12 @@ final class ResponsiveLayoutPolicy {
 		return [
 			'policy' => self::ID,
 			'globalFluidStrategy' => self::GLOBAL_FLUID_STRATEGY,
+			'contentWidthStrategy' => self::CONTENT_WIDTH_STRATEGY,
 			'requiredDevices' => self::devices(),
 			'deviceIntent' => self::device_intent(),
 			'contexts' => self::contexts(),
 			'breakpoints' => self::breakpoints(),
-			'contentWidthPx' => self::content_widths(),
+			'contentWidth' => self::content_widths(),
 			'containerPadding' => self::global_container_padding(),
 			'pageGutter' => self::page_gutters(),
 			'containerRolePolicy' => self::ROLE_POLICY,
@@ -132,11 +136,13 @@ final class ResponsiveLayoutPolicy {
 	/** Upgrade an existing semantic profile spec without discarding unrelated layout/theme settings. */
 	public static function apply_to_spec( array $spec ): array {
 		$existing_layout = is_array( $spec['settings']['layout'] ?? null ) ? $spec['settings']['layout'] : [];
+		unset( $existing_layout['contentWidthPx'] );
 		$spec['settings']['layout'] = array_replace( $existing_layout, self::layout_contract() );
 
 		foreach ( [ 'helloHeader', 'helloFooter' ] as $section ) {
 			if ( ! isset( $spec['themeStyle'][ $section ] ) || ! is_array( $spec['themeStyle'][ $section ] ) ) { continue; }
-			$spec['themeStyle'][ $section ]['contentWidthPx'] = self::content_widths();
+			unset( $spec['themeStyle'][ $section ]['contentWidthPx'] );
+			$spec['themeStyle'][ $section ]['contentWidth'] = self::content_widths();
 		}
 
 		$tokens = is_array( $spec['fluid']['tokens'] ?? null ) ? $spec['fluid']['tokens'] : [];
@@ -146,9 +152,10 @@ final class ResponsiveLayoutPolicy {
 
 	/** CSS variables are convenience mirrors only; native Elementor controls remain authoritative. */
 	public static function token_map(): array {
-		$tokens = [ '--cresco-container-max' => '1400px', '--cresco-gutter' => self::page_gutters()['desktop']['fluid'] ];
-		foreach ( self::content_widths() as $device => $width ) {
-			$tokens[ '--cresco-container-max-' . $device ] = $width . 'px';
+		$css = self::content_width_css_values();
+		$tokens = [ '--cresco-container-max' => $css['desktop'], '--cresco-gutter' => self::page_gutters()['desktop']['fluid'] ];
+		foreach ( $css as $device => $value ) {
+			$tokens[ '--cresco-container-max-' . $device ] = $value;
 		}
 		foreach ( self::page_gutters() as $device => $gutter ) {
 			$tokens[ '--cresco-gutter-' . $device ] = $gutter['fluid'];
