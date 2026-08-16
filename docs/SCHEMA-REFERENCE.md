@@ -1,10 +1,22 @@
 # Schema Reference — Cresco Layer 0.24
 
-Tài liệu tra cứu nhanh các schema/contract chính. Workflow ưu tiên từ 0.24 là **Elementor → external AI package → ChatGPT → AI result → Cresco import**.
+Workflow ưu tiên từ 0.24:
+
+```text
+Elementor
+→ cresco-external-ai-package/v1 hoặc cresco-ai-bundle/v4
+→ ChatGPT/AI bên ngoài
+→ result JSON theo scope
+→ Cresco import
+→ internal patch
+→ runtime validation
+→ Elementor
+→ Fidelity verification
+```
 
 ## 1. `cresco-external-ai-package/v1`
 
-Single JSON package dành cho ChatGPT/AI bên ngoài.
+Single JSON package dành cho AI bên ngoài.
 
 Top-level:
 
@@ -27,51 +39,23 @@ context
 elementor-export-external-ai-import
 ```
 
-`target` giữ identity/scope do Cresco AI Context cung cấp.
+`instructionsForAI` yêu cầu model:
 
-`instructionsForAI` là instruction machine-readable, nhắc model:
-
-- package/runtime là source of truth;
-- yêu cầu thiết kế đến từ cuộc trò chuyện bên ngoài Elementor;
+- coi package/runtime là source of truth;
+- nhận design prompt từ cuộc trò chuyện bên ngoài Elementor;
 - không invent control/unit/option/responsive suffix/Dynamic Tag/global reference;
-- preserve IDs và unknown persisted fields;
+- preserve scope và existing IDs;
+- dùng temporary refs cho node mới khi contract cho phép;
 - chỉ trả intended delta;
 - trả JSON sạch.
 
-`resultContract`:
-
-```text
-preferredSchema
-acceptedSchemas
-filename
-targetRule
-responseRule
-```
-
-`context` chứa nguyên Cresco AI Context v3.
+`resultContract` là **contract lớp ngoài cùng** và phải được ưu tiên nếu template legacy bên trong `context` có khác biệt.
 
 ## 2. `cresco-ai-bundle/v4`
 
-Manifest schema của ZIP bundle đầy đủ.
+Manifest schema của ZIP bundle.
 
-Top-level chính:
-
-```text
-schema
-packageSchema
-packageId
-pluginVersion
-createdAt
-target
-contextQuality
-preferredOutputSchema
-resultFilename
-raster
-reference
-files
-```
-
-Các file bundle có thể gồm:
+Các file có thể có:
 
 ```text
 README-FOR-CHATGPT.md
@@ -87,11 +71,40 @@ manifest.json
 
 `cresco-package.json` dùng `cresco-external-ai-package/v1`.
 
-## 3. `cresco-ai-context/v3`
+## 3. `cresco-external-exchange-policy/v1`
 
-Editor-enriched context dành cho AI workflow.
+Policy chuẩn hóa output contract cho workflow external.
 
-Nó bao quanh/biên dịch dữ liệu từ package/runtime và có thể chứa:
+### Widget/subtree
+
+```text
+mode: semantic-target-mutation
+preferredSchema: cresco-ai-mutation/v3
+```
+
+### Document
+
+```text
+mode: document-patch
+preferredSchema: cresco-layer-patch/v1
+scope.mode: document
+```
+
+Lý do: semantic mutation v3 cần một root Elementor cụ thể; document không phải một fake root container.
+
+Document scope có template cho:
+
+- update existing element;
+- top-level insert với `parentId: ""`;
+- temporary ref như `$new:top-level-section`.
+
+`replace-document` chỉ dành cho full rebuild có chủ đích.
+
+## 4. `cresco-ai-context/v3`
+
+Editor-enriched context dành cho AI exchange.
+
+Có thể chứa:
 
 ```text
 target
@@ -114,13 +127,14 @@ outputContract
 contextQuality
 fidelityPolicy
 visualContext
+externalExchangePolicy
 ```
 
-Trong external workflow 0.24, REST export dùng **Full Context profile** vì prompt thiết kế không còn nằm trong Elementor.
+External workflow 0.24 dùng **Full Context** vì design prompt không còn nằm trong Elementor.
 
-## 4. `cresco-layer-ai-package/v2`
+## 5. `cresco-layer-ai-package/v2`
 
-Package lõi server-side của Cresco.
+Package lõi server-side.
 
 Các vùng chính:
 
@@ -147,7 +161,7 @@ audit
 instructions
 ```
 
-## 5. `cresco-control-registry/v1`
+## 6. `cresco-control-registry/v1`
 
 Normalized runtime control contract.
 
@@ -183,15 +197,15 @@ bind
 propType
 ```
 
-Registry không phải danh sách hard-code; nó được tạo từ Elementor runtime đang chạy.
+Registry lấy từ Elementor runtime thật, không phải danh sách widget hard-code.
 
-## 6. `cresco-ai-mutation/v3`
+## 7. `cresco-ai-mutation/v3`
 
-Schema kết quả **ưu tiên** cho external AI.
+Preferred external result cho **Selected element / Selected subtree**.
 
-V3 mô tả semantic design intent trước khi Cresco lower về v2/internal patch.
+V3 mô tả semantic design intent trước khi Cresco lower về runtime controls.
 
-Ví dụ khái niệm:
+Ví dụ:
 
 ```json
 {
@@ -221,27 +235,29 @@ Ví dụ khái niệm:
 }
 ```
 
-AI không được tự tạo final Elementor ID cho node mới. Dùng `$new:<name>`/ref khi contract yêu cầu.
+AI không cần mint final Elementor ID cho node mới.
 
-## 7. `cresco-ai-mutation/v2`
+## 8. `cresco-ai-mutation/v2`
 
-Semantic mutation thấp hơn v3, gần runtime binding hơn. Vẫn được import để tương thích.
+Semantic mutation thấp hơn v3.
 
-Pipeline thường là:
+Pipeline thường:
 
 ```text
 v3
 → SemanticDesignCompiler
 → v2
 → AIMutationCompiler
-→ cresco-layer-patch/v1 nội bộ
+→ cresco-layer-patch/v1
 ```
 
-## 8. `cresco-layer-ai-result/v1`
+V2 vẫn được import để tương thích.
 
-Format tương thích dùng khi AI trả một Elementor element tree hoàn chỉnh cho target.
+## 9. `cresco-layer-ai-result/v1`
 
-Top-level chính:
+Format tương thích khi AI trả một Elementor element tree hoàn chỉnh cho một target cụ thể.
+
+Top-level:
 
 ```text
 schema
@@ -250,11 +266,11 @@ element
 label
 ```
 
-Không phải format ưu tiên cho workflow 0.24 vì mutation/delta thường an toàn và nhỏ hơn.
+Không phải format ưu tiên của external workflow 0.24.
 
-## 9. `cresco-layer-patch/v1`
+## 10. `cresco-layer-patch/v1`
 
-Transport/internal patch schema ổn định.
+Internal/transport patch ổn định và preferred external result cho **Entire page**.
 
 Top-level:
 
@@ -266,7 +282,7 @@ label
 operations
 ```
 
-Các operation hỗ trợ:
+Operations:
 
 ```text
 update-setting
@@ -281,38 +297,49 @@ remove-page-setting
 replace-document
 ```
 
-Ví dụ `update-setting`:
+### Document scope
 
 ```json
 {
-  "operation": "update-setting",
-  "elementId": "abc123",
-  "setting": "title_color",
-  "value": "#ffffff"
+  "mode": "document",
+  "rootElementId": "",
+  "elementIds": []
 }
 ```
 
-Ví dụ `insert-element`:
+### Top-level insertion
 
 ```json
 {
   "operation": "insert-element",
-  "parentId": "abc123",
-  "index": 1,
+  "parentId": "",
+  "position": 999999,
   "element": {
-    "id": "allocated-by-cresco",
-    "elType": "widget",
-    "widgetType": "heading",
-    "settings": {}
+    "ref": "$new:section",
+    "elType": "container",
+    "settings": {},
+    "elements": []
   }
 }
 ```
 
-AI bên ngoài nên ưu tiên v3 thay vì tự viết patch setting-level nếu package `outputContract` yêu cầu như vậy.
+`InternalPatchCompiler` chuẩn hóa ID cho inserted subtree trước khi runtime validator/applier xử lý.
 
-## 10. `cresco-layer-patch-validation/v2`
+### Replace document
 
-Runtime validation report/contract.
+```json
+{
+  "operation": "replace-document",
+  "content": [],
+  "pageSettings": {}
+}
+```
+
+Đây là destructive operation; chỉ dùng khi user yêu cầu full rebuild.
+
+## 11. `cresco-layer-patch-validation/v2`
+
+Runtime validation contract/report.
 
 Các gate chính:
 
@@ -330,14 +357,13 @@ unsafe-value
 
 Unknown persisted field chỉ được preserve khi unchanged; không phải giấy phép invent setting mới.
 
-## 11. `cresco-fidelity-policy/v1`
+## 12. `cresco-fidelity-policy/v1`
 
 Policy đo rendered fidelity.
 
-Các trường chính:
+Các phần:
 
 ```text
-schema
 snapshotSchema
 reportSchema
 gateSchema
@@ -350,15 +376,15 @@ capture
 iteration
 ```
 
-Default overall threshold hiện tại:
+Default overall threshold:
 
 ```text
 96
 ```
 
-## 12. `cresco-fidelity-snapshot/v1`
+## 13. `cresco-fidelity-snapshot/v1`
 
-Snapshot DOM/rendered state từ Elementor preview.
+Rendered snapshot từ Elementor preview.
 
 Mỗi element có thể mang:
 
@@ -372,13 +398,9 @@ styles
 quality
 ```
 
-Geometry có thể gồm x/y/width/height, parent-relative position và client/scroll dimensions.
+## 14. `cresco-geometry-graph/v1`
 
-Styles được nhóm theo layout, spacing, typography và visual properties.
-
-## 13. `cresco-geometry-graph/v1`
-
-Quan hệ hình học/DOM:
+Quan hệ DOM/hình học:
 
 ```text
 parent
@@ -388,11 +410,7 @@ next sibling
 relative geometry
 ```
 
-Dùng để phát hiện drift/layout collateral change mà chỉ nhìn setting không thấy được.
-
-## 14. `cresco-fidelity-report/v1`
-
-Kết quả chấm điểm rendered checks.
+## 15. `cresco-fidelity-report/v1`
 
 Các category hiện dùng:
 
@@ -405,46 +423,44 @@ structure
 quality
 ```
 
-Report không đồng nghĩa pixel diff tuyệt đối.
+Report là computed/rendered verification, không phải tuyên bố raster pixel-perfect tuyệt đối.
 
-## 15. `cresco-fidelity-gate/v1`
+## 16. `cresco-fidelity-gate/v1`
 
-Kết luận PASS/BLOCKED dựa trên:
+PASS/BLOCKED dựa trên:
 
 - overall threshold;
 - category floor;
 - blocking rules;
 - verification evidence.
 
-`no-verification-evidence` là blocker; không có evidence không được mặc định 100 điểm.
+`no-verification-evidence` là blocker.
 
-## 16. `cresco-site-settings/v1`
+## 17. `cresco-site-settings/v1`
 
-Contract riêng cho Elementor Site Settings/active Kit.
-
-Dùng cho:
+Contract riêng cho active Elementor Kit:
 
 - Global Colors;
 - Global Fonts;
-- typography/theme style;
+- Theme Style;
 - layout defaults;
 - responsive foundation;
-- Hello/theme integration khi runtime hỗ trợ.
+- optional theme/Pro integration khi runtime hỗ trợ.
 
-Không trộn Site Settings spec vào element-level patch.
+Không trộn Site Settings spec vào element-level AI patch.
 
-## 17. Quy tắc chọn schema
-
-Đối với workflow ChatGPT bên ngoài:
+## 18. Ma trận chọn schema
 
 ```text
-Export JSON:   cresco-external-ai-package/v1
-Export ZIP:    cresco-ai-bundle/v4
-AI context:    cresco-ai-context/v3
-AI output:     cresco-ai-mutation/v3 (ưu tiên)
-Internal apply:cresco-layer-patch/v1
-Validation:    cresco-layer-patch-validation/v2
-Render verify: cresco-fidelity-report/v1 + cresco-fidelity-gate/v1
+External single JSON   → cresco-external-ai-package/v1
+External ZIP           → cresco-ai-bundle/v4
+External policy        → cresco-external-exchange-policy/v1
+AI context             → cresco-ai-context/v3
+Widget/subtree output  → cresco-ai-mutation/v3
+Document output        → cresco-layer-patch/v1
+Internal apply         → cresco-layer-patch/v1
+Runtime validation     → cresco-layer-patch-validation/v2
+Rendered verification  → cresco-fidelity-report/v1 + cresco-fidelity-gate/v1
 ```
 
-Nếu `outputContract` của package cụ thể yêu cầu khác, AI phải ưu tiên contract nằm trong chính package đó.
+Nếu `cresco-package.json.resultContract` của một export cụ thể yêu cầu khác, contract nằm trong chính package đó là nguồn ưu tiên cho AI.
