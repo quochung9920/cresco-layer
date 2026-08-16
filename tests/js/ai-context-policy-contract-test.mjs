@@ -20,5 +20,8 @@ expect(source.includes("name !== 'desktop'"), 'Desktop must remain the base cont
 expect(source.includes('function rebuildSkeleton(pkg, target)'), 'Rebuild contract must derive its skeleton from the selected live target.');
 expect(source.includes('if (current.widgetType) element.widgetType = current.widgetType'), 'Widget rebuilds must preserve the widget type rather than becoming a container.');
 expect(source.includes('contract.templates.rebuild.element = rebuildSkeleton(pkg, target)'), 'Rebuild template must use the selected target skeleton.');
+expect(source.includes("schema: 'cresco-semantic-bindings/v1'"), 'Runtime semantic binding schema must be exported.');
+expect(source.includes('Bindings are emitted only when the exact control key exists'), 'Semantic bindings must remain runtime-proven.');
+expect(source.includes('pkg.semanticBindings = semanticBindings(pkg)'), 'Final AI Context must expose runtime semantic bindings.');
 
-console.log('AI context scope, responsive emission and rebuild policy tests passed.');
+console.log('AI context scope, responsive emission, semantic binding and rebuild policy tests passed.');
