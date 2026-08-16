@@ -4,7 +4,7 @@
 	var cfg = window.crescoLayerEditor || {};
 	var nativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
 	var storageKey = 'cresco-layer-ai-context-profile';
-	var state = { profile: 'exact', installed: false, lastError: '', lastCapabilityCount: 0 };
+	var state = { profile: 'exact', installed: false, lastError: '', lastCapabilityCount: 0, lastDiscovery: null };
 	var constructionWidgets = [
 		'heading', 'text-editor', 'button', 'image', 'icon', 'icon-list', 'divider', 'spacer', 'form',
 		'cresco-advanced-heading', 'cresco-advanced-button', 'cresco-smart-image', 'cresco-advanced-icon', 'cresco-divider', 'cresco-spacer',
@@ -12,8 +12,39 @@
 	];
 	var constructionElements = [ 'container', 'section', 'column', 'e-div-block', 'e-flexbox', 'e-grid' ];
 
+	var TASK_HINTS = {
+		faq: ['accordion', 'toggle', 'nested-accordion', 'tabs'],
+		accordion: ['accordion', 'nested-accordion', 'toggle'],
+		tabs: ['tabs', 'nested-tabs'],
+		carousel: ['carousel', 'slides', 'media-carousel', 'loop-carousel'],
+		slider: ['slides', 'carousel', 'media-carousel', 'loop-carousel'],
+		testimonial: ['testimonial', 'testimonial-carousel', 'carousel', 'slides'],
+		menu: ['nav-menu', 'menu', 'wordpress-menu'],
+		navigation: ['nav-menu', 'menu', 'wordpress-menu', 'breadcrumbs'],
+		breadcrumb: ['breadcrumbs', 'breadcrumb'],
+		posts: ['posts', 'loop-grid', 'portfolio'],
+		blog: ['posts', 'loop-grid', 'portfolio'],
+		grid: ['loop-grid', 'posts', 'portfolio'],
+		products: ['woocommerce-products', 'products', 'loop-grid'],
+		product: ['woocommerce-products', 'products', 'product-title', 'product-images', 'price'],
+		checkout: ['woocommerce-checkout', 'checkout'],
+		cart: ['woocommerce-cart', 'cart'],
+		form: ['form', 'login', 'search-form'],
+		search: ['search-form', 'search'],
+		video: ['video'],
+		gallery: ['gallery', 'media-carousel'],
+		counter: ['counter'],
+		progress: ['progress'],
+		social: ['social-icons'],
+		share: ['share-buttons', 'social-icons'],
+		map: ['google_maps', 'map'],
+		html: ['html'],
+		shortcode: ['shortcode']
+	};
+
 	function root() { return String(cfg.restRoot || '').replace(/\/$/, ''); }
 	function unique(list) { return Array.from(new Set((list || []).filter(Boolean).map(String))); }
+	function words(value) { return String(value || '').toLowerCase(); }
 	function registered(pkg, kind, name) {
 		var index = pkg && pkg.registryIndex ? pkg.registryIndex : {};
 		var items = kind === 'widget' ? (index.widgets || {}) : (index.elements || {});
@@ -49,6 +80,33 @@
 			if (value[key] && typeof value[key] === 'object') collectTypes(value[key], widgets, elements);
 		});
 	}
+	function taskText() {
+		var intent = window.CrescoLayerAIIntent || {};
+		return words(intent.request || '');
+	}
+	function taskMatchesEntry(name, entry, request) {
+		var haystack = [name, entry && entry.title, (entry && entry.categories || []).join(' '), (entry && entry.keywords || []).join(' ')].join(' ').toLowerCase();
+		if (!request || !haystack) return false;
+		var tokens = request.split(/[^a-z0-9_-]+/).filter(function (token) { return token.length >= 3; });
+		for (var i = 0; i < tokens.length; i++) {
+			if (haystack.indexOf(tokens[i]) !== -1) return true;
+		}
+		return false;
+	}
+	function taskAwareWidgets(pkg) {
+		var request = taskText();
+		if (!request) return [];
+		var index = pkg && pkg.registryIndex && pkg.registryIndex.widgets ? pkg.registryIndex.widgets : {};
+		var names = [];
+		Object.keys(TASK_HINTS).forEach(function (hint) {
+			if (request.indexOf(hint) === -1) return;
+			TASK_HINTS[hint].forEach(function (name) { if (registered(pkg, 'widget', name)) names.push(name); });
+		});
+		Object.keys(index).forEach(function (name) {
+			if (taskMatchesEntry(name, index[name], request)) names.push(name);
+		});
+		return unique(names).slice(0, 24);
+	}
 	function typeSet(pkg) {
 		var widgets = [], elements = [];
 		collectTypes(pkg.document ? pkg.document.content : [], widgets, elements);
@@ -57,9 +115,13 @@
 		elements.push.apply(elements, Object.keys(pkg.elementCatalog || {}));
 		constructionWidgets.forEach(function (name) { if (registered(pkg, 'widget', name)) widgets.push(name); });
 		constructionElements.forEach(function (name) { if (registered(pkg, 'element', name)) elements.push(name); });
+		var discovered = taskAwareWidgets(pkg);
+		widgets.push.apply(widgets, discovered);
+		state.lastDiscovery = { request: taskText(), widgets: discovered.slice() };
 		return {
 			widgets: unique(widgets).filter(function (name) { return registered(pkg, 'widget', name); }),
-			elements: unique(elements).filter(function (name) { return registered(pkg, 'element', name); })
+			elements: unique(elements).filter(function (name) { return registered(pkg, 'element', name); }),
+			taskDiscoveredWidgets: discovered
 		};
 	}
 	async function loadDetails(kind, names) {
@@ -102,7 +164,8 @@
 			'- Respect responsive flags/suffixes, control types, units, ranges, options, conditions, selectors and Atomic bindings exactly as exported.',
 			'- Use native Elementor controls first. custom_css is allowed only when no runtime control can express the required visual property.',
 			'- Do not use element/widget types absent from runtimeCapabilities. Do not guess missing capabilities.',
-			'- Reuse siteDesignContext/designSystem and the responsive foundation instead of creating near-duplicate local styles.'
+			'- Reuse siteDesignContext/designSystem and the responsive foundation instead of creating near-duplicate local styles.',
+			'- taskRuntimeDiscovery contains additional runtime-proven widgets loaded because their registry metadata matched the current task.'
 		].join('\n');
 	}
 	async function enrich(pkg) {
@@ -114,7 +177,13 @@
 		pkg.runtimeCapabilities = {
 			schema: 'cresco-runtime-capabilities/v1', mode: 'exact-runtime', source: 'live-elementor-catalog',
 			controlMetadataVersion: pkg.registryIndex ? (pkg.registryIndex.controlMetadataVersion || 0) : 0,
-			constructionSet: set, widgets: widgets, elements: elements
+			constructionSet: { widgets: set.widgets, elements: set.elements }, widgets: widgets, elements: elements
+		};
+		pkg.taskRuntimeDiscovery = {
+			schema: 'cresco-task-runtime-discovery/v1',
+			request: taskText(),
+			discoveredWidgets: set.taskDiscoveredWidgets,
+			rule: 'Every discovered widget came from the active Elementor registry and was selected by task hints or registry title/category/keyword matching.'
 		};
 		pkg.capabilityLock = {
 			schema: 'cresco-capability-lock/v1', mode: 'runtime-exact', status: 'trusted', inventControls: false,
@@ -157,7 +226,7 @@
 		var anchor = modal.querySelector('#cresco-layer-selection-panel') || modal.querySelector('#cresco-layer-export-error');
 		if (!anchor || !anchor.parentNode) return;
 		var panel = document.createElement('div'); panel.className = 'cresco-layer-selection-panel'; panel.setAttribute('data-cresco-runtime-profile', '');
-		panel.innerHTML = '<div class="cresco-layer-selection-panel__head"><strong>AI runtime context</strong><span>Exact Runtime recommended for redesigns</span></div><div class="cresco-layer-scope-cards"><label class="cresco-layer-scope-card"><input type="radio" name="cresco-runtime-profile" value="exact"><span><strong>Exact Runtime</strong><small>Real runtime control keys, defaults, units, options, ranges, conditions, selectors and Atomic metadata. Fails closed instead of guessing.</small></span></label><label class="cresco-layer-scope-card"><input type="radio" name="cresco-runtime-profile" value="smart"><span><strong>Smart</strong><small>Smaller package for edits that do not need broad construction capability.</small></span></label></div>';
+		panel.innerHTML = '<div class="cresco-layer-selection-panel__head"><strong>AI runtime context</strong><span>Exact Runtime recommended for redesigns</span></div><div class="cresco-layer-scope-cards"><label class="cresco-layer-scope-card"><input type="radio" name="cresco-runtime-profile" value="exact"><span><strong>Exact Runtime</strong><small>Real runtime control keys, defaults, units, options, ranges, conditions, selectors, Atomic metadata and task-aware widget discovery. Fails closed instead of guessing.</small></span></label><label class="cresco-layer-scope-card"><input type="radio" name="cresco-runtime-profile" value="smart"><span><strong>Smart</strong><small>Smaller package for edits that do not need broad construction capability.</small></span></label></div>';
 		anchor.parentNode.insertBefore(panel, anchor);
 		Array.prototype.forEach.call(panel.querySelectorAll('input[name="cresco-runtime-profile"]'), function (input) { input.checked = input.value === state.profile; input.addEventListener('change', function () { if (input.checked) setProfile(input.value); }); });
 	}
@@ -167,9 +236,10 @@
 		new MutationObserver(addProfilePanel).observe(document.documentElement, { childList: true, subtree: true });
 	}
 	window.CrescoLayerExactRuntimeExport = {
-		version: '1.0.0', getProfile: function () { return state.profile; }, setProfile: setProfile,
-		getDiagnostics: function () { return { profile: state.profile, installed: state.installed, lastError: state.lastError, lastCapabilityCount: state.lastCapabilityCount }; },
-		constructionSet: { widgets: constructionWidgets.slice(), elements: constructionElements.slice() }
+		version: '1.1.0', getProfile: function () { return state.profile; }, setProfile: setProfile,
+		getDiagnostics: function () { return { profile: state.profile, installed: state.installed, lastError: state.lastError, lastCapabilityCount: state.lastCapabilityCount, lastDiscovery: state.lastDiscovery }; },
+		constructionSet: { widgets: constructionWidgets.slice(), elements: constructionElements.slice() },
+		discoverTaskWidgets: function (pkg) { return taskAwareWidgets(pkg || {}); }
 	};
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe, { once: true }); else observe();
 }());
