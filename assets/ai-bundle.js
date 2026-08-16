@@ -2,9 +2,11 @@
 	'use strict';
 
 	var state = { lastCapture: null, lastError: '' };
+	var PACKAGE_SCHEMA = 'cresco-external-ai-package/v1';
+	var BUNDLE_SCHEMA = 'cresco-ai-bundle/v4';
 
-	function escText(value) { return String(value == null ? '' : value); }
-	function utf8(value) { return new TextEncoder().encode(escText(value)); }
+	function text(value) { return String(value == null ? '' : value); }
+	function utf8(value) { return new TextEncoder().encode(text(value)); }
 	function concat(parts) {
 		var length = parts.reduce(function (sum, part) { return sum + part.length; }, 0);
 		var out = new Uint8Array(length), offset = 0;
@@ -26,7 +28,7 @@
 		return (crc ^ 0xFFFFFFFF) >>> 0;
 	}
 	function u16(value) { var out = new Uint8Array(2); new DataView(out.buffer).setUint16(0, value, true); return out; }
-	function u32(value) { var out = new Uint8Array(4); new DataView(out.buffer).setUint32(0, value >>> 0, true); return out; }
+	function u32(value) { var out = new Uint8Array(4); new DataView(out.buffer).setUint32(0, value >>> 0); return out; }
 	function zip(files) {
 		var locals = [], centrals = [], offset = 0;
 		files.forEach(function (file) {
@@ -41,7 +43,11 @@
 	}
 	function downloadBlob(name, blob) {
 		var url = URL.createObjectURL(blob), a = document.createElement('a');
-		a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+		a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+		setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+	}
+	function downloadJson(name, value) {
+		downloadBlob(name, new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
 	}
 	function previewDocument() {
 		var frame = document.querySelector('#elementor-preview-iframe,iframe[name="elementor-preview-iframe"],iframe[src*="elementor-preview"]');
@@ -73,60 +79,152 @@
 			img.onload = function () {
 				try {
 					var canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height; var ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0); URL.revokeObjectURL(url);
-					canvas.toBlob(function (png) { if (!png) { resolve(null); return; } png.arrayBuffer().then(function (buffer) { resolve({ name: 'current-desktop.png', data: new Uint8Array(buffer), width: width, height: height, source: 'elementor-preview-iframe-foreignobject' }); }).catch(function () { resolve(null); }); }, 'image/png');
+					canvas.toBlob(function (png) { if (!png) { resolve(null); return; } png.arrayBuffer().then(function (buffer) { resolve({ name: 'current-preview.png', data: new Uint8Array(buffer), width: width, height: height, source: 'elementor-preview-iframe-foreignobject' }); }).catch(function () { resolve(null); }); }, 'image/png');
 				} catch (e) { URL.revokeObjectURL(url); resolve(null); }
 			};
 			img.onerror = function () { URL.revokeObjectURL(url); resolve(null); }; img.src = url;
 		});
 	}
-	function taskMarkdown(pkg, raster) {
-		var target = pkg.target || {}, task = pkg.task || {}, placement = pkg.placementContext || {}, output = pkg.outputContract || {}, design = pkg.designIntelligence || {}, reasoning = pkg.designReasoning || {};
-		var dials = design.designDials || {};
-		return [
-			'# Cresco AI Task', '',
-			'Goal:', task.request || '(No explicit request supplied)', '',
-			'Target:', 'Post ' + (target.postId || 0), 'Element ' + (target.id || ''), 'Scope ' + (target.scope || ''), '',
-			'Design brief:', 'Product: ' + (reasoning.productArchetype || design.productArchetype || 'general-web'), 'Page: ' + (reasoning.pageArchetype || 'content-section'), 'Objective: ' + (reasoning.objective || 'Create a coherent accessible interface.'), 'Variance: ' + ((dials.variance || {}).tier || 'auto'), 'Motion: ' + ((dials.motion || {}).tier || 'auto'), 'Density: ' + ((dials.density || {}).tier || 'auto'), '',
-			'Decision order:', (reasoning.decisionOrder || []).join(' → '), '',
-			'Widget policy:', 'Use widget-guide.json and runtime-proven widget types only.', 'Use semantic layout/style intent before raw Elementor setting keys when possible.', '',
-			'Placement:', JSON.stringify(placement.allowedPlacements || []), '',
-			'IDs:', 'Do not invent final Elementor IDs. Omit id or use unique $new:<name> refs.', '',
-			'Output:', 'Preferred schema: ' + (output.preferredSchema || 'cresco-ai-mutation/v3'), 'Return only the intended mutation; do not echo source context.', '',
-			'Quality gates:', 'Read 06-design-reasoning.json before finalizing. Accessibility, behavior safety, hierarchy, responsive fit and Active Kit consistency outrank decorative polish.', '',
-			'Reference image:', reasoning.referenceTranslation && reasoning.referenceTranslation.provided ? 'Analyze hierarchy, proportions, rhythm and visual character, then adapt through the active Elementor design system/runtime.' : 'No reference image is embedded for this task.', '',
-			'Visual:', raster ? 'current-desktop.png is a best-effort raster capture of the selected Elementor target.' : 'No trustworthy raster capture was produced. Use structured visualSnapshot/layoutGraph and attach the original reference image separately if needed.'
-		].join('\n');
-	}
 	function referenceBytes(file) {
 		if (!file || typeof file.arrayBuffer !== 'function') return Promise.resolve(null);
-		return file.arrayBuffer().then(function (buffer) { var name = String(file.name || 'reference-image').replace(/[^A-Za-z0-9._-]+/g, '-'); return { name: 'reference-' + name, data: new Uint8Array(buffer) }; }).catch(function () { return null; });
+		return file.arrayBuffer().then(function (buffer) {
+			var name = String(file.name || 'reference-image').replace(/[^A-Za-z0-9._-]+/g, '-');
+			return { name: 'reference-' + name, data: new Uint8Array(buffer) };
+		}).catch(function () { return null; });
+	}
+	function packageId(pkg) {
+		var target = pkg.target || {};
+		return ['cresco', target.postId || 0, target.id || 'document', target.scope || 'document', Date.now()].join('-');
+	}
+	function resultFilename(pkg) {
+		var target = pkg.target || {};
+		return 'cresco-ai-result-' + (target.id || ('post-' + (target.postId || 0))) + '.json';
+	}
+	function externalPackage(pkg) {
+		if (!pkg || pkg.schema !== 'cresco-ai-context/v3') throw new Error('Cresco AI Context v3 is required.');
+		var output = pkg.outputContract || {};
+		var target = Object.assign({}, pkg.target || {});
+		return {
+			schema: PACKAGE_SCHEMA,
+			packageId: packageId(pkg),
+			createdAt: new Date().toISOString(),
+			producer: { name: 'Cresco Layer', version: (window.crescoLayerEditor || {}).version || '' },
+			workflow: 'elementor-export-external-ai-import',
+			target: target,
+			instructionsForAI: [
+				'Read this package as the source of truth for the current Elementor runtime and editable scope.',
+				'The design request is supplied by the user in the chat after uploading this file. Do not require the request to be embedded in the package.',
+				'Never invent Elementor controls, responsive suffixes, units, options, Dynamic Tags or global references.',
+				'Use runtime capabilities, control registry, layout context, design system and visual context from the embedded Cresco context.',
+				'Preserve existing Elementor IDs and unknown persisted fields unless the editable contract explicitly allows replacement.',
+				'Prefer semantic design intent and native Elementor controls over custom CSS when the contract supports them.',
+				'Return only the intended delta. Do not echo the source package.',
+				'Return valid JSON without markdown fences. If file creation is available, create the requested result filename.'
+			],
+			resultContract: {
+				preferredSchema: output.preferredSchema || 'cresco-ai-mutation/v3',
+				acceptedSchemas: ['cresco-ai-mutation/v3', 'cresco-ai-mutation/v2', 'cresco-layer-patch/v1', 'cresco-layer-ai-result/v1'],
+				filename: resultFilename(pkg),
+				targetRule: 'Keep the original target postId/id. Include target.scope when the output schema permits it.',
+				responseRule: 'Return only JSON or a JSON file. Do not return prose around the payload.'
+			},
+			contextQuality: pkg.contextQuality || {},
+			context: pkg
+		};
+	}
+	function readme(pkg, packaged, raster, reference) {
+		var target = packaged.target || {}, contract = packaged.resultContract || {};
+		return [
+			'# Cresco Layer - External AI Package', '',
+			'This bundle was exported from Elementor for processing in ChatGPT or another external AI.', '',
+			'## User workflow',
+			'1. Read cresco-package.json first.',
+			'2. Treat the embedded Cresco context and runtime capability data as authoritative.',
+			'3. Ask the user what interface change they want, or use the instruction they already supplied in chat.',
+			'4. Produce only the requested Elementor delta.',
+			'5. Return valid JSON using the preferred schema below.', '',
+			'## Target',
+			'- Post: ' + (target.postId || 0),
+			'- Element: ' + (target.id || '(document)'),
+			'- Scope: ' + (target.scope || 'document'), '',
+			'## Output',
+			'- Preferred schema: ' + (contract.preferredSchema || 'cresco-ai-mutation/v3'),
+			'- Suggested filename: ' + (contract.filename || resultFilename(pkg)),
+			'- JSON only; no markdown fences or explanatory prose.', '',
+			'## Mandatory safety rules',
+			'- Do not invent Elementor controls or values unsupported by the runtime registry.',
+			'- Do not edit outside the exported editable scope.',
+			'- Preserve IDs and unknown persisted fields unless the contract explicitly allows replacement.',
+			'- Prefer native Elementor controls and active global design-system values.', '',
+			'## Visual evidence',
+			(raster ? '- current-preview.png contains a best-effort raster of the exported target.' : '- No raster was available; use visualContext/computed geometry in the package.'),
+			(reference ? '- A user reference image is included in the bundle.' : '- No user reference image is included.'), '',
+			'Important: Cresco Layer will validate scope, runtime controls, values and rendered fidelity when the result is imported back into Elementor.'
+		].join('\n');
 	}
 	function build(pkg, referenceFile) {
-		if (!pkg || pkg.schema !== 'cresco-ai-context/v3') return Promise.reject(new Error('Prepare Cresco AI Context v3 first.'));
-		var targetId = pkg.target && pkg.target.id || '';
+		var packaged;
+		try { packaged = externalPackage(pkg); } catch (error) { return Promise.reject(error); }
+		var targetId = packaged.target && packaged.target.id || '';
 		return Promise.all([rasterizeTarget(targetId), referenceBytes(referenceFile)]).then(function (parts) {
-			var raster = parts[0], reference = parts[1]; state.lastCapture = raster ? { width: raster.width, height: raster.height, source: raster.source } : null;
-			var guide = { schema: 'cresco-widget-guide/v2', widgetIntelligence: pkg.widgetIntelligence || {}, constructionPlan: pkg.constructionPlan || {}, semanticBindings: pkg.semanticBindings || {}, structureGrammar: pkg.structureGrammar || {}, controlExamples: pkg.controlExamples || {}, semanticDesignIntent: pkg.semanticDesignIntent || {} };
-			var contract = pkg.outputContract || {};
-			var design = { schema: 'cresco-design-brief/v2', designIntelligence: pkg.designIntelligence || {}, designReasoning: pkg.designReasoning || {}, designSystem: pkg.designSystem || {}, responsive: pkg.responsive || {}, mutationBoundary: pkg.mutationBoundary || {} };
-			var reasoning = pkg.designReasoning || { schema: 'cresco-design-reasoning/v1', status: 'unavailable' };
-			var manifest = { schema: 'cresco-ai-bundle/v3', pluginVersion: (window.crescoLayerEditor || {}).version || '', createdAt: new Date().toISOString(), target: pkg.target || {}, contextQuality: pkg.contextQuality || {}, preferredOutputSchema: contract.preferredSchema || 'cresco-ai-mutation/v3', designReasoningSchema: reasoning.schema || null, raster: raster ? { file: raster.name, width: raster.width, height: raster.height, source: raster.source } : { file: null, status: 'unavailable' }, reference: reference ? { file: reference.name } : { file: null }, files: [] };
+			var raster = parts[0], reference = parts[1];
+			state.lastCapture = raster ? { width: raster.width, height: raster.height, source: raster.source } : null;
+			var context = packaged.context || {}, output = context.outputContract || {};
 			var files = [
-				{ name: '01-TASK.md', data: taskMarkdown(pkg, raster) },
-				{ name: '02-context.json', data: JSON.stringify(pkg, null, 2) },
-				{ name: '03-widget-guide.json', data: JSON.stringify(guide, null, 2) },
-				{ name: '04-output-contract.json', data: JSON.stringify(contract, null, 2) },
-				{ name: '05-design-intelligence.json', data: JSON.stringify(design, null, 2) },
-				{ name: '06-design-reasoning.json', data: JSON.stringify(reasoning, null, 2) }
+				{ name: 'README-FOR-CHATGPT.md', data: readme(pkg, packaged, raster, reference) },
+				{ name: 'cresco-package.json', data: JSON.stringify(packaged, null, 2) },
+				{ name: 'elementor-context.json', data: JSON.stringify(context, null, 2) },
+				{ name: 'output-contract.json', data: JSON.stringify(output, null, 2) },
+				{ name: 'widget-guide.json', data: JSON.stringify({ schema: 'cresco-widget-guide/v2', widgetIntelligence: context.widgetIntelligence || {}, constructionPlan: context.constructionPlan || {}, semanticBindings: context.semanticBindings || {}, structureGrammar: context.structureGrammar || {}, controlExamples: context.controlExamples || {} }, null, 2) }
 			];
-			if (raster) files.push({ name: raster.name, data: raster.data }); if (reference) files.push(reference);
-			manifest.files = files.map(function (file) { return file.name; }).concat(['manifest.json']); files.push({ name: 'manifest.json', data: JSON.stringify(manifest, null, 2) });
-			return { blob: zip(files), manifest: manifest };
+			if (context.visualContext) files.push({ name: 'visual-context.json', data: JSON.stringify(context.visualContext, null, 2) });
+			if (raster) files.push({ name: raster.name, data: raster.data });
+			if (reference) files.push(reference);
+			var manifest = {
+				schema: BUNDLE_SCHEMA,
+				packageSchema: PACKAGE_SCHEMA,
+				packageId: packaged.packageId,
+				pluginVersion: (window.crescoLayerEditor || {}).version || '',
+				createdAt: packaged.createdAt,
+				target: packaged.target,
+				contextQuality: packaged.contextQuality,
+				preferredOutputSchema: packaged.resultContract.preferredSchema,
+				resultFilename: packaged.resultContract.filename,
+				raster: raster ? { file: raster.name, width: raster.width, height: raster.height, source: raster.source } : { file: null, status: 'unavailable' },
+				reference: reference ? { file: reference.name } : { file: null },
+				files: []
+			};
+			manifest.files = files.map(function (file) { return file.name; }).concat(['manifest.json']);
+			files.push({ name: 'manifest.json', data: JSON.stringify(manifest, null, 2) });
+			return { blob: zip(files), manifest: manifest, package: packaged };
 		});
 	}
 	function exportBundle(pkg, referenceFile) {
-		return build(pkg, referenceFile).then(function (result) { var target = pkg.target && pkg.target.id || 'target'; downloadBlob('cresco-ai-bundle-' + target + '.zip', result.blob); return result.manifest; }).catch(function (error) { state.lastError = error && error.message ? error.message : String(error); throw error; });
+		return build(pkg, referenceFile).then(function (result) {
+			var target = result.manifest.target && result.manifest.target.id || ('post-' + ((result.manifest.target || {}).postId || 0));
+			downloadBlob('cresco-chatgpt-bundle-' + target + '.zip', result.blob);
+			return result.manifest;
+		}).catch(function (error) { state.lastError = error && error.message ? error.message : String(error); throw error; });
+	}
+	function exportJson(pkg) {
+		try {
+			var packaged = externalPackage(pkg), target = packaged.target && packaged.target.id || ('post-' + ((packaged.target || {}).postId || 0));
+			downloadJson('cresco-chatgpt-package-' + target + '.json', packaged);
+			return Promise.resolve(packaged);
+		} catch (error) {
+			state.lastError = error && error.message ? error.message : String(error);
+			return Promise.reject(error);
+		}
 	}
 
-	window.CrescoLayerAIBundle = { version: '3.0.0', build: build, export: exportBundle, getDiagnostics: function () { return { lastCapture: state.lastCapture, lastError: state.lastError }; } };
+	window.CrescoLayerAIBundle = {
+		version: '4.0.0',
+		packageSchema: PACKAGE_SCHEMA,
+		bundleSchema: BUNDLE_SCHEMA,
+		build: build,
+		package: externalPackage,
+		export: exportBundle,
+		exportJson: exportJson,
+		getDiagnostics: function () { return { lastCapture: state.lastCapture, lastError: state.lastError }; }
+	};
 }());
