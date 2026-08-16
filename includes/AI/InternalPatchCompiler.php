@@ -45,7 +45,7 @@ final class InternalPatchCompiler {
 		}
 
 		if ( 'semantic-design-mutation' === $normalized['kind'] ) {
-			$design = $this->designCompiler->lower( $normalized['result'] );
+			$design = $this->designCompiler->lower( $normalized['result'], $elements );
 			$semantic = $this->mutationCompiler->compile( $design['mutation'], $post_id, $elements, $selected );
 			$delta = $this->normalize_delta_patch( $semantic['patch'], $elements );
 			$delta['report'] = array_merge( $delta['report'], $semantic['report'], $design['report'], [
