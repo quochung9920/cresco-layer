@@ -35,7 +35,8 @@ final class Assets {
 		wp_enqueue_script( 'cresco-layer-ai-context-v3', CRESCO_LAYER_URL . 'assets/ai-context-v3.js', [ 'cresco-layer-exact-runtime-export' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-external-ai-intelligence', CRESCO_LAYER_URL . 'assets/external-ai-intelligence.js', [ 'cresco-layer-ai-context-v3' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-design-intelligence', CRESCO_LAYER_URL . 'assets/design-intelligence.js', [ 'cresco-layer-external-ai-intelligence' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-ai-context-policy', CRESCO_LAYER_URL . 'assets/ai-context-policy.js', [ 'cresco-layer-design-intelligence' ], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-semantic-design-contract', CRESCO_LAYER_URL . 'assets/semantic-design-contract.js', [ 'cresco-layer-design-intelligence' ], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-ai-context-policy', CRESCO_LAYER_URL . 'assets/ai-context-policy.js', [ 'cresco-layer-semantic-design-contract' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-ai-bundle', CRESCO_LAYER_URL . 'assets/ai-bundle.js', [ 'cresco-layer-ai-context-policy' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-visual-verification', CRESCO_LAYER_URL . 'assets/visual-verification.js', [ 'cresco-layer-ai-bundle' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-ai-panel', CRESCO_LAYER_URL . 'assets/ai-panel.js', [ 'cresco-layer-visual-verification' ], CRESCO_LAYER_VERSION, false );
