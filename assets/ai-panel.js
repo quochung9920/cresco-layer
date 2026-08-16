@@ -77,9 +77,9 @@
 						'<label><input type="radio" name="cresco-export-scope" value="widget"><span>Selected element</span></label>' +
 						'<label><input type="radio" name="cresco-export-scope" value="subtree" checked><span>Selected subtree</span></label>' +
 						'<label><input type="radio" name="cresco-export-scope" value="document"><span>Entire page</span></label>' +
-					'</div><small>Cresco exports runtime controls, globals, responsive context, layout graph and rendered evidence automatically.</small></div>' +
+					'</div><small>External export uses Full Context: runtime controls, globals, responsive context, layout graph and rendered evidence are included automatically.</small></div>' +
 					'<label class="cresco-ai-reference"><input type="file" accept="image/*" data-cresco-ai-reference><span><strong>Reference image (optional)</strong><small>Included only in the full ZIP bundle. You can also attach a reference directly in ChatGPT.</small></span></label>' +
-					'<div class="cresco-ai-quality" data-cresco-ai-quality><div><span>Export quality</span><strong>Not exported</strong></div><div class="cresco-ai-quality__bar"><i style="width:0%"></i></div><small>Exact Runtime and Fidelity context are prepared automatically when you export.</small></div>' +
+					'<div class="cresco-ai-quality" data-cresco-ai-quality><div><span>Export quality</span><strong>Not exported</strong></div><div class="cresco-ai-quality__bar"><i style="width:0%"></i></div><small>Exact Runtime, Full Context and Fidelity evidence are prepared automatically when you export.</small></div>' +
 					'<div class="cresco-ai-actions"><button type="button" class="cresco-ai-primary" data-cresco-export-bundle>Export for ChatGPT</button><button type="button" class="cresco-ai-secondary" data-cresco-export-json>JSON only</button></div>' +
 					'<div class="cresco-ai-ready" data-cresco-ai-ready hidden><div class="cresco-ai-ready__summary"></div><small>Upload the exported file to ChatGPT, describe the interface change in chat, then import the returned JSON here.</small></div>' +
 				'</section>' +
@@ -134,7 +134,7 @@
 		ensureExact();
 		window.CrescoLayerAIIntent = { workflow: 'external-file-exchange', request: '', changeType: 'auto', referenceImage: referenceMetadata(state.referenceImage) };
 		var selected = scope === 'document' ? '' : info.id;
-		return request('/documents/' + pid + '/export?scope=' + encodeURIComponent(scope) + '&selected=' + encodeURIComponent(selected) + '&context=smart').then(function (pkg) {
+		return request('/documents/' + pid + '/export?scope=' + encodeURIComponent(scope) + '&selected=' + encodeURIComponent(selected) + '&context=full').then(function (pkg) {
 			if (!pkg || pkg.schema !== 'cresco-ai-context/v3') throw new Error('AI Context v3 was not produced. Reload Elementor and export again.');
 			state.prepared = pkg; state.preparedTarget = selected; state.preparedScope = scope; renderQuality(box, pkg.contextQuality || {}); return pkg;
 		});
