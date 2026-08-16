@@ -47,6 +47,48 @@
 		pkg.runtime = runtime;
 		return pkg;
 	}
+	function firstControl(controls, candidates) {
+		for (var i = 0; i < candidates.length; i++) {
+			if (controls[candidates[i]] && typeof controls[candidates[i]] === 'object') return candidates[i];
+		}
+		return '';
+	}
+	function semanticBindings(pkg) {
+		var out = {
+			schema: 'cresco-semantic-bindings/v1',
+			source: 'active-runtime-controls',
+			widgets: {},
+			rules: [
+				'Bindings are emitted only when the exact control key exists on the active runtime widget.',
+				'Use content shortcuts for semantic content; explicit settings remain available and are still validated by SemanticPatchGuard.',
+				'Do not infer a missing binding from another widget type.'
+			]
+		};
+		var runtime = pkg.runtime || {};
+		var intelligence = pkg.widgetIntelligence && pkg.widgetIntelligence.widgets ? pkg.widgetIntelligence.widgets : {};
+		Object.keys(runtime.widgets || {}).forEach(function (name) {
+			var entry = runtime.widgets[name] || {};
+			var controls = entry.controls || {};
+			var family = intelligence[name] && intelligence[name].family ? intelligence[name].family : '';
+			var binding = { family: family, content: {} };
+			var key = '';
+			if (family === 'heading' || /heading|headline|title/.test(name)) {
+				key = firstControl(controls, ['title', 'text', 'heading', 'headline']); if (key) binding.content.text = key;
+				key = firstControl(controls, ['header_size', 'html_tag', 'tag']); if (key) binding.content.semanticLevel = key;
+			} else if (family === 'text' || /text-editor|paragraph|rich-text/.test(name)) {
+				key = firstControl(controls, ['editor', 'text', 'content', 'description']); if (key) { binding.content.text = key; binding.content.html = key; }
+			} else if (family === 'button' || /button|cta/.test(name)) {
+				key = firstControl(controls, ['text', 'button_text', 'label', 'title']); if (key) binding.content.text = key;
+				key = firstControl(controls, ['link', 'url', 'button_link']); if (key) binding.content.url = key;
+			} else if (family === 'image' || /image|media/.test(name)) {
+				key = firstControl(controls, ['image', 'media', 'source']); if (key) binding.content.image = key;
+			} else if (family === 'icon' || /icon/.test(name)) {
+				key = firstControl(controls, ['selected_icon', 'icon']); if (key) binding.content.icon = key;
+			}
+			if (Object.keys(binding.content).length) out.widgets[name] = binding;
+		});
+		return out;
+	}
 	function rebuildSkeleton(pkg, target) {
 		var current = pkg && pkg.currentInterface ? pkg.currentInterface.element : null;
 		var element = { id: target.id || '', elType: 'container', settings: {}, elements: [] };
@@ -82,7 +124,9 @@
 		pkg.outputContract = contract;
 		target.canAcceptChildren = mode !== 'widget';
 		pkg.target = target;
-		return addEmittableKeys(pkg);
+		pkg = addEmittableKeys(pkg);
+		pkg.semanticBindings = semanticBindings(pkg);
+		return pkg;
 	}
 	function jsonResponse(original, payload) {
 		var headers = new Headers(original.headers || {});
@@ -100,5 +144,5 @@
 		};
 	}
 
-	window.CrescoLayerAIContextPolicy = { version: '1.2.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes };
+	window.CrescoLayerAIContextPolicy = { version: '1.3.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes, semanticBindings: semanticBindings };
 }());
