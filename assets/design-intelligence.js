@@ -18,6 +18,10 @@
 		var intent = window.CrescoLayerAIIntent || {};
 		var dials = intent.designDials && typeof intent.designDials === 'object' ? intent.designDials : {};
 		var value = parseInt(dials[name], 10);
+		if (!(value >= 1 && value <= 10)) {
+			var field = document.querySelector('[data-cresco-design-dial="' + name + '"]');
+			value = field ? parseInt(field.value, 10) : 0;
+		}
 		return value >= 1 && value <= 10 ? value : 0;
 	}
 
@@ -37,15 +41,9 @@
 		var variance = explicitDial('variance');
 		var motion = explicitDial('motion');
 		var density = explicitDial('density');
-		if (!variance) {
-			variance = /brutal|experimental|asymmetric|bold|editorial/.test(q) ? 8 : (/minimal|clean|professional|corporate/.test(q) ? 3 : 5);
-		}
-		if (!motion) {
-			motion = /immersive|animated|dynamic|cinematic|motion/.test(q) ? 7 : (/static|subtle|minimal motion/.test(q) ? 2 : 4);
-		}
-		if (!density) {
-			density = product === 'dashboard' ? 8 : (/luxury|spacious|premium|editorial/.test(q) ? 3 : (product === 'commerce' ? 6 : 5));
-		}
+		if (!variance) variance = /brutal|experimental|asymmetric|bold|editorial/.test(q) ? 8 : (/minimal|clean|professional|corporate/.test(q) ? 3 : 5);
+		if (!motion) motion = /immersive|animated|dynamic|cinematic|motion/.test(q) ? 7 : (/static|subtle|minimal motion/.test(q) ? 2 : 4);
+		if (!density) density = product === 'dashboard' ? 8 : (/luxury|spacious|premium|editorial/.test(q) ? 3 : (product === 'commerce' ? 6 : 5));
 		return { variance: clamp(variance, 1, 10), motion: clamp(motion, 1, 10), density: clamp(density, 1, 10) };
 	}
 
@@ -63,9 +61,7 @@
 
 	function styleKeywords(request, dials) {
 		var q = lower(request), out = [];
-		['minimal', 'modern', 'professional', 'luxury', 'editorial', 'playful', 'bold', 'dark', 'light', 'glass', 'brutal', 'organic', 'technical'].forEach(function (word) {
-			if (q.indexOf(word) !== -1) out.push(word);
-		});
+		['minimal', 'modern', 'professional', 'luxury', 'editorial', 'playful', 'bold', 'dark', 'light', 'glass', 'brutal', 'organic', 'technical'].forEach(function (word) { if (q.indexOf(word) !== -1) out.push(word); });
 		if (!out.length) out.push(tier(dials.variance, ['minimal-structured', 'balanced-modern', 'bold-asymmetric']));
 		return unique(out);
 	}
@@ -86,13 +82,7 @@
 
 	function activeKitSummary(context) {
 		var design = context.designSystem || {};
-		return {
-			source: 'active-elementor-kit',
-			hasSystemColors: !!(design.colors && design.colors.system && design.colors.system.length),
-			hasCustomColors: !!(design.colors && design.colors.custom && design.colors.custom.length),
-			hasTypography: !!design.typography,
-			breakpoints: context.responsive && context.responsive.breakpoints ? context.responsive.breakpoints : (design.layout && design.layout.breakpoints ? design.layout.breakpoints : {})
-		};
+		return { source: 'active-elementor-kit', hasSystemColors: !!(design.colors && design.colors.system && design.colors.system.length), hasCustomColors: !!(design.colors && design.colors.custom && design.colors.custom.length), hasTypography: !!design.typography, breakpoints: context.responsive && context.responsive.breakpoints ? context.responsive.breakpoints : (design.layout && design.layout.breakpoints ? design.layout.breakpoints : {}) };
 	}
 
 	function antiPatterns(product, dials) {
@@ -132,46 +122,43 @@
 		var product = inferProduct(request);
 		var dials = inferDials(request, product);
 		context.designIntelligence = {
-			schema: 'cresco-design-intelligence/v1',
-			source: SOURCE,
-			productArchetype: product,
-			styleKeywords: styleKeywords(request, dials),
-			designDials: {
-				variance: { value: dials.variance, tier: tier(dials.variance, ['centered-minimal', 'balanced-modern', 'bold-asymmetric']) },
-				motion: { value: dials.motion, tier: tier(dials.motion, ['subtle', 'standard', 'expressive']) },
-				density: { value: dials.density, tier: tier(dials.density, ['spacious', 'standard', 'dense']) }
-			},
-			spacingIntentScale: spacingScale(dials.density),
-			qualityPriorities: qualityPriorities(),
-			activeKit: activeKitSummary(context),
-			antiPatterns: antiPatterns(product, dials),
-			principles: [
-				'Accessibility and interaction safety outrank decorative style choices.',
-				'Reuse the current Elementor design language before introducing a new local value.',
-				'Use fluid layout and spacing first; use breakpoints for structural changes.',
-				'Motion must have a purpose and must degrade for reduced-motion users.',
-				'Visual tasks must not rewrite form, query, navigation or commerce behavior.'
-			]
+			schema: 'cresco-design-intelligence/v1', source: SOURCE, productArchetype: product, styleKeywords: styleKeywords(request, dials),
+			designDials: { variance: { value: dials.variance, tier: tier(dials.variance, ['centered-minimal', 'balanced-modern', 'bold-asymmetric']) }, motion: { value: dials.motion, tier: tier(dials.motion, ['subtle', 'standard', 'expressive']) }, density: { value: dials.density, tier: tier(dials.density, ['spacious', 'standard', 'dense']) } },
+			spacingIntentScale: spacingScale(dials.density), qualityPriorities: qualityPriorities(), activeKit: activeKitSummary(context), antiPatterns: antiPatterns(product, dials),
+			principles: ['Accessibility and interaction safety outrank decorative style choices.', 'Reuse the current Elementor design language before introducing a new local value.', 'Use fluid layout and spacing first; use breakpoints for structural changes.', 'Motion must have a purpose and must degrade for reduced-motion users.', 'Visual tasks must not rewrite form, query, navigation or commerce behavior.']
 		};
 		context.semanticDesignIntent = intentContract();
 		context.outputContract = context.outputContract || {};
 		context.outputContract.preferredSchema = 'cresco-ai-mutation/v3';
 		context.outputContract.acceptedSchemas = unique((context.outputContract.acceptedSchemas || []).concat(['cresco-ai-mutation/v3', 'cresco-ai-mutation/v2', 'cresco-layer-patch/v1', 'cresco-layer-ai-result/v1']));
-		context.outputContract.semanticDesignCompiler = {
-			preferred: true,
-			contract: 'cresco-semantic-design-intent/v1',
-			fallback: 'Use explicit runtime-proven settings only when a semantic intent cannot represent the required property.'
-		};
+		context.outputContract.semanticDesignCompiler = { preferred: true, contract: 'cresco-semantic-design-intent/v1', fallback: 'Use explicit runtime-proven settings only when a semantic intent cannot represent the required property.' };
 		context.rules = context.rules || {};
 		context.rules.designQuality = context.designIntelligence.principles.concat(context.designIntelligence.antiPatterns.map(function (item) { return 'Avoid: ' + item + '.'; }));
 		return context;
 	}
 
-	window.CrescoLayerDesignIntelligence = {
-		version: '1.0.0',
-		source: SOURCE,
-		enrich: enrich,
-		inferProduct: inferProduct,
-		inferDials: inferDials
-	};
+	function option(value, label) { return '<option value="' + value + '">' + label + '</option>'; }
+	function injectDials() {
+		var panel = document.getElementById('cresco-ai-panel');
+		if (!panel || panel.querySelector('[data-cresco-design-dials]')) return;
+		var change = panel.querySelector('.cresco-ai-segmented');
+		var host = change && change.parentNode ? change.parentNode : panel.querySelector('[data-cresco-ai-pane="prepare"]');
+		if (!host) return;
+		var details = document.createElement('details'); details.setAttribute('data-cresco-design-dials', ''); details.className = 'cresco-ai-field';
+		details.innerHTML = '<summary><strong>Design Intelligence</strong> <small>optional</small></summary>' +
+			'<div class="cresco-ai-design-dials" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px">' +
+			'<label><span>Variance</span><select data-cresco-design-dial="variance">' + option('0','Auto') + option('2','Minimal') + option('5','Balanced') + option('9','Bold') + '</select></label>' +
+			'<label><span>Motion</span><select data-cresco-design-dial="motion">' + option('0','Auto') + option('2','Subtle') + option('5','Standard') + option('9','Expressive') + '</select></label>' +
+			'<label><span>Density</span><select data-cresco-design-dial="density">' + option('0','Auto') + option('2','Spacious') + option('5','Standard') + option('9','Dense') + '</select></label>' +
+			'</div><small>Inspired by UI/UX Pro Max design dials; Cresco combines them with the active Elementor Kit and runtime instead of copying a separate design system.</small>';
+		host.appendChild(details);
+	}
+
+	function boot() {
+		injectDials();
+		if (window.MutationObserver && document.documentElement) new MutationObserver(injectDials).observe(document.documentElement, { childList: true, subtree: true });
+	}
+
+	window.CrescoLayerDesignIntelligence = { version: '1.1.0', source: SOURCE, enrich: enrich, inferProduct: inferProduct, inferDials: inferDials };
+	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 }());
