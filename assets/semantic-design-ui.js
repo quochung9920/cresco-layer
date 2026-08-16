@@ -5,11 +5,14 @@
 		var panel = document.getElementById('cresco-ai-panel');
 		if (!panel) return;
 		var importArea = panel.querySelector('[data-cresco-ai-import]');
-		if (importArea) importArea.placeholder = 'Paste cresco-ai-mutation/v3 (preferred), cresco-ai-mutation/v2, cresco-layer-patch/v1 or cresco-layer-ai-result/v1. Markdown code fences and common AI wrappers are accepted.';
-		var ready = panel.querySelector('[data-cresco-ai-ready] > small');
-		if (ready) ready.textContent = 'Preferred response: cresco-ai-mutation/v3 semantic design delta. Cresco compiles layout/style/responsive intent to exact runtime controls; Rebuild remains the only destructive mode.';
-		var targetNote = panel.querySelector('[data-cresco-ai-pane="prepare"] .cresco-ai-target small');
-		if (targetNote) targetNote.textContent = 'Exact Runtime, semantic design intelligence and safe widget/subtree scope are automatic.';
+		if (importArea) {
+			importArea.placeholder = 'Paste the JSON returned by ChatGPT: cresco-ai-mutation/v3, v2, cresco-layer-patch/v1 or cresco-layer-ai-result/v1.';
+		}
+		var exportNote = panel.querySelector('[data-cresco-ai-pane="export"] [data-cresco-ai-ready] > small');
+		if (exportNote && !exportNote.dataset.externalExchangeCopy) {
+			exportNote.dataset.externalExchangeCopy = '1';
+			exportNote.textContent = 'Upload the exported file to ChatGPT, describe the interface change there, then import the returned JSON here. The package declares the preferred result schema for its scope.';
+		}
 	}
 
 	function boot() {
@@ -19,6 +22,6 @@
 		}
 	}
 
-	window.CrescoLayerSemanticDesignUI = { version: '1.0.0', refresh: updatePanel };
+	window.CrescoLayerSemanticDesignUI = { version: '1.1.0', mode: 'external-ai-exchange', refresh: updatePanel };
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 }());
