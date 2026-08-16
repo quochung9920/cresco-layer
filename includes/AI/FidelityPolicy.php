@@ -44,6 +44,7 @@ final class FidelityPolicy {
 				'horizontal-overflow',
 				'invisible-target',
 				'invalid-geometry',
+				'no-verification-evidence',
 			],
 			'capture' => [
 				'maxElements' => 500,
