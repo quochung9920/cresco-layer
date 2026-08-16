@@ -4,9 +4,9 @@ namespace CrescoLayer\AI;
 /**
  * Compiles the AI-facing semantic mutation contract into scoped patch/v1 operations.
  *
- * External AI describes semantic intent. Cresco resolves that intent only through the active
- * Elementor runtime, owns placement/target validation, and leaves final new IDs to the downstream
- * InternalPatchCompiler/ElementorIdGenerator.
+ * The external model chooses semantic intent, but it may only name widget/element types that the
+ * active Elementor runtime actually exposes. Cresco owns placement, target validation and final
+ * Elementor IDs (assigned later by InternalPatchCompiler).
  */
 final class AIMutationCompiler {
 	public const SCHEMA = 'cresco-ai-mutation/v2';
@@ -88,15 +88,16 @@ final class AIMutationCompiler {
 		}
 		$nodes = is_array( $mutation['nodes'] ?? null ) ? $mutation['nodes'] : [];
 		if ( ! $nodes ) { throw new \InvalidArgumentException( 'Add mutation requires at least one node.' ); }
+
 		$placement = is_array( $mutation['placement'] ?? null ) ? $mutation['placement'] : [];
 		$mode = (string) ( $placement['mode'] ?? 'inside-end' );
 		if ( ! in_array( $mode, [ 'inside-start', 'inside-end' ], true ) ) {
-			throw new \InvalidArgumentException( 'Add mutation placement must be inside-start or inside-end for the selected editable Container. Select/export a wider parent scope for sibling placement.' );
+			throw new \InvalidArgumentException( 'This selected scope cannot safely add a sibling before/after the target. Select/export the parent Container, then add inside that parent at the intended position.' );
 		}
 		$position = 'inside-start' === $mode ? 0 : 999999;
 		$out = [];
 		foreach ( $nodes as $offset => $node ) {
-			if ( ! is_array( $node ) ) { throw new \InvalidArgumentException( 'Add mutation contains an invalid semantic node.' ); }
+			if ( ! is_array( $node ) ) { continue; }
 			$out[] = [
 				'operation' => 'insert-element',
 				'parentId' => $target_id,
@@ -109,42 +110,56 @@ final class AIMutationCompiler {
 
 	private function compile_edit( array $mutation, array $scope_ids ): array {
 		$changes = is_array( $mutation['changes'] ?? null ) ? $mutation['changes'] : [];
-		if ( ! $changes ) { throw new \InvalidArgumentException( 'Edit mutation requires changes.' ); }
-		$allow_behavioral = ! empty( $mutation['allowBehavioralChanges'] );
+		if ( ! $changes ) { throw new \InvalidArgumentException( 'Edit mutation requires a changes array.' ); }
+		$allowed = array_fill_keys( $scope_ids, true );
+		$allow_behavioral = true === ( $mutation['allowBehavioralChanges'] ?? false );
 		$out = [];
 		foreach ( $changes as $change ) {
 			if ( ! is_array( $change ) ) { continue; }
-			$id = trim( (string) ( $change['elementId'] ?? '' ) );
+			$element_id = trim( (string) ( $change['elementId'] ?? '' ) );
+			if ( '' === $element_id || ! isset( $allowed[ $element_id ] ) ) {
+				throw new \InvalidArgumentException( 'Semantic edit targets an element outside the exported scope: ' . $element_id );
+			}
 			$setting = trim( (string) ( $change['setting'] ?? '' ) );
-			if ( '' === $id || ! in_array( $id, $scope_ids, true ) ) { throw new \InvalidArgumentException( 'Edit mutation references an element outside the exported editable scope: ' . $id ); }
-			if ( '' === $setting ) { throw new \InvalidArgumentException( 'Edit mutation is missing a setting key.' ); }
-			if ( ! $allow_behavioral && $this->is_protected_setting( $setting ) ) { throw new \InvalidArgumentException( 'Edit mutation targets protected behavioral/external setting "' . $setting . '". The user must explicitly request that behavior change.' ); }
-			if ( ! empty( $change['remove'] ) ) {
-				$out[] = [ 'operation' => 'remove-setting', 'elementId' => $id, 'setting' => $setting ];
+			if ( '' === $setting ) { throw new \InvalidArgumentException( 'Semantic edit change is missing a setting name.' ); }
+			if ( ! $allow_behavioral && $this->is_protected_setting( $setting ) ) {
+				throw new \InvalidArgumentException( 'Visual semantic mutation cannot modify protected behavioral/external setting "' . $setting . '". Set allowBehavioralChanges only for an explicit user request.' );
+			}
+			if ( true === ( $change['remove'] ?? false ) ) {
+				$out[] = [ 'operation' => 'remove-setting', 'elementId' => $element_id, 'setting' => $setting ];
 			} else {
-				$out[] = [ 'operation' => 'update-setting', 'elementId' => $id, 'setting' => $setting, 'value' => $change['value'] ?? null ];
+				$out[] = [ 'operation' => 'update-setting', 'elementId' => $element_id, 'setting' => $setting, 'value' => $change['value'] ?? null ];
 			}
 		}
 		return $out;
 	}
 
 	private function compile_move( array $mutation, array $scope_ids, string $target_id ): array {
-		$id = trim( (string) ( $mutation['elementId'] ?? '' ) );
+		$element_id = trim( (string) ( $mutation['elementId'] ?? $target_id ) );
+		$allowed = array_fill_keys( $scope_ids, true );
+		if ( ! isset( $allowed[ $element_id ] ) ) { throw new \InvalidArgumentException( 'Move target is outside the exported scope.' ); }
 		$placement = is_array( $mutation['placement'] ?? null ) ? $mutation['placement'] : [];
-		$parent = trim( (string) ( $placement['parentId'] ?? $target_id ) );
-		$position = max( 0, (int) ( $placement['position'] ?? 0 ) );
-		if ( '' === $id || ! in_array( $id, $scope_ids, true ) ) { throw new \InvalidArgumentException( 'Move mutation references an element outside the exported editable scope.' ); }
-		if ( '' !== $parent && ! in_array( $parent, $scope_ids, true ) ) { throw new \InvalidArgumentException( 'Move destination is outside the exported editable scope.' ); }
-		return [[ 'operation' => 'move-element', 'elementId' => $id, 'parentId' => $parent, 'position' => $position ]];
+		$parent_id = trim( (string) ( $placement['parentId'] ?? '' ) );
+		if ( '' === $parent_id || ! isset( $allowed[ $parent_id ] ) ) {
+			throw new \InvalidArgumentException( 'Move destination must be an editable Container inside the exported scope.' );
+		}
+		return [[
+			'operation' => 'move-element',
+			'elementId' => $element_id,
+			'parentId' => $parent_id,
+			'position' => max( 0, (int) ( $placement['position'] ?? 0 ) ),
+		]];
 	}
 
 	private function compile_remove( array $mutation, array $scope_ids, string $target_id ): array {
-		$ids = array_values( array_unique( array_map( 'strval', (array) ( $mutation['elementIds'] ?? [] ) ) ) );
-		if ( ! $ids ) { throw new \InvalidArgumentException( 'Remove mutation requires elementIds.' ); }
+		$ids = is_array( $mutation['elementIds'] ?? null ) ? $mutation['elementIds'] : [];
+		$allowed = array_fill_keys( $scope_ids, true );
 		$out = [];
-		foreach ( $ids as $id ) {
-			if ( $id === $target_id ) { throw new \InvalidArgumentException( 'The selected root cannot be removed through a narrow semantic mutation. Use explicit Rebuild if replacement is intended.' ); }
-			if ( ! in_array( $id, $scope_ids, true ) ) { throw new \InvalidArgumentException( 'Remove mutation references an element outside the exported editable scope: ' . $id ); }
+		foreach ( array_values( array_unique( array_map( 'strval', $ids ) ) ) as $id ) {
+			$id = trim( $id );
+			if ( '' === $id ) { continue; }
+			if ( $id === $target_id ) { throw new \InvalidArgumentException( 'Semantic remove cannot delete the selected root target. Use an explicitly reviewed wider-scope patch for root removal.' ); }
+			if ( ! isset( $allowed[ $id ] ) ) { throw new \InvalidArgumentException( 'Remove target is outside the exported scope: ' . $id ); }
 			$out[] = [ 'operation' => 'remove-element', 'elementId' => $id ];
 		}
 		return $out;
@@ -160,14 +175,17 @@ final class AIMutationCompiler {
 		if ( is_array( $live_target ) ) {
 			$live_type = (string) ( $live_target['elType'] ?? '' );
 			$live_widget = (string) ( $live_target['widgetType'] ?? '' );
-			if ( $live_type !== (string) ( $element['elType'] ?? '' ) ) { throw new \InvalidArgumentException( 'Rebuild must preserve the selected root Elementor elType.' ); }
-			if ( 'widget' === $scope_mode && $live_widget !== (string) ( $element['widgetType'] ?? '' ) ) { throw new \InvalidArgumentException( 'Widget rebuild must preserve the selected widget type.' ); }
-			foreach ( $live_target as $key => $value ) {
-				if ( ! array_key_exists( $key, $element ) && 'elements' !== $key ) { $element[ $key ] = $value; }
+			if ( '' !== $live_type && $live_type !== (string) ( $element['elType'] ?? '' ) ) {
+				throw new \InvalidArgumentException( 'Rebuild root elType must match the selected Elementor target.' );
+			}
+			if ( 'widget' === $live_type && '' !== $live_widget && $live_widget !== (string) ( $element['widgetType'] ?? '' ) ) {
+				throw new \InvalidArgumentException( 'Widget rebuild must keep the selected widget type. Select a Container for a structural redesign.' );
 			}
 		}
 		return [[
-			'operation' => 'replace-element', 'elementId' => $target_id, 'element' => $element,
+			'operation' => 'replace-element',
+			'elementId' => $target_id,
+			'element' => $element,
 			'preserveChildren' => 'widget' === $scope_mode,
 		]];
 	}
@@ -179,28 +197,18 @@ final class AIMutationCompiler {
 		$el_type = $is_layout ? (string) ( $node['elType'] ?? $intent ) : 'widget';
 		$entry = $this->assert_runtime_type( $is_layout ? 'element' : 'widget', $is_layout ? $el_type : $intent, $catalog );
 
-		$children = (array) ( $node['children'] ?? $node['elements'] ?? [] );
-		if ( ! $is_layout && $children ) {
-			throw new \InvalidArgumentException( 'Semantic widget "' . $intent . '" cannot own arbitrary Elementor child nodes. Use a runtime-proven structural element/container as the parent.' );
-		}
-
 		$element = [
 			'elType' => $el_type,
 			'settings' => is_array( $node['settings'] ?? null ) ? $node['settings'] : [],
 			'elements' => [],
 		];
 		if ( ! $is_layout ) { $element['widgetType'] = $intent; }
-		if ( isset( $node['ref'] ) ) { $element['ref'] = (string) $node['ref']; }
-		if ( isset( $node['id'] ) ) { $element['id'] = (string) $node['id']; }
-		if ( array_key_exists( 'isInner', $node ) ) { $element['isInner'] = (bool) $node['isInner']; }
+		if ( isset( $node['ref'] ) ) { $element['ref'] = trim( (string) $node['ref'] ); }
+		if ( isset( $node['id'] ) ) { $element['id'] = trim( (string) $node['id'] ); }
+		if ( isset( $node['isInner'] ) ) { $element['isInner'] = (bool) $node['isInner']; }
 
-		$semantic_settings = $this->content_settings_from_runtime(
-			$intent,
-			is_array( $node['content'] ?? null ) ? $node['content'] : [],
-			$entry
-		);
-		$element['settings'] = array_replace( $semantic_settings, $element['settings'] );
-		foreach ( $children as $child ) {
+		$element['settings'] = array_replace( $this->content_settings_from_runtime( $intent, is_array( $node['content'] ?? null ) ? $node['content'] : [], $entry ), $element['settings'] );
+		foreach ( (array) ( $node['children'] ?? $node['elements'] ?? [] ) as $child ) {
 			if ( is_array( $child ) ) { $element['elements'][] = $this->node_to_element( $child, $catalog ); }
 		}
 		return $element;
@@ -216,55 +224,48 @@ final class AIMutationCompiler {
 		) );
 	}
 
-	/**
-	 * Resolve semantic content through control keys that are actually present on this runtime entry.
-	 * Candidates are intentionally conservative; no setting is emitted unless the exact key exists.
-	 */
 	private function content_settings_from_runtime( string $intent, array $content, array $entry ): array {
-		$controls = is_array( $entry['controls'] ?? null ) ? $entry['controls'] : [];
 		$out = [];
-		$text = (string) ( $content['text'] ?? '' );
+		$controls = is_array( $entry['controls'] ?? null ) ? $entry['controls'] : [];
 		$name = strtolower( $intent );
-
+		$text = (string) ( $content['text'] ?? '' );
 		if ( preg_match( '/heading|headline|title/', $name ) ) {
-			$key = $this->first_control( $controls, [ 'title', 'text', 'heading', 'headline' ] );
-			if ( '' !== $text && '' !== $key ) { $out[ $key ] = $text; }
+			$text_key = $this->first_runtime_control( $controls, [ 'title', 'text', 'heading', 'headline' ] );
+			if ( '' !== $text && '' !== $text_key ) { $out[ $text_key ] = $text; }
 			$level = strtolower( (string) ( $content['semanticLevel'] ?? '' ) );
 			if ( preg_match( '/^h[1-6]$/', $level ) ) {
-				$level_key = $this->first_control( $controls, [ 'header_size', 'html_tag', 'tag' ] );
-				if ( '' !== $level_key && $this->control_allows( $controls[ $level_key ], $level ) ) { $out[ $level_key ] = $level; }
+				$level_key = $this->first_runtime_control( $controls, [ 'header_size', 'html_tag', 'tag' ] );
+				if ( '' !== $level_key && $this->runtime_control_allows( $controls[ $level_key ], $level ) ) { $out[ $level_key ] = $level; }
 			}
 		} elseif ( preg_match( '/text-editor|paragraph|rich-text|^text$/', $name ) ) {
-			$key = $this->first_control( $controls, [ 'editor', 'text', 'content', 'description' ] );
-			if ( '' !== $key ) {
-				if ( isset( $content['html'] ) ) { $out[ $key ] = (string) $content['html']; }
-				elseif ( '' !== $text ) { $out[ $key ] = 'editor' === $key ? '<p>' . esc_html( $text ) . '</p>' : $text; }
-			}
+			$text_key = $this->first_runtime_control( $controls, [ 'editor', 'text', 'content', 'description' ] );
+			if ( isset( $content['html'] ) && '' !== $text_key ) { $out[ $text_key ] = (string) $content['html']; }
+			elseif ( '' !== $text && '' !== $text_key ) { $out[ $text_key ] = 'editor' === $text_key ? '<p>' . esc_html( $text ) . '</p>' : $text; }
 		} elseif ( preg_match( '/button|cta/', $name ) ) {
-			$text_key = $this->first_control( $controls, [ 'text', 'button_text', 'label', 'title' ] );
+			$text_key = $this->first_runtime_control( $controls, [ 'text', 'button_text', 'label', 'title' ] );
 			if ( '' !== $text && '' !== $text_key ) { $out[ $text_key ] = $text; }
 			if ( isset( $content['url'] ) ) {
-				$link_key = $this->first_control( $controls, [ 'link', 'url', 'button_link' ] );
+				$link_key = $this->first_runtime_control( $controls, [ 'link', 'url', 'button_link' ] );
 				if ( '' !== $link_key ) { $out[ $link_key ] = is_array( $content['url'] ) ? $content['url'] : [ 'url' => esc_url_raw( (string) $content['url'] ) ]; }
 			}
 		} elseif ( preg_match( '/image|media/', $name ) && is_array( $content['image'] ?? null ) ) {
-			$key = $this->first_control( $controls, [ 'image', 'media', 'source' ] );
-			if ( '' !== $key ) { $out[ $key ] = $content['image']; }
+			$image_key = $this->first_runtime_control( $controls, [ 'image', 'media', 'source' ] );
+			if ( '' !== $image_key ) { $out[ $image_key ] = $content['image']; }
 		} elseif ( preg_match( '/icon/', $name ) && is_array( $content['icon'] ?? null ) ) {
-			$key = $this->first_control( $controls, [ 'selected_icon', 'icon' ] );
-			if ( '' !== $key ) { $out[ $key ] = $content['icon']; }
+			$icon_key = $this->first_runtime_control( $controls, [ 'selected_icon', 'icon' ] );
+			if ( '' !== $icon_key ) { $out[ $icon_key ] = $content['icon']; }
 		}
 		return $out;
 	}
 
-	private function first_control( array $controls, array $candidates ): string {
+	private function first_runtime_control( array $controls, array $candidates ): string {
 		foreach ( $candidates as $candidate ) {
 			if ( isset( $controls[ $candidate ] ) && is_array( $controls[ $candidate ] ) ) { return $candidate; }
 		}
 		return '';
 	}
 
-	private function control_allows( array $control, string $value ): bool {
+	private function runtime_control_allows( array $control, string $value ): bool {
 		$options = is_array( $control['options'] ?? null ) ? $control['options'] : [];
 		return ! $options || array_key_exists( $value, $options );
 	}
