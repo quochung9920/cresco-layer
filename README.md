@@ -1,460 +1,281 @@
 # Cresco Layer
 
-**Lớp trí tuệ, giao tiếp AI an toàn và kiểm chứng độ trung thực hiển thị cho Elementor + Elementor Pro.**
+**Cầu nối file-based, lossless và runtime-aware giữa Elementor ↔ ChatGPT/AI bên ngoài.**
 
-Cresco Layer giữ **Elementor là nguồn sự thật duy nhất** cho cấu trúc trang, control, responsive, render, history và persistence. Plugin không tạo page builder thứ hai. Nhiệm vụ của Cresco Layer là biến Elementor đang chạy thành một ngôn ngữ mà AI có thể đọc, chỉnh sửa và kiểm chứng một cách có giới hạn.
+Phiên bản hiện tại: **0.24.0 — External AI Bridge**.
 
-Phiên bản hiện tại: **0.23.0 — Fidelity Foundation**.
+Cresco Layer không cố biến Elementor thành một chatbot và không thay Elementor bằng page builder riêng. Plugin giữ Elementor là nguồn sự thật cho document, widget, control, breakpoint, Global Styles, render, history và persistence; sau đó đóng gói những dữ liệu này thành một package mà AI bên ngoài có thể hiểu và trả kết quả về an toàn.
 
-## Mục tiêu sản phẩm
-
-Cresco Layer giải quyết bốn vấn đề chính khi đưa AI vào quy trình Elementor:
-
-1. **AI phải biết control thật đang tồn tại** thay vì đoán tên setting.
-2. **AI chỉ được sửa đúng phạm vi đã export** thay vì có quyền sửa cả document.
-3. **Import phải được kiểm tra bằng runtime Elementor thật** trước khi lưu.
-4. **Kết quả render phải được đo và chấm điểm**, không chỉ kết luận rằng JSON đã hợp lệ.
-
-Luồng mục tiêu của hệ thống:
+## Workflow chính
 
 ```text
-Elementor runtime
-  → Runtime Discovery
-  → Control Registry
-  → AI Package
-  → AI Patch / Semantic Mutation
-  → Schema & Safety Validation
-  → Runtime Capability Validation
-  → Scope Validation
-  → Elementor save
-  → Rendered Verification
-  → Fidelity Score & Verification Gate
+Elementor
+→ Cresco Export for ChatGPT
+→ ZIP/JSON package tự mô tả
+→ người dùng upload sang ChatGPT
+→ người dùng mô tả giao diện muốn tạo/chỉnh trong ChatGPT
+→ ChatGPT trả file JSON
+→ Cresco Import AI Result
+→ Preview + Validation
+→ Apply vào Elementor working document
+→ Read-back verification
+→ Rendered verification
+→ Fidelity Score / Gate
 ```
+
+**Prompt thiết kế không cần nhập trong Elementor.** Yêu cầu thiết kế được viết trong cuộc trò chuyện với ChatGPT sau khi package đã được export.
+
+## Trải nghiệm người dùng
+
+Trong Elementor Editor, Cresco cung cấp một panel chính với đúng hai tab:
+
+- **Export to ChatGPT**
+- **Import AI Result**
+
+### Export to ChatGPT
+
+Người dùng chọn một scope:
+
+- **Selected element** — chỉ element đang chọn;
+- **Selected subtree** — root và descendants thuộc subtree;
+- **Entire page** — toàn document, không bắt buộc chọn element.
+
+Sau đó bấm:
+
+```text
+Export for ChatGPT
+```
+
+Cresco tự chuẩn bị Exact Runtime, Full Context, Global Styles, breakpoints, control metadata, layout context và visual evidence. Không có bước “Prepare prompt” hay “Create/Edit bằng AI” trong Elementor.
+
+Hai dạng export:
+
+```text
+cresco-chatgpt-bundle-<target>.zip     # khuyến nghị
+cresco-chatgpt-package-<target>.json   # single JSON fallback
+```
+
+### Làm việc trong ChatGPT
+
+Upload file Cresco và nói yêu cầu, ví dụ:
+
+```text
+Đây là package Cresco Layer của hero hiện tại.
+Hãy thiết kế lại theo phong cách luxury tối giản,
+giữ nguyên nội dung chính và tối ưu responsive.
+Trả file JSON để tôi import lại vào Cresco Layer.
+```
+
+Package đã chứa contract kỹ thuật nên người dùng không phải giải thích setting key, unit, responsive suffix, ID hay control availability.
+
+### Import AI Result
+
+ChatGPT nên trả một file JSON, ưu tiên:
+
+```text
+cresco-ai-mutation/v3
+```
+
+Cresco vẫn hỗ trợ các format tương thích:
+
+```text
+cresco-ai-mutation/v3
+cresco-ai-mutation/v2
+cresco-layer-patch/v1
+cresco-layer-ai-result/v1
+```
+
+Trong tab **Import AI Result**, người dùng kéo thả file, bấm **Preview Changes**, xem diff/warning, rồi mới bấm **Apply to Elementor**.
+
+## External AI Package
+
+Single JSON package dùng schema:
+
+```text
+cresco-external-ai-package/v1
+```
+
+Các phần chính:
+
+```text
+schema
+packageId
+createdAt
+producer
+workflow
+target
+instructionsForAI
+resultContract
+contextQuality
+context
+```
+
+`context` giữ Cresco AI Context v3 để AI bên ngoài có dữ liệu runtime đầy đủ.
+
+## Full Bundle v4
+
+ZIP bundle dùng schema:
+
+```text
+cresco-ai-bundle/v4
+```
+
+Bundle có thể chứa:
+
+```text
+README-FOR-CHATGPT.md
+cresco-package.json
+elementor-context.json
+output-contract.json
+widget-guide.json
+visual-context.json
+current-preview.png
+reference-<filename>
+manifest.json
+```
+
+`README-FOR-CHATGPT.md` là entrypoint rõ ràng cho AI; `cresco-package.json` là package machine-readable chính.
+
+## Vì sao external export dùng Full Context?
+
+Trước đây task hint nhập trong Elementor có thể giúp Cresco lazy-load widget capability theo yêu cầu. Workflow 0.24 cố ý bỏ prompt khỏi Elementor, vì người dùng chỉ muốn export rồi mô tả công việc bên ChatGPT.
+
+Do đó external export ưu tiên **Full Context profile** để package chứa detailed capability của runtime thay vì phụ thuộc task hint. Package lớn hơn nhưng ChatGPT ít phải đoán hơn khi người dùng yêu cầu thêm widget hoặc tái cấu trúc giao diện sau khi file đã rời Elementor.
+
+## Runtime Control Registry
+
+Cresco đọc registry Elementor thật đang chạy thay vì dùng danh sách widget hard-code.
+
+Normalized registry:
+
+```text
+cresco-control-registry/v1
+```
+
+Metadata có thể bao gồm:
+
+- control name/type/label;
+- default;
+- responsive support;
+- Dynamic Tag support;
+- units;
+- select/choose options;
+- min/max/range/step;
+- condition/conditions;
+- selectors;
+- Atomic/V4 binding metadata.
+
+AI được yêu cầu dùng registry này làm nguồn sự thật và import sẽ kiểm lại một lần nữa bằng runtime server-side.
+
+## Scope safety
+
+Cresco tách rõ dữ liệu AI được **đọc** và dữ liệu AI được **sửa**.
+
+Các scope hỗ trợ:
+
+```text
+widget
+subtree
+selection
+document
+```
+
+Khi import, `expectedScope` được gửi cùng result. Patch/semantic mutation không được thoát phạm vi đó.
+
+Nếu result khai báo `target.id` khác element người dùng đang chọn, UI chặn trước preview để giảm nguy cơ áp kết quả vào sai target.
+
+## Runtime fail-closed validation
+
+Một output AI không được apply chỉ vì JSON parse thành công. Cresco kiểm tra:
+
+- target/scope;
+- registered control;
+- responsive capability;
+- unit;
+- option;
+- numeric range;
+- global reference;
+- unsafe value;
+- structure/preservation contract;
+- semantic no-op hoặc visual no-op có thể phát hiện.
+
+Unknown persisted Elementor fields được preserve losslessly khi không phải mục tiêu chỉnh sửa; AI không được tạo unknown field mới để lách runtime registry.
+
+## Elementor persistence
+
+Cresco không ghi một document model cạnh tranh với Elementor.
+
+Patch cuối cùng được compile về operation nội bộ, preview, rồi apply qua lớp document/persistence của Elementor. Sau save Cresco đọc lại để xác minh requested values đã thực sự tồn tại.
+
+Update/Publish cuối cùng vẫn do người dùng quyết định trong Elementor.
+
+## Fidelity Foundation
+
+Cresco 0.23+ đo kết quả render thật thay vì chỉ kiểm JSON/settings.
+
+Các schema chính:
+
+```text
+cresco-fidelity-policy/v1
+cresco-fidelity-snapshot/v1
+cresco-geometry-graph/v1
+cresco-fidelity-report/v1
+cresco-fidelity-gate/v1
+```
+
+Snapshot có thể ghi lại geometry, parent-relative position, sibling graph, flex/grid, spacing, typography, color, border, radius, shadow, opacity, visibility và overflow từ browser preview thật.
+
+Default Fidelity threshold hiện là `96/100`. Các blocker như missing element, parent drift, horizontal overflow, invisible target, invalid geometry hoặc không có verification evidence có thể chặn Gate dù tổng điểm cao.
+
+Cresco không tuyên bố pixel-perfect tuyệt đối giữa mọi browser/OS/font stack. Mục tiêu là **deterministic structural fidelity + bounded rendered error**.
+
+## Elementor Site Settings
+
+Cresco còn có Site Settings Engine riêng cho global design system:
+
+```text
+cresco-site-settings/v1
+```
+
+Engine làm việc với active Elementor Kit, có capability discovery, diff, no-op detection, read-back verification, rollback và responsive foundation.
+
+Element-level AI exchange và global Site Settings là hai contract khác nhau để giảm coupling khi Elementor thay đổi control.
 
 ## Yêu cầu hệ thống
 
 - WordPress 6.6+
 - PHP 8.1+
 - Elementor
-- Elementor Pro nếu sử dụng các integration chỉ có trong Pro
-- Trình duyệt có thể truy cập Elementor preview iframe cùng origin để dùng Fidelity Engine
+- Elementor Pro nếu dùng integration Pro
+- Browser có thể truy cập Elementor preview iframe cùng origin nếu muốn capture Fidelity/raster đầy đủ
 
-## Nguyên tắc kiến trúc
+## Tài liệu
 
-Elementor chịu trách nhiệm cho:
-
-- editor và canvas;
-- document model;
-- widget/container registry;
-- responsive controls;
-- render frontend/editor;
-- history;
-- autosave/draft;
-- Update/Publish cuối cùng.
-
-Cresco Layer bổ sung:
-
-- runtime discovery;
-- normalized control registry;
-- AI context/package;
-- scope contract;
-- semantic design reasoning;
-- patch validation;
-- runtime control validation;
-- diff, preview, history và rollback;
-- Site Settings engine;
-- computed visual snapshot;
-- geometry graph;
-- fidelity scoring;
-- rendered verification gate.
-
-## Workflow AI trong Elementor
-
-Trong Elementor Editor, chọn widget hoặc container rồi dùng công cụ Cresco để export/import.
-
-Các scope chính:
-
-- **Widget**: chỉ chỉnh element được chọn; khi replace phải giữ ID và bảo toàn children theo contract.
-- **Subtree**: chỉnh root và các descendant được phép; không được thoát sang vùng khác của document.
-- **Selection**: backend hỗ trợ danh sách ID được chọn rõ ràng.
-- **Document**: dùng cho redesign toàn trang hoặc workflow cần thay toàn bộ document.
-
-### Export
-
-Package lõi dùng schema:
+Bắt đầu tại:
 
 ```text
-cresco-layer-ai-package/v2
+docs/README.md
 ```
 
-Package có thể chứa:
-
-```text
-manifest
-editableScope
-document
-elementContext
-elementStates
-siteContext
-designSystem
-layoutContext
-registryIndex
-controlRegistry
-patchContract
-widgetCatalog
-elementCatalog
-relevantCapabilities
-dynamicTags
-templates
-assets
-capabilities
-audit
-instructions
-```
-
-Trong **Exact Runtime**, Cresco đọc registry thật của Elementor và addon đang active. AI không cần dựa vào danh sách widget hard-code.
-
-Từ 0.23.0, export trong Elementor Editor còn được enrich thêm:
-
-```text
-fidelityPolicy
-visualContext
-```
-
-`visualContext.snapshot` được lấy trực tiếp từ preview iframe và chứa geometry/computed styles của breakpoint đang được xem.
-
-> 0.23.0 chỉ tuyên bố snapshot chính xác cho **breakpoint hiện tại của Elementor preview**. Hệ thống không tự bịa số đo cho breakpoint chưa được capture.
-
-## Normalized Control Registry
-
-Schema:
-
-```text
-cresco-control-registry/v1
-```
-
-Registry chuẩn hóa metadata Elementor thành contract AI dễ xử lý hơn:
-
-- tên control;
-- type;
-- source;
-- responsive;
-- Dynamic Tag support;
-- units;
-- options;
-- range/min/max/step;
-- condition/conditions;
-- selectors;
-- Atomic binding/prop type.
-
-Khi AI gửi patch, server kiểm tra lại control với runtime đang chạy. Một setting không tồn tại, responsive suffix sai, unit sai, option sai hoặc range sai sẽ bị từ chối trước khi persistence.
-
-## Patch contract
-
-Transport schema hiện tại vẫn là:
-
-```text
-cresco-layer-patch/v1
-```
-
-Giữ schema này giúp tương thích với workflow hiện có. Lớp validation mới được mô tả bằng:
-
-```text
-cresco-layer-patch-validation/v2
-```
-
-Các operation gồm:
-
-```text
-update-setting
-remove-setting
-replace-settings
-replace-element
-insert-element
-remove-element
-move-element
-update-page-setting
-remove-page-setting
-replace-document
-```
-
-Cresco ưu tiên operation nhỏ nhất có thể. `update-setting` tốt hơn `replace-element` nếu chỉ cần sửa một control.
-
-## Runtime fail-closed validation
-
-Import không chỉ kiểm JSON. Khi Elementor runtime khả dụng, Cresco kiểm tra:
-
-- target element có tồn tại;
-- operation có nằm trong scope;
-- control có được đăng ký;
-- responsive suffix có hợp lệ với control đó;
-- unit có được hỗ trợ;
-- option có hợp lệ;
-- numeric range có hợp lệ cho unit đang dùng;
-- global reference có trỏ vào control hợp lệ;
-- giá trị có chứa nội dung active/unsafe;
-- replacement có giữ ID khi contract yêu cầu.
-
-Unknown field đã tồn tại trong Elementor được bảo toàn theo hướng **lossless**; AI không được tự phát minh unknown field mới để lách control registry.
-
-## Fidelity Foundation 0.23
-
-0.23 bổ sung lớp đo kết quả render thật.
-
-### Computed Visual Snapshot
-
-Schema:
-
-```text
-cresco-fidelity-snapshot/v1
-```
-
-Mỗi element được capture có thể gồm:
-
-- `x`, `y`, `width`, `height`, `right`, `bottom`;
-- vị trí tương đối so với parent;
-- client/scroll dimensions;
-- display/flex/grid/overflow/z-index/transform;
-- margin/padding/gap;
-- font family, size, weight, line-height, letter-spacing, alignment;
-- color, background, border, radius, shadow, opacity, visibility;
-- dấu hiệu horizontal/vertical overflow;
-- trạng thái hidden hoặc geometry không hợp lệ.
-
-### Geometry Graph
-
-Schema:
-
-```text
-cresco-geometry-graph/v1
-```
-
-Graph mô tả:
-
-- parent → child;
-- thứ tự sibling;
-- previous/next sibling;
-- child IDs;
-- geometry của từng node.
-
-Điều này giúp AI hiểu **quan hệ gây ra layout**, thay vì chỉ nhìn từng setting rời rạc.
-
-### Fidelity Score
-
-Schema:
-
-```text
-cresco-fidelity-report/v1
-```
-
-Score mặc định gồm sáu nhóm:
-
-| Nhóm | Trọng số |
-|---|---:|
-| Geometry | 30% |
-| Spacing | 18% |
-| Typography | 18% |
-| Color | 12% |
-| Structure | 12% |
-| Quality | 10% |
-
-Threshold mặc định: **96/100**.
-
-Ngoài overall score, mỗi category còn có floor riêng. Vì vậy một trang không thể dùng điểm Color cao để che một lỗi Structure nghiêm trọng.
-
-### Verification Gate
-
-Schema:
-
-```text
-cresco-fidelity-gate/v1
-```
-
-Gate bị block khi có lỗi như:
-
-- element cần kiểm tra bị mất;
-- parent relationship drift;
-- horizontal overflow ngoài ý muốn;
-- target trở thành invisible;
-- geometry không hợp lệ;
-- không có đủ rendered evidence để kiểm chứng.
-
-Trường hợp **không có bằng chứng** được xử lý fail-closed, không được tính là 100 điểm.
-
-### Giới hạn của Fidelity Foundation
-
-Fidelity trong Cresco có nghĩa:
-
-> **Cấu trúc xác định + sai số render nằm trong tolerance đã định nghĩa.**
-
-Nó **không** tuyên bố mọi pixel raster phải giống tuyệt đối trên mọi browser, OS, font rasterizer hoặc GPU. Đây là chủ đích kỹ thuật để tránh một cam kết không thể kiểm chứng ổn định.
-
-## Rendered Verification
-
-`assets/visual-verification.js` tiếp tục kiểm tra semantic intent trên DOM render thực tế, ví dụ:
-
-- flex direction/alignment/wrap;
-- gap, width, min-height, max-width;
-- border radius, opacity;
-- font size/line-height/letter-spacing/font-weight;
-- text/background color;
-- ARIA/decorative semantics;
-- touch target;
-- horizontal overflow.
-
-0.23 bổ sung `fidelity-verification.js` để tự chấm điểm kết quả sau apply và hiển thị:
-
-```text
-Fidelity Score: xx.x/100
-Gate PASS | BLOCKED
-geometry · spacing · typography · color · structure · quality
-```
-
-Verification có retry ngắn để chờ preview iframe render lại sau khi Elementor save.
-
-## Elementor Site Settings Engine
-
-Cresco có pipeline riêng cho global design system:
-
-```text
-cresco-site-settings/v1
-  → validate
-  → resolve active Kit
-  → capability discovery
-  → snapshot
-  → adapt
-  → diff
-  → write through Elementor Kit API
-  → read-back verify
-  → rollback nếu verification fail
-```
-
-Site Settings và element patch là hai miền tách biệt:
-
-- `cresco-site-settings/v1`: global colors, fonts, Theme Style, layout foundation, Hello/optional surfaces;
-- `cresco-layer-patch/v1`: page/container/widget operations.
-
-Cresco không ghi Kit data bằng đường tắt khi có thể dùng Elementor Document/Kit API.
-
-## Responsive Foundation
-
-Nguyên tắc thiết kế:
-
-- `clamp()` cho scaling liên tục khi phù hợp;
-- breakpoint cho structural change;
-- không tạo override chỉ vì có breakpoint;
-- nested container không nên nhân đôi global page gutter;
-- responsive suffix chỉ được dùng khi runtime control thật sự responsive.
-
-Fidelity snapshot 0.23 đo **device mode đang hiển thị**. Multi-breakpoint automated capture là bước tiếp theo của Fidelity Engine.
-
-## Global style và Dynamic Tags
-
-Khi export, Cresco cố gắng bảo toàn:
-
-- `__globals__`;
-- Global Colors / Fonts;
-- Dynamic Tags;
-- Atomic/V4 data;
-- addon-specific persisted fields;
-- classes, variables, interactions và metadata Elementor không thuộc Cresco.
-
-AI được hướng dẫn tái sử dụng global style/design system thay vì tạo local value gần giống.
-
-## History và rollback
-
-Patch apply ghi lại history trước thay đổi trong giới hạn storage budget. Khi snapshot đủ điều kiện restore, Cresco có thể rollback qua Elementor Document API.
-
-Rollback cũng được ghi thành history entry mới để không tạo dead-end.
-
-## An toàn
-
-Các lớp bảo vệ chính:
-
-```text
-Serializable Sanitizer
-→ Patch Schema Validator
-→ Sensitive-key Guard
-→ Active Markup Guard
-→ Runtime Control Validator
-→ Semantic Patch Guard
-→ Scope Enforcement
-→ Elementor Persistence
-→ Post-Apply Verification
-→ Rendered Fidelity Gate
-```
-
-Các key giống credential/API token/password/nonce không được phép đi qua AI patch contract.
-
-## Local AI và deterministic skills
-
-Repo có Local AI manager/context compiler/planner contract và deterministic widget skill runtime. Skill runtime dùng runtime control metadata để tạo command có thể kiểm chứng; nó không cần chatbot cho việc resolve command deterministic.
-
-## Admin tools
-
-Cresco Layer có các công cụ quản trị phục vụ inspection và vận hành:
-
-- Elementor Configuration & Full Runtime Snapshot;
-- runtime widget/element catalog;
-- lazy control detail;
-- export snapshot;
-- Site Settings preview/import/verify;
-- patch history/rollback;
-- design-standard analysis;
-- Local AI settings.
-
-## Kiểm thử
-
-Quality command:
-
-```bash
-npm run check
-```
-
-Các nhóm kiểm thử bao gồm:
-
-- PHP syntax;
-- architecture invariants;
-- capability scanner/runtime discovery;
-- context resolver;
-- patch validator/runtime control contract;
-- semantic guard;
-- mutation compiler/import;
-- Site Settings;
-- editor JS contracts;
-- visual verification;
-- Fidelity Foundation.
-
-Fidelity có contract tests riêng:
-
-```text
-tests/js/fidelity-foundation-contract-test.mjs
-tests/php/fidelity-policy-contract-test.php
-```
-
-## Tài liệu tiếng Việt
-
-Bộ tài liệu chuẩn mới nằm trong [`docs/README.md`](docs/README.md):
-
-- [Kiến trúc hệ thống](docs/KIEN-TRUC-HE-THONG.md)
-- [AI Export & Import](docs/AI-EXPORT-IMPORT.md)
-- [Fidelity Engine](docs/FIDELITY-ENGINE.md)
-- [Elementor Site Settings](docs/SITE-SETTINGS.md)
-- [Schema Reference](docs/SCHEMA-REFERENCE.md)
-- [Phát triển & Kiểm thử](docs/PHAT-TRIEN-KIEM-THU.md)
-
-Các tài liệu kỹ thuật tiếng Anh cũ trong `docs/` vẫn được giữ để tham chiếu lịch sử/implementation; bộ tài liệu trên là tài liệu tiếng Việt ưu tiên cho 0.23+.
-
-## Lộ trình gần
-
-Sau Fidelity Foundation 0.23, hướng nâng cấp tiếp theo là:
-
-1. capture tự động nhiều breakpoint;
-2. reference-image/raster diff có tolerance;
-3. property ownership/dependency graph;
-4. correction planner;
-5. vòng lặp AI → preview → score → correction có budget;
-6. rollback candidate khi score giảm;
-7. golden regression corpus cho các mẫu Elementor thực tế.
-
-Mục tiêu cuối cùng không phải để AI “đoán CSS hay hơn”, mà để Cresco Layer trở thành **protocol + compiler + verifier** giúp AI điều khiển Elementor bằng dữ liệu runtime thật và bằng chứng render có thể đo được.
+Tài liệu quan trọng:
+
+- `docs/EXTERNAL-AI-WORKFLOW.md` — workflow Elementor → ChatGPT → Elementor;
+- `docs/AI-EXPORT-IMPORT.md` — contract AI/export/import chi tiết;
+- `docs/FIDELITY-ENGINE.md` — computed snapshot, score và verification gate;
+- `docs/KIEN-TRUC-HE-THONG.md` — kiến trúc tổng thể;
+- `docs/SITE-SETTINGS.md` — Elementor Global Settings;
+- `docs/SCHEMA-REFERENCE.md` — schema reference;
+- `docs/PHAT-TRIEN-KIEM-THU.md` — phát triển và test.
+
+## Nguyên tắc bất biến
+
+1. Elementor là source of truth.
+2. Cresco là bridge/validator, không phải page builder thứ hai.
+3. AI bên ngoài không được invent capability.
+4. AI chỉ được sửa editable scope.
+5. Native Elementor controls ưu tiên hơn custom CSS.
+6. Active Global Styles ưu tiên hơn local near-duplicate.
+7. Persisted unknown fields được preserve khi không phải mục tiêu chỉnh sửa.
+8. Save thành công chưa đủ; phải read-back verify.
+9. Không có rendered evidence không được coi là Fidelity PASS.
+10. Người dùng quyết định Update/Publish cuối cùng.
