@@ -40,6 +40,8 @@ jobs:
         run: php tests/php/patch-validator-test.php
       - name: Runtime control contract tests
         run: php tests/php/ai-control-contract-test.php
+      - name: Fidelity policy contract tests
+        run: php tests/php/fidelity-policy-contract-test.php
       - name: Checksum-free patch apply contract tests
         run: php tests/php/patch-applier-checksum-free-contract-test.php
       - name: AI package export contract tests
