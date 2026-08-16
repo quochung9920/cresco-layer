@@ -16,6 +16,7 @@ expect(source.includes('Export for ChatGPT'), 'Primary external export action is
 expect(source.includes('JSON only'), 'Single-file JSON export fallback is missing.');
 expect(source.includes('Drop ChatGPT result JSON here'), 'File-first result import is missing.');
 expect(source.includes("setProfile('exact')"), 'External export must force Exact Runtime.');
+expect(source.includes('&context=full'), 'External export must use Full Context because the design prompt lives outside Elementor.');
 expect(source.includes("workflow: 'external-file-exchange'"), 'External exchange intent marker is missing.');
 expect(source.includes("request: ''"), 'Elementor must not require the design prompt before export.');
 expect(source.includes('cresco-export-scope') && source.includes('cresco-import-scope'), 'Explicit export/import scope controls are missing.');
