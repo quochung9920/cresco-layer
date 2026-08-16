@@ -1,29 +1,36 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const source = fs.readFileSync(new URL('../../assets/editor.js', import.meta.url), 'utf8');
+const panel = fs.readFileSync(new URL('../../assets/ai-panel.js', import.meta.url), 'utf8');
+const entrypoints = fs.readFileSync(new URL('../../assets/external-ai-entrypoints.js', import.meta.url), 'utf8');
+const bundle = fs.readFileSync(new URL('../../assets/ai-bundle.js', import.meta.url), 'utf8');
+const css = fs.readFileSync(new URL('../../assets/ai-panel.css', import.meta.url), 'utf8');
 
-assert.match(source, /Edit with AI/, 'Editor toolbar should expose one human-friendly Edit with AI entry point.');
-assert.match(source, /This element only/, 'Element-only scope must be described in user language.');
-assert.match(source, /This section \+ children/, 'Subtree scope must be described in user language.');
-assert.match(source, /Selected elements/, 'Selection scope must be exposed.');
-assert.match(source, /type=\"file\"/, 'Import modal must accept JSON files directly.');
-assert.match(source, /Drop Cresco AI result here/, 'Import modal must support drag-and-drop.');
-assert.match(source, /cresco-layer-patch\/v1/, 'Import must identify the Cresco patch schema.');
-assert.match(source, /cresco-layer-ai-package\/v2/, 'Import must detect an AI input package selected by mistake.');
-assert.match(source, /payload\.type === 'elementor'/, 'Import must detect raw Elementor clipboard data selected by mistake.');
-assert.match(source, /patchTargetCheck/, 'Import must verify the current Elementor target before validation.');
-assert.match(source, /Copy diagnostics/, 'Persistent validation errors should expose copyable diagnostics.');
-assert.match(source, /cresco-ai-input-post/, 'AI input downloads should use an unmistakable filename prefix.');
+assert.match(panel, /External AI Exchange/, 'Primary editor UX must describe an external exchange, not an embedded AI builder.');
+assert.match(panel, /Export to ChatGPT/, 'Primary export tab is missing.');
+assert.match(panel, /Import AI Result/, 'Primary import tab is missing.');
+assert.match(panel, /Export for ChatGPT/, 'Primary external export action is missing.');
+assert.match(panel, /JSON only/, 'Single JSON package fallback is missing.');
+assert.match(panel, /Selected element/, 'Element scope must be available.');
+assert.match(panel, /Selected subtree/, 'Subtree scope must be available.');
+assert.match(panel, /Entire page/, 'Document scope must be available.');
+assert.match(panel, /Reference image \(optional\)/, 'Reference-image bundle support is missing.');
+assert.match(panel, /Drop ChatGPT result JSON here/, 'External result import must be file-first.');
+assert.match(panel, /Preview Changes/, 'Import must preview before apply.');
+assert.match(panel, /Apply to Elementor/, 'Import apply action is missing.');
+assert.match(panel, /This result targets/, 'Import must block obvious target mismatch before preview.');
+assert.doesNotMatch(panel, /What do you want AI to do\?/, 'Design prompts must not be authored in Elementor in the primary workflow.');
+assert.doesNotMatch(panel, /Create \/ Edit/, 'Embedded create/edit UX must not return to the primary workflow.');
 
-// Handing work to an AI and getting it back must not depend on the filesystem: a user pasting into a
-// web chat needs clipboard delivery, and a user on a locked-down browser needs the file path.
-assert.match(source, /id="cresco-layer-export-copy"/, 'Export must offer clipboard delivery of the package.');
-assert.match(source, /id="cresco-layer-export-instructions"/, 'Export must offer clipboard delivery of the AI briefing.');
-assert.match(source, /delivery === 'instructions'/, 'Export delivery modes must be handled explicitly.');
-assert.match(source, /id="cresco-layer-paste-clipboard"/, 'Import must offer a one-click clipboard paste.');
-assert.match(source, /navigator\.clipboard\.readText/, 'Clipboard import must read the clipboard when permitted.');
-assert.match(source, /openPasteFallback/, 'Blocked clipboard access must fall back to the manual paste box.');
-assert.match(source, /execCommand\('copy'\)/, 'Clipboard writes need a fallback for browsers without the async API.');
+assert.match(entrypoints, /Cresco - Export to ChatGPT/, 'Elementor context menu must route to external export.');
+assert.match(entrypoints, /Cresco - Import AI Result/, 'Elementor context menu must route to external import.');
+assert.doesNotMatch(entrypoints, /Add\/remove AI selection/, 'Legacy AI-selection action must not remain in the replacement entrypoint group.');
+assert.match(css, /cresco-ai-legacy-hidden=\"true\"\]\{display:none!important\}/, 'Legacy floating editor toolbar must be hidden.');
 
-console.log('Cresco Layer editor AI UX contract test passed.');
+assert.match(bundle, /cresco-external-ai-package\/v1/, 'External single-file package schema is missing.');
+assert.match(bundle, /cresco-ai-bundle\/v4/, 'External ZIP bundle schema is missing.');
+assert.match(bundle, /README-FOR-CHATGPT\.md/, 'Bundle needs an AI-readable entrypoint.');
+assert.match(bundle, /cresco-package\.json/, 'Bundle needs the machine-readable external package.');
+assert.match(bundle, /current-preview\.png/, 'Bundle should support rendered preview evidence.');
+
+console.log('Cresco Layer external AI editor UX contract passed.');
