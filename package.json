@@ -28,6 +28,7 @@
     "test:semantic-design-compiler": "php tests/php/semantic-design-compiler-test.php",
     "test:ai-mutation-v3": "php tests/php/ai-mutation-v3-integration-test.php",
     "test:semantic-runtime-binding": "php tests/php/semantic-runtime-binding-test.php",
+    "test:semantic-structure-guard": "php tests/php/semantic-structure-guard-test.php",
     "test:mutation-normalizer": "php tests/php/mutation-normalizer-test.php",
     "test:ai-id-allocator": "php tests/php/ai-id-allocator-test.php",
     "test:preview-dom-resolver": "node tests/js/preview-dom-resolver-contract-test.mjs",
@@ -35,7 +36,7 @@
     "test:ai-exchange-safety": "php tests/php/ai-exchange-safety-guard-test.php",
     "test:serializable-sanitizer": "php tests/php/serializable-sanitizer-test.php",
     "test:site-settings-console": "node tests/js/site-settings-console-contract-test.mjs",
-    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:ai-context-v3 && npm run test:external-ai-intelligence && npm run test:design-intelligence && npm run test:task-runtime-discovery && npm run test:ai-bundle && npm run test:visual-verification && npm run test:ai-context-policy && npm run test:ai-panel && npm run test:ai-panel-bundle && npm run test:clipboard-guard && npm run test:exact-runtime-export && npm run test:exact-runtime-export-behavior && npm run test:editor-skills && npm run test:skills-accuracy && npm run test:local-ai-admin && npm run test:semantic-ai && npm run test:site-settings-console && npm run test:ai-result-import && npm run test:ai-mutation-v2 && npm run test:semantic-design-compiler && npm run test:ai-mutation-v3 && npm run test:semantic-runtime-binding && npm run test:mutation-normalizer && npm run test:ai-id-allocator && npm run test:preview-dom-resolver && npm run test:delta-id-normalization && npm run test:ai-exchange-safety && npm run test:serializable-sanitizer",
+    "check": "npm run lint:js && npm run test:editor-bootstrap && npm run test:editor-live-apply && npm run test:editor-ai-ux && npm run test:ai-context-v3 && npm run test:external-ai-intelligence && npm run test:design-intelligence && npm run test:task-runtime-discovery && npm run test:ai-bundle && npm run test:visual-verification && npm run test:ai-context-policy && npm run test:ai-panel && npm run test:ai-panel-bundle && npm run test:clipboard-guard && npm run test:exact-runtime-export && npm run test:exact-runtime-export-behavior && npm run test:editor-skills && npm run test:skills-accuracy && npm run test:local-ai-admin && npm run test:semantic-ai && npm run test:site-settings-console && npm run test:ai-result-import && npm run test:ai-mutation-v2 && npm run test:semantic-design-compiler && npm run test:ai-mutation-v3 && npm run test:semantic-runtime-binding && npm run test:semantic-structure-guard && npm run test:mutation-normalizer && npm run test:ai-id-allocator && npm run test:preview-dom-resolver && npm run test:delta-id-normalization && npm run test:ai-exchange-safety && npm run test:serializable-sanitizer",
     "test:exact-runtime-export-behavior": "node tests/js/exact-runtime-export-behavior-test.mjs"
   },
   "engines": {
