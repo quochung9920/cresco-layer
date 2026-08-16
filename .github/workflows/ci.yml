@@ -38,6 +38,8 @@ jobs:
         run: php tests/php/runtime-snapshot-contract-test.php
       - name: Patch contract tests
         run: php tests/php/patch-validator-test.php
+      - name: Runtime control contract tests
+        run: php tests/php/ai-control-contract-test.php
       - name: Checksum-free patch apply contract tests
         run: php tests/php/patch-applier-checksum-free-contract-test.php
       - name: AI package export contract tests
