@@ -5,6 +5,7 @@ const panel = fs.readFileSync(new URL('../../assets/ai-panel.js', import.meta.ur
 const entrypoints = fs.readFileSync(new URL('../../assets/external-ai-entrypoints.js', import.meta.url), 'utf8');
 const bundle = fs.readFileSync(new URL('../../assets/ai-bundle.js', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../../assets/ai-panel.css', import.meta.url), 'utf8');
+const assetsPhp = fs.readFileSync(new URL('../../includes/Support/Assets.php', import.meta.url), 'utf8');
 
 assert.match(panel, /External AI Exchange/, 'Primary editor UX must describe an external exchange, not an embedded AI builder.');
 assert.match(panel, /Export to ChatGPT/, 'Primary export tab is missing.');
@@ -32,5 +33,10 @@ assert.match(bundle, /cresco-ai-bundle\/v4/, 'External ZIP bundle schema is miss
 assert.match(bundle, /README-FOR-CHATGPT\.md/, 'Bundle needs an AI-readable entrypoint.');
 assert.match(bundle, /cresco-package\.json/, 'Bundle needs the machine-readable external package.');
 assert.match(bundle, /current-preview\.png/, 'Bundle should support rendered preview evidence.');
+
+assert.match(assetsPhp, /cresco-layer-external-ai-exchange-policy/, 'External exchange policy must be loaded in Elementor.');
+assert.match(assetsPhp, /cresco-layer-external-ai-entrypoints/, 'External entrypoints must be loaded in Elementor.');
+assert.doesNotMatch(assetsPhp, /wp_enqueue_script\( 'cresco-layer-semantic-ai'/, 'Embedded Local AI UI must not be loaded in the default Elementor editor.');
+assert.doesNotMatch(assetsPhp, /wp_enqueue_style\( 'cresco-layer-semantic-ai'/, 'Embedded Local AI UI styles must not be loaded in the default Elementor editor.');
 
 console.log('Cresco Layer external AI editor UX contract passed.');
