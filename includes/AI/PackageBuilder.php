@@ -56,6 +56,7 @@ final class PackageBuilder {
 			'elements' => (array) ( $resolved['capabilities']['elements'] ?? [] ),
 			'controlMetadataVersion' => (int) ( $resolved['registryIndex']['controlMetadataVersion'] ?? 0 ),
 		];
+		$control_registry = ( new ControlRegistry() )->build( $catalog );
 
 		$package = [
 			'schema' => 'cresco-layer-ai-package/v2',
@@ -100,6 +101,15 @@ final class PackageBuilder {
 			'designSystem' => (array) ( $resolved['siteContext']['designSystem'] ?? [] ),
 			'layoutContext' => $layout_context,
 			'registryIndex' => (array) ( $resolved['registryIndex'] ?? [] ),
+			'controlRegistry' => $control_registry,
+			'patchContract' => [
+				'schema' => 'cresco-layer-patch-contract/v2',
+				'transportSchema' => 'cresco-layer-patch/v1',
+				'validationSchema' => 'cresco-layer-patch-validation/v2',
+				'mode' => 'runtime-fail-closed',
+				'checks' => [ 'scope', 'target-exists', 'registered-control', 'responsive-capability', 'unit', 'option', 'range', 'global-reference', 'unsafe-value' ],
+				'unknownPersistedFields' => 'preserve-only-when-unchanged',
+			],
 			'widgetCatalog' => $catalog['widgets'],
 			'elementCatalog' => $catalog['elements'],
 			'relevantCapabilities' => [
@@ -121,13 +131,16 @@ final class PackageBuilder {
 			'capabilities' => [
 				'patchSchema' => 'cresco-layer-patch/v1',
 				'packageSchema' => 'cresco-layer-ai-package/v2',
+				'normalizedControlRegistry' => ControlRegistry::SCHEMA,
+				'patchValidationContract' => 'cresco-layer-patch-validation/v2',
+				'runtimeControlValidation' => true,
 				'operations' => PatchValidator::ALLOWED_OPERATIONS,
 				'atomicElementsAware' => true,
 				'losslessUnknownElementFields' => true,
 				'checksumFreePatchContract' => true,
 				'targetValidatedAtApply' => true,
 				'scopeValidatedAtApply' => true,
-				'classicalResponsiveSuffixes' => [ 'tablet', 'mobile', 'widescreen', 'laptop', 'tablet_extra', 'mobile_extra' ],
+				'classicalResponsiveSuffixes' => ControlRegistry::RESPONSIVE_SUFFIXES,
 				'preserveExistingElementIds' => true,
 				'preferGlobalStyles' => true,
 				'elementorOwnsPersistence' => true,
@@ -264,7 +277,10 @@ final class PackageBuilder {
 			'For widget scope, preserve existing children. Prefer update-setting/remove-setting; replace-element is allowed only when you preserve all unknown fields and the same root ID.',
 			'For subtree scope, inserted descendants are allowed only below an editable parent. Do not move the subtree into unrelated parts of the page.',
 			'This package uses Context Resolver profile "' . $context_profile . '". widgetCatalog and elementCatalog contain detailed controls selected for this task; registryIndex is the compact list of all registered types.',
-			'Never invent a setting name. Only write settings backed by a detailed capability entry. If a type exists only in registryIndex, leave its settings at Elementor defaults or request a full-context export.',
+			'controlRegistry is the normalized AI-facing control contract. Never invent a setting name. Every changed setting must resolve to a registered runtime control, including responsive suffixes.',
+			'Runtime import validation is fail-closed: unsupported controls, non-responsive device suffixes, invalid units, invalid select options, out-of-range slider values and invalid global references are rejected before Elementor persistence.',
+			'Unknown persisted Elementor fields may be preserved unchanged for forward compatibility, but AI must not create or mutate unknown fields.',
+			'Only write settings backed by a detailed capability entry. If a type exists only in registryIndex, leave its settings at Elementor defaults or request a full-context export.',
 			'Use capabilityCoverage before relying on controls, Active Kit, breakpoints, Dynamic Tags or Elementor Pro runtime modules. Do not guess data marked partial or unavailable.',
 			'Use layoutContext.containerRoles when editing Containers. A section-shell inherits the responsive horizontal page gutter from Elementor Site Settings and should keep vertical padding at zero; its inner content container owns vertical section rhythm.',
 			'Global Elementor Container Padding carries the Cresco responsive clamp gutter on left/right and zero on top/bottom; structural content/nested containers should explicitly reset horizontal padding to zero when they must not repeat the page gutter; local component/card padding is allowed.',
