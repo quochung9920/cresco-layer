@@ -18,9 +18,13 @@ expect(source.includes("'a11y.ariaLabel'"), 'Accessibility verification is missi
 expect(source.includes("'ux.touchTarget'"), 'Touch-target UX verification is missing.');
 expect(source.includes("'ux.horizontalOverflow'"), 'Horizontal-overflow verification is missing.');
 expect(source.includes("schema === 'cresco-ai-mutation/v3'"), 'Apply capture must recognize semantic design mutation v3.');
+expect(source.includes('collectDesignChanges'), 'Rendered verification must cover existing-element v3 designChanges, not only inserted nodes.');
+expect(source.includes('mutation && mutation.designChanges'), 'designChanges must participate in render verification.');
+expect(source.includes('stripFences') && source.includes('extractObject'), 'Apply capture should tolerate fenced/prose-wrapped AI results just like the backend normalizer.');
 expect(source.includes("/apply"), 'Visual verification must attach only to the apply workflow.');
 expect(source.includes('resolvedRefs'), 'Temporary refs must resolve to final Elementor IDs before verification.');
 expect(source.includes('data-cresco-visual-verify'), 'Import UI needs an explicit Verify Render action.');
 expect(source.includes('does not claim') || source.includes('not a claim'), 'Verifier must not claim pixel-perfect similarity when it only checks geometry/computed styles.');
+expect(source.includes('responsive intents are verified only when represented by the current preview state'), 'Responsive verification limitations must be explicit.');
 
 console.log('Rendered visual verification contract tests passed.');
