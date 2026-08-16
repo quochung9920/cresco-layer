@@ -15,6 +15,7 @@ expect_true( FidelityPolicy::GATE_SCHEMA === $policy['gateSchema'], 'Gate schema
 expect_true( abs( array_sum( $policy['weights'] ) - 1.0 ) < 0.000001, 'Fidelity weights must sum to 1.' );
 expect_true( $policy['threshold'] >= 90, 'Fidelity threshold is unexpectedly low.' );
 expect_true( in_array( 'horizontal-overflow', $policy['blockingRules'], true ), 'Horizontal overflow must block verification.' );
+expect_true( in_array( 'no-verification-evidence', $policy['blockingRules'], true ), 'Missing rendered evidence must block verification.' );
 expect_true( 4 === $policy['iteration']['maxCorrectionRounds'], 'Correction round budget changed unexpectedly.' );
 
 echo "Fidelity policy contract tests passed.\n";
