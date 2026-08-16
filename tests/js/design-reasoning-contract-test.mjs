@@ -4,6 +4,7 @@ const reasoning = fs.readFileSync(new URL('../../assets/design-reasoning.js', im
 const policy = fs.readFileSync(new URL('../../assets/ai-context-policy.js', import.meta.url), 'utf8');
 const bundle = fs.readFileSync(new URL('../../assets/ai-bundle.js', import.meta.url), 'utf8');
 const semantic = fs.readFileSync(new URL('../../assets/semantic-design-contract.js', import.meta.url), 'utf8');
+const assets = fs.readFileSync(new URL('../../includes/Support/Assets.php', import.meta.url), 'utf8');
 
 function expect(condition, message) {
   if (!condition) {
@@ -32,5 +33,10 @@ expect(semantic.includes('do not narrate design reasoning') || semantic.includes
 expect(bundle.includes("'06-design-reasoning.json'"), 'AI Bundle must include a standalone design reasoning file.');
 expect(bundle.includes("schema: 'cresco-ai-bundle/v3'"), 'AI Bundle v3 manifest is required.');
 expect(bundle.includes('Accessibility, behavior safety, hierarchy, responsive fit and Active Kit consistency'), 'Task brief must expose the quality hierarchy.');
+
+const reasoningPos = assets.indexOf("'cresco-layer-design-reasoning'");
+const policyPos = assets.indexOf("'cresco-layer-ai-context-policy'");
+expect(reasoningPos >= 0 && policyPos > reasoningPos, 'Design reasoning asset must load before final AI context policy.');
+expect(assets.includes("[ 'cresco-layer-design-reasoning' ]"), 'AI context policy must depend on the design reasoning asset.');
 
 console.log('Professional design reasoning contract tests passed.');
