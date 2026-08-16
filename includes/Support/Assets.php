@@ -1,17 +1,19 @@
 <?php
 namespace CrescoLayer\Support;
 
-use CrescoLayer\Admin\LocalAISettings;
+use CrescoLayer\LocalAI\Settings as LocalAISettings;
 
 final class Assets {
 	private bool $editor_script_localized = false;
 
-	public function hooks(): void {
+	public function register_hooks(): void {
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_frontend' ] );
-		add_action( 'elementor/editor/after_enqueue_styles', [ $this, 'enqueue_editor_styles' ] );
-		add_action( 'elementor/editor/after_enqueue_scripts', [ $this, 'enqueue_editor_scripts' ] );
-		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_clipboard_guard' ] );
-		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_editor_assets_fallback' ], 20 );
+		add_action( 'elementor/editor/before_enqueue_styles', [ $this, 'enqueue_editor_styles' ], 1 );
+		add_action( 'elementor/editor/after_enqueue_styles', [ $this, 'enqueue_editor_styles' ], 100 );
+		add_action( 'elementor/editor/before_enqueue_scripts', [ $this, 'enqueue_editor_scripts' ], 1 );
+		add_action( 'elementor/editor/after_enqueue_scripts', [ $this, 'enqueue_editor_scripts' ], 100 );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_clipboard_guard' ], 1 );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_editor_assets_fallback' ], 100 );
 	}
 
 	public function enqueue_frontend(): void {
