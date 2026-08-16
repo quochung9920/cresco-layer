@@ -26,7 +26,6 @@ final class Assets {
 		wp_enqueue_style( 'cresco-layer-editor', CRESCO_LAYER_URL . 'assets/editor.css', [], CRESCO_LAYER_VERSION );
 		wp_enqueue_style( 'cresco-layer-ai-panel', CRESCO_LAYER_URL . 'assets/ai-panel.css', [ 'cresco-layer-editor' ], CRESCO_LAYER_VERSION );
 		wp_enqueue_style( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.css', [ 'cresco-layer-ai-panel' ], CRESCO_LAYER_VERSION );
-		wp_enqueue_style( 'cresco-layer-semantic-ai', CRESCO_LAYER_URL . 'assets/semantic-ai.css', [ 'cresco-layer-skills' ], CRESCO_LAYER_VERSION );
 	}
 
 	public function enqueue_editor_scripts(): void {
@@ -50,7 +49,6 @@ final class Assets {
 		wp_enqueue_script( 'cresco-layer-semantic-design-ui', CRESCO_LAYER_URL . 'assets/semantic-design-ui.js', [ 'cresco-layer-external-ai-entrypoints' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-semantic-design-ui' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-skills-accuracy', CRESCO_LAYER_URL . 'assets/skills-accuracy.js', [ 'cresco-layer-skills' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-semantic-ai', CRESCO_LAYER_URL . 'assets/semantic-ai.js', [ 'cresco-layer-skills-accuracy' ], CRESCO_LAYER_VERSION, false );
 
 		if ( $this->editor_script_localized ) { return; }
 		$this->editor_script_localized = true;
@@ -81,7 +79,7 @@ final class Assets {
 
 	private function is_elementor_editor_request(): bool {
 		$action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( (string) $_GET['action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing context.
-		$page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( (string) $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only editor bootstrap context.
+		$page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( (string) $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing context.
 		$post   = $this->editor_post_id();
 		if ( ! $post ) { return false; }
 		return 'elementor' === $action || str_starts_with( $page, 'elementor' );
