@@ -193,8 +193,11 @@ final class AIMutationCompiler {
 	private function node_to_element( array $node, array $catalog ): array {
 		$intent = trim( (string) ( $node['widgetIntent'] ?? $node['widgetType'] ?? $node['elType'] ?? '' ) );
 		if ( '' === $intent ) { throw new \InvalidArgumentException( 'Semantic node is missing widgetIntent.' ); }
-		$is_layout = in_array( $intent, [ 'container', 'section', 'column' ], true ) || ( isset( $node['elType'] ) && 'widget' !== (string) $node['elType'] );
-		$el_type = $is_layout ? (string) ( $node['elType'] ?? $intent ) : 'widget';
+		$explicit_el_type = trim( (string) ( $node['elType'] ?? '' ) );
+		$is_layout = ( '' !== $explicit_el_type && 'widget' !== $explicit_el_type )
+			|| in_array( $intent, [ 'container', 'section', 'column' ], true )
+			|| ( isset( $catalog['elements'][ $intent ] ) && is_array( $catalog['elements'][ $intent ] ) && ! isset( $catalog['widgets'][ $intent ] ) );
+		$el_type = $is_layout ? ( '' !== $explicit_el_type && 'widget' !== $explicit_el_type ? $explicit_el_type : $intent ) : 'widget';
 		$entry = $this->assert_runtime_type( $is_layout ? 'element' : 'widget', $is_layout ? $el_type : $intent, $catalog );
 
 		$element = [
@@ -208,7 +211,11 @@ final class AIMutationCompiler {
 		if ( isset( $node['isInner'] ) ) { $element['isInner'] = (bool) $node['isInner']; }
 
 		$element['settings'] = array_replace( $this->content_settings_from_runtime( $intent, is_array( $node['content'] ?? null ) ? $node['content'] : [], $entry ), $element['settings'] );
-		foreach ( (array) ( $node['children'] ?? $node['elements'] ?? [] ) as $child ) {
+		$children = (array) ( $node['children'] ?? $node['elements'] ?? [] );
+		if ( ! $is_layout && $children ) {
+			throw new \InvalidArgumentException( 'A widget cannot own arbitrary Elementor child nodes in semantic mutation. Use a structural Elementor element as the parent or the widget native runtime repeater/content controls.' );
+		}
+		foreach ( $children as $child ) {
 			if ( is_array( $child ) ) { $element['elements'][] = $this->node_to_element( $child, $catalog ); }
 		}
 		return $element;
