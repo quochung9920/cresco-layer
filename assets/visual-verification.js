@@ -87,6 +87,16 @@
 	function walkMutation(nodes, out) {
 		(nodes || []).forEach(function (node) { if (!node || typeof node !== 'object') return; out.push(node); walkMutation(node.children || node.elements || [], out); });
 	}
+	function collectDesignChanges(changes, out) {
+		(changes || []).forEach(function (change) {
+			if (!change || typeof change !== 'object' || !change.elementId) return;
+			out.push({
+				id: String(change.elementId), role: change.role || 'existing-element',
+				layoutIntent: change.layoutIntent || {}, styleIntent: change.styleIntent || {}, accessibilityIntent: change.accessibilityIntent || {},
+				responsiveIntent: change.responsiveIntent || {}, content: change.content || {}, source: 'designChanges'
+			});
+		});
+	}
 	function resolveId(node, refs) {
 		if (node.id) return String(node.id);
 		if (node.ref && refs && refs[node.ref]) return String(refs[node.ref]);
@@ -95,11 +105,11 @@
 	function verify(targetId, mutation, resolvedRefs) {
 		var doc = previewDocument();
 		if (!doc) return { schema: 'cresco-visual-verification/v1', status: 'unavailable', reason: 'Elementor preview iframe is unavailable.', checks: [] };
-		var nodes = []; walkMutation(mutation && mutation.nodes || [], nodes);
+		var nodes = []; walkMutation(mutation && mutation.nodes || [], nodes); collectDesignChanges(mutation && mutation.designChanges || [], nodes);
 		var reports = [];
 		if (!nodes.length) {
 			var target = nodeById(targetId);
-			return { schema: 'cresco-visual-verification/v1', status: target ? 'snapshot-only' : 'unavailable', targetId: targetId, checks: [], reason: 'No semantic design nodes were present to compare.' };
+			return { schema: 'cresco-visual-verification/v1', status: target ? 'snapshot-only' : 'unavailable', targetId: targetId, checks: [], reason: 'No semantic design nodes or designChanges were present to compare.' };
 		}
 		nodes.forEach(function (mutationNode) {
 			var id = resolveId(mutationNode, resolvedRefs || {}); if (!id) return;
@@ -112,22 +122,45 @@
 			verifyQuality(checks, node, mutationNode);
 			var failures = checks.filter(function (item) { return item.status === 'fail'; }).length;
 			var warnings = checks.filter(function (item) { return item.status === 'warning'; }).length;
-			reports.push({ elementId: id, ref: mutationNode.ref || '', status: failures ? 'mismatch' : (warnings ? 'partial' : 'pass'), checks: checks });
+			reports.push({ elementId: id, ref: mutationNode.ref || '', source: mutationNode.source || 'nodes', status: failures ? 'mismatch' : (warnings ? 'partial' : 'pass'), checks: checks });
 		});
 		var all = reports.reduce(function (sum, report) { return sum.concat(report.checks || []); }, []);
 		var failCount = all.filter(function (item) { return item.status === 'fail'; }).length;
 		var warningCount = all.filter(function (item) { return item.status === 'warning'; }).length;
 		var passCount = all.filter(function (item) { return item.status === 'pass'; }).length;
-		return { schema: 'cresco-visual-verification/v1', status: failCount ? 'mismatch' : (warningCount ? 'partial' : (all.length ? 'pass' : 'unavailable')), targetId: targetId, summary: { pass: passCount, warning: warningCount, fail: failCount, checked: all.length }, elements: reports, checks: all, note: 'Rendered geometry/computed-style verification; not a claim of pixel-perfect image similarity.' };
+		return { schema: 'cresco-visual-verification/v1', status: failCount ? 'mismatch' : (warningCount ? 'partial' : (all.length ? 'pass' : 'unavailable')), targetId: targetId, summary: { pass: passCount, warning: warningCount, fail: failCount, checked: all.length }, elements: reports, checks: all, note: 'Rendered geometry/computed-style verification; responsive intents are verified only when represented by the current preview state. This is not a claim of pixel-perfect image similarity.' };
 	}
 
+	function stripFences(raw) {
+		var text = String(raw || '').trim(), match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+		return match ? match[1].trim() : text;
+	}
+	function extractObject(text) {
+		var start = text.indexOf('{'); if (start < 0) return '';
+		var depth = 0, string = false, escaped = false;
+		for (var i = start; i < text.length; i++) {
+			var ch = text[i];
+			if (escaped) { escaped = false; continue; }
+			if (ch === '\\') { escaped = true; continue; }
+			if (ch === '"') { string = !string; continue; }
+			if (string) continue;
+			if (ch === '{') depth++;
+			if (ch === '}' && --depth === 0) return text.slice(start, i + 1);
+		}
+		return '';
+	}
 	function extractMutation(raw) {
 		if (!raw) return null;
 		try {
-			var parsed = JSON.parse(raw); var depth = 0;
-			while (parsed && typeof parsed === 'object' && !parsed.schema && depth++ < 5) parsed = parsed.result || parsed.data || parsed.output || parsed.response || parsed.payload || parsed.aiResult || parsed;
+			var text = stripFences(raw), parsed;
+			try { parsed = JSON.parse(text); } catch (e) { var object = extractObject(text); parsed = object ? JSON.parse(object) : null; }
+			var depth = 0;
+			while (parsed && typeof parsed === 'object' && !parsed.schema && depth++ < 6) {
+				var next = parsed.result || parsed.data || parsed.output || parsed.response || parsed.payload || parsed.aiResult || parsed.ai_result || parsed.json;
+				if (!next || next === parsed) break; parsed = next;
+			}
 			return parsed && (parsed.schema === 'cresco-ai-mutation/v3' || parsed.schema === 'cresco-ai-mutation/v2') ? parsed : null;
-		} catch (e) { return null; }
+		} catch (e2) { return null; }
 	}
 	function isApply(input) {
 		var url = typeof input === 'string' ? input : (input && input.url ? String(input.url) : '');
@@ -174,6 +207,6 @@
 		if (window.MutationObserver && document.documentElement) new MutationObserver(function () { injectButton(); enableButton(); }).observe(document.documentElement, { childList: true, subtree: true });
 	}
 
-	window.CrescoLayerVisualVerification = { version: '1.1.0', verify: verify, captureNode: nodeById, getLastResult: function () { return state.lastResult; }, getLastApply: function () { return { targetId: state.targetId, resolvedRefs: state.resolvedRefs, hasMutation: !!state.mutation }; } };
+	window.CrescoLayerVisualVerification = { version: '1.2.0', verify: verify, captureNode: nodeById, extractMutation: extractMutation, getLastResult: function () { return state.lastResult; }, getLastApply: function () { return { targetId: state.targetId, resolvedRefs: state.resolvedRefs, hasMutation: !!state.mutation }; } };
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 }());
