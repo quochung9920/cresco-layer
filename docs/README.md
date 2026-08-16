@@ -25,6 +25,7 @@ Nếu bạn phát triển plugin:
 Elementor
 → Export for ChatGPT
 → cresco-external-ai-package/v1 hoặc cresco-ai-bundle/v4
+→ cresco-external-exchange-policy/v1 chọn output contract theo scope
 → ChatGPT nhận yêu cầu thiết kế trong cuộc trò chuyện
 → ChatGPT trả JSON
 → Import AI Result
@@ -60,6 +61,7 @@ JSON hợp lệ
 ```text
 cresco-external-ai-package/v1
 cresco-ai-bundle/v4
+cresco-external-exchange-policy/v1
 cresco-ai-context/v3
 cresco-layer-ai-package/v2
 cresco-control-registry/v1
@@ -79,6 +81,7 @@ cresco-fidelity-gate/v1
 
 - Elementor luôn là source of truth.
 - External export dùng Full Context để không phụ thuộc prompt/task hint viết trong Elementor.
+- `cresco-external-exchange-policy/v1` quyết định output contract theo scope: widget/subtree ưu tiên semantic mutation v3, document ưu tiên patch v1.
 - Không invent Elementor control, responsive suffix, unit, option, Dynamic Tag hay global reference.
 - Không sửa element ngoài editable scope.
 - Không ghi trực tiếp vào storage khi Elementor có Document/Kit API phù hợp.
