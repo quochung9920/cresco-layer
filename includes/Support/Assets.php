@@ -46,7 +46,8 @@ final class Assets {
 		wp_enqueue_script( 'cresco-layer-visual-verification', CRESCO_LAYER_URL . 'assets/visual-verification.js', [ 'cresco-layer-external-ai-exchange-policy' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-fidelity-verification', CRESCO_LAYER_URL . 'assets/fidelity-verification.js', [ 'cresco-layer-visual-verification', 'cresco-layer-fidelity-engine' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-ai-panel', CRESCO_LAYER_URL . 'assets/ai-panel.js', [ 'cresco-layer-fidelity-verification' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-semantic-design-ui', CRESCO_LAYER_URL . 'assets/semantic-design-ui.js', [ 'cresco-layer-ai-panel' ], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-external-ai-entrypoints', CRESCO_LAYER_URL . 'assets/external-ai-entrypoints.js', [ 'cresco-layer-ai-panel' ], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-semantic-design-ui', CRESCO_LAYER_URL . 'assets/semantic-design-ui.js', [ 'cresco-layer-external-ai-entrypoints' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-semantic-design-ui' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-skills-accuracy', CRESCO_LAYER_URL . 'assets/skills-accuracy.js', [ 'cresco-layer-skills' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-semantic-ai', CRESCO_LAYER_URL . 'assets/semantic-ai.js', [ 'cresco-layer-skills-accuracy' ], CRESCO_LAYER_VERSION, false );
@@ -80,7 +81,7 @@ final class Assets {
 
 	private function is_elementor_editor_request(): bool {
 		$action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( (string) $_GET['action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing context.
-		$page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( (string) $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing context.
+		$page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( (string) $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only editor bootstrap context.
 		$post   = $this->editor_post_id();
 		if ( ! $post ) { return false; }
 		return 'elementor' === $action || str_starts_with( $page, 'elementor' );
