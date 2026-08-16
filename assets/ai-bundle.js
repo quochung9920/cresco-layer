@@ -20,6 +20,7 @@
 				for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
 				crcTable[n] = c >>> 0;
 			}
+		}
 		var crc = 0xFFFFFFFF;
 		for (var i = 0; i < bytes.length; i++) crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
 		return (crc ^ 0xFFFFFFFF) >>> 0;
