@@ -39,7 +39,8 @@ final class Assets {
 		wp_enqueue_script( 'cresco-layer-ai-bundle', CRESCO_LAYER_URL . 'assets/ai-bundle.js', [ 'cresco-layer-ai-context-policy' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-visual-verification', CRESCO_LAYER_URL . 'assets/visual-verification.js', [ 'cresco-layer-ai-bundle' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-ai-panel', CRESCO_LAYER_URL . 'assets/ai-panel.js', [ 'cresco-layer-visual-verification' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-ai-panel' ], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-semantic-design-ui', CRESCO_LAYER_URL . 'assets/semantic-design-ui.js', [ 'cresco-layer-ai-panel' ], CRESCO_LAYER_VERSION, false );
+		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-semantic-design-ui' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-skills-accuracy', CRESCO_LAYER_URL . 'assets/skills-accuracy.js', [ 'cresco-layer-skills' ], CRESCO_LAYER_VERSION, false );
 		wp_enqueue_script( 'cresco-layer-semantic-ai', CRESCO_LAYER_URL . 'assets/semantic-ai.js', [ 'cresco-layer-skills-accuracy' ], CRESCO_LAYER_VERSION, false );
 
