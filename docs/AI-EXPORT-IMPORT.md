@@ -1,44 +1,97 @@
-# AI Export & Import trong Cresco Layer
+# AI Export & Import trong Cresco Layer 0.24
 
-Tài liệu này dành cho người xây agent, prompt, automation hoặc debug pipeline AI ↔ Elementor.
+Tài liệu này dành cho người xây agent, prompt, automation hoặc debug pipeline **Elementor → ChatGPT/AI bên ngoài → Elementor**.
+
+Từ 0.24, workflow chính không còn yêu cầu prompt thiết kế trong Elementor.
+
+```text
+Elementor
+→ External AI Package
+→ ChatGPT nhận design request trong chat
+→ JSON result
+→ Cresco normalize/validate/preview/apply
+→ Elementor render
+→ Fidelity verification
+```
 
 ## 1. Mục tiêu
 
 AI không nên nhận một JSON Elementor trần rồi tự đoán:
 
-- widget nào đang được đăng ký;
+- widget/element nào đang được đăng ký;
 - control nào tồn tại;
 - control nào responsive;
-- unit nào hợp lệ;
-- global style nào đang được dùng;
+- unit/option/range nào hợp lệ;
+- Global Style nào đang được dùng;
 - parent/sibling nào đang ảnh hưởng layout;
-- giá trị cuối cùng browser đang render ra sao.
+- breakpoint nào active;
+- browser thực tế đang render geometry/style ra sao;
+- output nào được phép sửa trong scope hiện tại.
 
-Cresco Layer đóng gói các thông tin này thành AI Package và yêu cầu AI trả về patch có scope rõ ràng.
+Cresco Layer đóng gói các bằng chứng này thành package tự mô tả và kiểm lại result bằng runtime thật trước khi Elementor lưu.
 
-## 2. Chọn scope export
+## 2. Hai file export chính
 
-### Widget
+### ZIP đầy đủ
 
-Dùng khi chỉ muốn sửa một element.
+Tên dạng:
+
+```text
+cresco-chatgpt-bundle-<target>.zip
+```
+
+Manifest:
+
+```text
+cresco-ai-bundle/v4
+```
+
+Khuyến nghị khi cần:
+
+- screenshot/current preview;
+- reference image;
+- nhiều file context riêng dễ đọc;
+- ChatGPT có khả năng đọc ZIP/file bundle.
+
+### Single JSON
+
+Tên dạng:
+
+```text
+cresco-chatgpt-package-<target>.json
+```
+
+Schema:
+
+```text
+cresco-external-ai-package/v1
+```
+
+Dùng khi muốn một file duy nhất hoặc môi trường AI không xử lý ZIP tốt.
+
+## 3. Chọn scope export
+
+### Selected element (`widget`)
+
+Chỉ sửa element đang chọn.
 
 Phù hợp với:
 
 - heading;
 - button;
 - image;
-- một container đơn;
-- một widget form cụ thể.
+- một widget form;
+- một container khi chỉ muốn chỉnh settings của root.
 
-Quy tắc:
+Contract quan trọng:
 
-- root ID phải giữ nguyên;
-- context ngoài scope là read-only;
-- nếu replace element, phải preserve children khi contract yêu cầu.
+- existing root ID phải giữ nguyên;
+- context bên ngoài là read-only;
+- children không tự động trở thành editable chỉ vì AI nhìn thấy chúng.
 
-### Subtree
+### Selected subtree (`subtree`)
 
-Dùng khi element root có nhiều descendant cần phối hợp.
+Root và descendants trong subtree được phối hợp.
 
 Ví dụ:
 
@@ -52,42 +105,112 @@ Hero container
    └─ image
 ```
 
-Subtree cho phép AI sửa cấu trúc bên trong phạm vi này nhưng không được tác động footer/header/section khác.
+Phù hợp cho redesign một section/cluster có cấu trúc.
 
-### Selection
+### Entire page (`document`)
 
-Dùng cho nhiều root cụ thể. Đây là scope chính xác, không có nghĩa mọi descendant của mọi root tự động có quyền như subtree trừ khi contract nói vậy.
+Toàn document được export và document scope được phép chỉnh.
 
-### Document
+Đây là scope quyền cao nhất. Không bắt buộc chọn element trước khi export.
 
-Dùng khi redesign cả trang hoặc import page-level result. Đây là scope quyền cao nhất và phải được dùng có chủ đích.
+UI external 0.24 tập trung vào ba scope trên. Backend vẫn giữ `selection` cho workflow nâng cao/legacy contract.
 
-## 3. AI Package v2
+## 4. Vì sao external export dùng Full Context?
 
-Schema:
+Trước đây Smart Context có thể dùng task hint nhập trong Elementor để chỉ load detailed capability liên quan đến yêu cầu.
+
+0.24 cố ý chuyển design prompt sang ChatGPT **sau khi file đã rời Elementor**.
+
+Nếu vẫn chỉ export task-aware subset, tình huống sau có thể xảy ra:
+
+```text
+1. User export hero.
+2. Package chỉ có capability của widget đang tồn tại.
+3. Trong ChatGPT user mới yêu cầu thêm Icon List/Carousel/Form.
+4. AI không có detailed control metadata của widget mới.
+5. Model buộc phải đoán hoặc không thể hoàn thành chính xác.
+```
+
+Vì vậy external panel gọi REST export với:
+
+```text
+context=full
+```
+
+Full Context yêu cầu `ContextResolver` lấy detailed capability cho toàn bộ widget/element đã đăng ký trong runtime hiện tại.
+
+Trade-off:
+
+- file lớn hơn;
+- export có thể chậm hơn;
+- nhưng capability coverage tốt hơn;
+- package tái sử dụng được cho nhiều yêu cầu hơn trong cùng trạng thái Elementor.
+
+## 5. Exact Runtime
+
+External export đồng thời ép:
+
+```text
+Exact Runtime profile
+```
+
+Exact Runtime dùng detailed catalog do Full Context cung cấp để enrich AI Context bằng runtime capability chính xác.
+
+Contract chính có thể gồm:
+
+```text
+runtimeCapabilities
+capabilityLock
+siteDesignContext
+taskRuntimeDiscovery
+```
+
+Trong external workflow, `taskRuntimeDiscovery` vẫn có thể tồn tại nhưng **không phải nguồn duy nhất** của capability. Full `widgetCatalog`/`elementCatalog` đã được điền chi tiết trước đó.
+
+`capabilityLock` yêu cầu:
+
+- không invent control;
+- không invent responsive suffix;
+- validate unit/option/range/condition;
+- custom CSS chỉ là fallback nếu native control không đủ;
+- không tự tạo Dynamic Tag/global reference mà runtime không chứng minh.
+
+## 6. AI Package lõi
+
+Server package:
 
 ```text
 cresco-layer-ai-package/v2
 ```
 
-### `manifest`
+Các vùng quan trọng:
 
-Chứa thông tin môi trường và document:
-
-- plugin version;
-- Elementor/Pro version;
-- post ID;
-- working post/autosave ID;
-- document type;
-- export time;
-- scope;
-- context profile.
+```text
+manifest
+editableScope
+document
+elementContext
+elementStates
+siteContext
+designSystem
+layoutContext
+registryIndex
+controlRegistry
+patchContract
+widgetCatalog
+elementCatalog
+relevantCapabilities
+dynamicTags
+templates
+assets
+capabilities
+audit
+instructions
+```
 
 ### `editableScope`
 
-Đây là quyền chỉnh sửa của AI.
-
-Các trường quan trọng:
+Đây là ACL của AI.
 
 ```text
 mode
@@ -98,21 +221,25 @@ pageSettingsEditable
 preserveChildrenOnRootReplace
 ```
 
-Agent phải xem đây là ACL của patch.
+AI có thể được cho context để hiểu layout nhưng không có nghĩa context đó editable.
 
 ### `document`
 
-Chứa raw Elementor content và page settings trong phạm vi export.
+Giữ raw Elementor data thay vì chuyển sang Cresco document model riêng.
 
-Cresco không chuyển toàn bộ document sang một model riêng vì điều đó dễ làm mất field mới/addon-specific field.
+Mục tiêu là preserve:
 
-### `elementContext`
-
-Parent/sibling/context có thể được export để AI hiểu layout nhưng không mặc nhiên editable.
+- settings;
+- responsive values;
+- Dynamic Tags;
+- global references;
+- Atomic/V4 data;
+- addon-specific metadata;
+- unknown persisted fields.
 
 ### `elementStates`
 
-Mỗi element có thể có:
+Có thể chứa:
 
 ```text
 rawSettings
@@ -123,288 +250,433 @@ responsiveOverrides
 unknownPersistedSettings
 ```
 
-`unknownPersistedSettings` không phải giấy phép để AI tạo setting lạ. Nó là dữ liệu cần preserve losslessly.
+Unknown persisted field là dữ liệu cần preserve, **không phải giấy phép để AI invent control mới**.
 
 ### `layoutContext`
 
-Mô tả các vai trò container, responsive foundation và relationship cần thiết để AI không sửa từng element tách rời.
+Mô tả parent/child/container roles và responsive foundation để AI không sửa từng node tách rời.
 
-### `registryIndex`
+## 7. Control Registry
 
-Danh sách compact các widget/element type đang được đăng ký. Index không nhất thiết có detailed control metadata.
-
-### `widgetCatalog` / `elementCatalog`
-
-Detailed runtime capability cho các type liên quan đến task.
-
-### `controlRegistry`
-
-Schema:
+Normalized schema:
 
 ```text
 cresco-control-registry/v1
 ```
 
-Đây là dạng normalized, ưu tiên cho agent khi cần quyết định setting nào được phép viết.
-
-### `patchContract`
-
-Mô tả transport schema và các validation rule server sẽ áp dụng.
-
-### `designSystem`
-
-Active Elementor Kit settings liên quan đến global design system.
-
-### `dynamicTags`
-
-Runtime-discovered Dynamic Tags. Agent không nên tự tạo tag syntax nếu runtime không chứng minh nó tồn tại.
-
-### `templates` và `assets`
-
-Catalog read-only hỗ trợ task, ví dụ media attachment hoặc Elementor template liên quan.
-
-## 4. Exact Runtime
-
-Exact Runtime có mục tiêu **không cho AI đoán control**.
-
-Ở editor, Cresco lazy-load detailed capability cho:
-
-- element đang sửa;
-- context liên quan;
-- construction candidates cần thiết;
-- widget được phát hiện theo task hint/registry metadata.
-
-Contract chính:
+Mỗi control có thể mô tả:
 
 ```text
-runtimeCapabilities
-capabilityLock
-siteDesignContext
-taskRuntimeDiscovery
+name
+type
+label
+source
+responsive
+dynamic
+units
+options
+range
+min
+max
+step
+condition
+conditions
+selectors
+bind
+propType
 ```
 
-`capabilityLock` yêu cầu:
+AI nên dùng `controlRegistry`/detailed runtime capability làm nguồn sự thật cho setting-level quyết định.
 
-- không invent control;
-- không invent responsive suffix;
-- validate units/options/ranges/conditions;
-- custom CSS chỉ là fallback khi native control không thể biểu đạt yêu cầu.
+## 8. Visual Context và Fidelity Context
 
-## 5. Visual Context từ 0.23
-
-Trong Elementor Editor, `fidelity-export.js` enrich package bằng:
+Từ 0.23, editor enrich context bằng:
 
 ```text
 fidelityPolicy
 visualContext
 ```
 
-`visualContext` dùng schema:
+`visualContext` có thể chứa:
 
 ```text
-cresco-visual-context/v1
+cresco-fidelity-snapshot/v1
+cresco-geometry-graph/v1
 ```
 
-Nó chứa `cresco-fidelity-snapshot/v1` của preview hiện tại.
+Browser preview cung cấp bằng chứng mà raw settings không nói hết:
 
-AI nên dùng visual context để trả lời các câu hỏi mà raw setting không đủ:
+- x/y/width/height thật;
+- parent-relative position;
+- previous/next sibling;
+- flex/grid computed properties;
+- padding/margin/gap thật;
+- font-size/line-height/letter-spacing thật;
+- color/background/border/radius/shadow;
+- opacity/visibility;
+- horizontal overflow.
 
-- container thực tế rộng bao nhiêu pixel;
-- child đang lệch so với parent bao nhiêu;
-- gap cuối cùng là bao nhiêu;
-- overflow có xảy ra không;
-- font-size/line-height cuối cùng browser tính ra sao;
-- parent/child/sibling relationship thật trong DOM render.
+Structured visual context vẫn có giá trị ngay cả khi raster screenshot không capture được.
 
-## 6. Quy tắc cho AI khi sinh patch
+## 9. External AI Package
 
-### 6.1 Chỉ dùng control đã chứng minh
+Lớp ngoài cùng:
 
-Sai:
-
-```json
-{
-  "setting": "my_magic_padding",
-  "value": "32px"
-}
+```text
+cresco-external-ai-package/v1
 ```
 
-nếu registry không có control đó.
+Top-level:
 
-Đúng:
+```text
+schema
+packageId
+createdAt
+producer
+workflow
+target
+instructionsForAI
+resultContract
+contextQuality
+context
+```
 
-- tìm control native tương ứng;
-- kiểm responsive flag;
-- kiểm unit;
-- tạo operation nhỏ nhất cần thiết.
+### `instructionsForAI`
 
-### 6.2 Ưu tiên `update-setting`
+Nói rõ:
 
-Nếu chỉ đổi một giá trị, không replace cả element.
+- design request đến từ external chat;
+- runtime/package là source of truth;
+- không invent capability;
+- preserve scope/IDs;
+- dùng native controls/global values;
+- trả delta nhỏ nhất;
+- trả JSON sạch.
 
-Lợi ích:
+### `resultContract`
 
-- ít rủi ro làm mất unknown field;
-- diff dễ review;
-- rollback nhỏ;
-- validator có thể kiểm chính xác control/value.
+Đây là output contract mà external AI phải ưu tiên.
 
-### 6.3 Giữ ID
+Không được giả định một schema duy nhất cho mọi scope.
 
-Existing element ID là identity quan trọng cho:
+## 10. External Exchange Policy
 
-- scope;
-- editor state;
-- CSS selectors;
-- history;
-- references.
+Schema:
 
-Chỉ inserted element mới được sinh ID mới.
+```text
+cresco-external-exchange-policy/v1
+```
 
-### 6.4 Preserve global references
+### Element/subtree
 
-Nếu element đang dùng global color/font, không phá link thành local value trừ khi task thực sự yêu cầu.
+Preferred:
 
-### 6.5 Không bù lỗi bằng offset ngẫu nhiên
+```text
+cresco-ai-mutation/v3
+```
 
-Khi visual snapshot cho thấy child lệch, AI phải tìm owner hợp lý:
+Mode:
 
-- parent alignment;
-- gap;
-- padding;
-- width/flex basis;
-- responsive override;
-- margin thật sự có chủ đích.
+```text
+semantic-target-mutation
+```
 
-Không nên thêm transform/negative margin chỉ để khớp một frame nếu native layout control mới là nguyên nhân.
+V3 cho phép AI nói bằng design intent; Cresco chịu trách nhiệm lower về runtime-proven controls và cấp ID mới.
 
-## 7. Patch schema
+### Document
 
-Transport schema:
+Preferred:
 
 ```text
 cresco-layer-patch/v1
 ```
 
-Ví dụ tối giản:
+Mode:
+
+```text
+document-patch
+```
+
+Scope:
 
 ```json
 {
-  "schema": "cresco-layer-patch/v1",
-  "base": {
-    "postId": 42
+  "mode": "document",
+  "rootElementId": "",
+  "elementIds": []
+}
+```
+
+Document không phải một fake container root, nên semantic v3 không phải transport mặc định cho toàn trang.
+
+## 11. Semantic mutation v3
+
+Ví dụ element/subtree result:
+
+```json
+{
+  "schema": "cresco-ai-mutation/v3",
+  "intent": "edit",
+  "target": {
+    "postId": 42,
+    "id": "abc1234",
+    "scope": "subtree"
   },
-  "scope": {
-    "mode": "widget",
-    "rootElementId": "abc123",
-    "elementIds": ["abc123"]
-  },
-  "label": "AI Import",
-  "operations": [
+  "designChanges": [
     {
-      "operation": "update-setting",
-      "elementId": "abc123",
-      "setting": "title_color",
-      "value": "#ffffff"
+      "elementId": "abc1234",
+      "layoutIntent": {
+        "direction": "column",
+        "gap": "32px"
+      },
+      "styleIntent": {
+        "borderRadius": "20px"
+      }
     }
   ]
 }
 ```
 
-## 8. Runtime validation v2
+Cresco compile:
 
-Sau generic schema validation, khi Elementor runtime có sẵn Cresco chạy:
+```text
+v3
+→ SemanticDesignCompiler
+→ v2
+→ AIMutationCompiler
+→ internal patch v1
+```
+
+## 12. Document patch v1
+
+Ví dụ chỉnh existing element ở document scope:
+
+```json
+{
+  "schema": "cresco-layer-patch/v1",
+  "base": { "postId": 42 },
+  "scope": {
+    "mode": "document",
+    "rootElementId": "",
+    "elementIds": []
+  },
+  "label": "Improve page spacing",
+  "operations": [
+    {
+      "operation": "update-setting",
+      "elementId": "abc1234",
+      "setting": "padding",
+      "value": {
+        "unit": "px",
+        "top": "64",
+        "right": "32",
+        "bottom": "64",
+        "left": "32",
+        "isLinked": false
+      }
+    }
+  ]
+}
+```
+
+### Top-level insert
+
+```json
+{
+  "operation": "insert-element",
+  "parentId": "",
+  "position": 999999,
+  "element": {
+    "ref": "$new:cta",
+    "elType": "container",
+    "settings": {},
+    "elements": []
+  }
+}
+```
+
+`InternalPatchCompiler` có thể cấp final ID cho inserted subtree khi AI dùng ref/không cung cấp ID hợp lệ.
+
+### Replace document
+
+`replace-document` là destructive. Chỉ dùng khi user yêu cầu rebuild toàn trang. Cresco không tự suy diễn một yêu cầu “cải thiện giao diện” thành full document replacement.
+
+## 13. AI Bundle v4
+
+ZIP có thể gồm:
+
+```text
+README-FOR-CHATGPT.md
+cresco-package.json
+elementor-context.json
+output-contract.json
+widget-guide.json
+visual-context.json
+current-preview.png
+reference-<filename>
+manifest.json
+```
+
+`README-FOR-CHATGPT.md` là entrypoint cho model.
+
+`cresco-package.json.resultContract` có authority cao hơn template legacy nằm sâu trong context nếu có khác biệt.
+
+## 14. Import normalizer
+
+Backend nhận raw result string, không bắt UI phải tự biến mọi format thành patch trước.
+
+Các schema hỗ trợ:
+
+```text
+cresco-ai-mutation/v3
+cresco-ai-mutation/v2
+cresco-layer-patch/v1
+cresco-layer-ai-result/v1
+```
+
+Normalizer còn chịu được một số:
+
+- markdown code fence;
+- JSON wrapper phổ biến;
+- prose quanh object khi có thể trích object an toàn.
+
+Mục tiêu vẫn là yêu cầu AI trả JSON sạch.
+
+## 15. ID allocation
+
+AI không nên mint final Elementor ID cho node mới khi contract hỗ trợ ref.
+
+Ví dụ:
+
+```text
+$new:hero
+$new:title
+$new:cta
+```
+
+Cresco dùng `ElementorIdGenerator` để cấp ID 7-character hex không va chạm với document hiện tại cho inserted subtree.
+
+Existing IDs vẫn là authoritative identity và phải được giữ khi chỉnh element hiện có.
+
+## 16. Runtime validation v2
+
+Sau generic schema/security validation, Cresco chạy:
 
 ```text
 cresco-layer-patch-validation/v2
 ```
 
+Các gate:
+
 ### Registered control
 
-Setting phải resolve được về control runtime.
+Setting phải resolve về runtime control.
 
 ### Responsive capability
 
-Ví dụ `padding_mobile` chỉ hợp lệ nếu base control `padding` hỗ trợ responsive.
+`*_mobile`, `*_tablet`... chỉ hợp lệ nếu base control responsive.
 
 ### Unit
 
-Nếu control chỉ hỗ trợ:
+Unit phải thuộc runtime `size_units` hoặc contract custom tương ứng.
 
-```text
-px
-%
-em
-rem
-```
+### Option
 
-AI không được ghi một unit khác trừ khi control runtime cho phép `custom` hoặc unit đó.
-
-### Options
-
-Select/choose control phải nhận value nằm trong options runtime.
+Select/choose/radio phải nhận option hợp lệ.
 
 ### Range
 
-Range được kiểm theo unit đang ghi. Không áp range `px` cho `vw` hoặc raw custom CSS expression.
+Range kiểm theo unit đang được ghi; không áp range `px` cho `vw/custom` một cách sai nghĩa.
 
-### Global references
+### Global reference
 
-`__globals__` chỉ được update cho control có thật.
+`__globals__` phải trỏ vào base control có thật.
 
-### Unknown persisted values
+### Unknown persisted fields
 
-Nếu existing document đã có unknown field, replacement có thể giữ nguyên nó. AI không được thay đổi/tạo unknown field như một control mới.
+Existing unknown field được preserve khi unchanged. AI không được tạo/chỉnh unknown field như một control mới.
 
-## 9. Semantic Guard
+## 17. Semantic Guard
 
-Runtime control hợp lệ vẫn chưa chắc thay đổi có ý nghĩa.
+Runtime-valid chưa chắc semantic-valid.
 
-Semantic guard có thể phát hiện:
+Guard có thể phát hiện:
 
 - no-op;
-- custom CSS dùng property mà native control đã có;
-- CSS variable khai báo nhưng không được consume;
-- value không tương thích với mục tiêu semantic;
-- cấu trúc không phù hợp với scope/role.
+- custom CSS khi native control đã biểu đạt được;
+- CSS variable khai báo nhưng không consume;
+- structural change không phù hợp scope;
+- giá trị nhìn hợp lệ nhưng không tạo visual effect mong muốn.
 
-## 10. Preview
+## 18. Import Preview
 
-Trước apply, Cresco có thể trả:
+External UI gửi raw JSON đến:
 
 ```text
-valid
-scope
+POST /documents/{postId}/preview
+```
+
+cùng:
+
+```text
+selectedElementId
+expectedScope
+```
+
+Preview có thể trả:
+
+```text
 diff
-diffDetails
-auditBefore
-auditAfter
-willUseAutosave
+semantic warnings
+normalization report
+auto-repair count
+scope
 ```
 
-Agent hoặc UI nên dùng preview để cho người dùng biết chính xác cái gì sẽ đổi.
+Nút Apply chỉ bật khi exact result/scope đã preview hợp lệ.
 
-## 11. Apply và persistence
+Nếu result khai báo target ID khác element đang chọn, UI chặn sớm trước server preview.
 
-Apply đi qua Elementor Document API.
+## 19. Apply và persistence
 
-Sau save, Cresco reload working data để xác minh. Điều này tách hai khái niệm:
+Apply:
 
 ```text
-save request thành công
-≠
-requested values đã được persist đúng
+POST /documents/{postId}/apply
 ```
 
-## 12. Rendered verification
+Pipeline:
 
-Sau apply, browser verifier đọc preview DOM và so semantic intent với computed result.
+```text
+normalize external result
+→ compile internal patch
+→ validate
+→ semantic guard
+→ write working Elementor document
+→ read back
+→ verify requested operations
+```
 
-Các check gồm layout, typography, color, accessibility và UX quality.
+Save request thành công không đồng nghĩa requested values đã persist đúng, nên read-back verification là bắt buộc.
 
-## 13. Fidelity Gate
+Update/Publish cuối cùng vẫn thuộc người dùng trong Elementor.
 
-0.23 tự chấm các rendered checks bằng policy.
+## 20. Rendered Verification
+
+Sau Apply, preview được refresh và verifier đọc DOM thực tế.
+
+Có thể kiểm:
+
+- layout;
+- typography;
+- colors;
+- spacing;
+- accessibility intent;
+- touch target;
+- overflow;
+- structure.
+
+## 21. Fidelity Gate
 
 Default overall threshold:
 
@@ -412,92 +684,109 @@ Default overall threshold:
 96 / 100
 ```
 
-Ngoài threshold còn có category floors và blocking issue.
+Category hiện có:
 
-Một report không có check/evidence được đánh:
+```text
+geometry
+spacing
+typography
+color
+structure
+quality
+```
+
+Blockers có thể gồm:
+
+```text
+missing-element
+parent-drift
+horizontal-overflow
+invisible-target
+invalid-geometry
+no-verification-evidence
+```
+
+Không có evidence:
 
 ```text
 overall = 0
 gate = BLOCKED
-rule = no-verification-evidence
 ```
 
-Điều này tránh false-positive.
+Không được biến “không đo được” thành pass.
 
-## 14. Responsive
+## 22. Responsive
 
-### Export
+Package chứa breakpoint config và persisted responsive overrides.
 
-Raw package có breakpoint config và responsive overrides.
+Fidelity snapshot 0.23/0.24 capture preview mode hiện tại, không giả định desktop geometry là mobile geometry.
 
-### Visual snapshot
+Nếu cần kiểm nhiều breakpoint ở workflow hiện tại:
 
-0.23 capture device mode hiện tại của Elementor preview.
+1. chuyển Elementor preview sang breakpoint;
+2. verify/capture;
+3. lặp lại breakpoint quan trọng.
 
-Không nên suy diễn snapshot desktop thành mobile geometry.
+Multi-breakpoint automatic matrix là phase sau.
 
-Workflow hiện tại nếu cần kiểm kỹ nhiều breakpoint:
+## 23. Checklist cho external AI
 
-1. chuyển Elementor preview sang breakpoint cần kiểm;
-2. export/capture hoặc verify ở breakpoint đó;
-3. lặp lại cho các breakpoint active quan trọng.
-
-Auto matrix sẽ được triển khai ở phase tiếp theo.
-
-## 15. Prompt/agent checklist
-
-Trước khi sinh patch, agent nên tự kiểm:
+Trước khi trả result, agent nên tự kiểm:
 
 ```text
+[ ] Đọc cresco-package.json / resultContract
 [ ] Đúng postId
-[ ] Đúng scope
-[ ] Chỉ sửa editable IDs
-[ ] Control tồn tại trong detailed runtime capability/controlRegistry
+[ ] Đúng target/scope
+[ ] Widget/subtree dùng v3 khi contract yêu cầu
+[ ] Document dùng patch v1 khi contract yêu cầu
+[ ] Chỉ sửa editable scope
+[ ] Control có bằng chứng runtime
 [ ] Responsive suffix hợp lệ
-[ ] Unit hợp lệ
-[ ] Option/range hợp lệ
-[ ] Không phá global references ngoài ý muốn
+[ ] Unit/option/range hợp lệ
+[ ] Không phá Global Styles ngoài ý muốn
 [ ] Giữ existing IDs
+[ ] Node mới dùng ref nếu contract hỗ trợ
 [ ] Preserve unknown persisted fields
-[ ] Tận dụng layoutContext + visualContext
-[ ] Dùng operation nhỏ nhất
+[ ] Dùng layoutContext + visualContext
+[ ] Ưu tiên delta nhỏ
 [ ] Không xuất secret/nonces/API key
 [ ] Không yêu cầu publish trực tiếp
 ```
 
-## 16. Khi import bị reject
+## 24. Khi import bị reject
 
-Đừng tắt validator. Hãy dùng error để sửa patch.
+Không bypass validator. Dùng error làm feedback cho vòng sửa tiếp theo.
 
-Các nhóm lỗi thường gặp:
+Nhóm lỗi thường gặp:
 
-- `unsupported control`: AI dùng key không tồn tại;
-- responsive mismatch: dùng suffix trên non-responsive control;
+- unsupported control;
+- responsive mismatch;
 - unsupported unit/option/range;
 - scope mismatch;
 - target drift;
 - unsafe value;
 - semantic no-op;
+- duplicate/invalid ID;
 - fidelity blocked sau render.
 
-Mỗi nhóm cần sửa nguyên nhân, không bypass guard.
+## 25. Triết lý chung
 
-## 17. Triết lý chung
-
-Pipeline tốt không phải là:
+Pipeline mong muốn không phải:
 
 ```text
-AI thông minh hơn → hy vọng patch đúng
+AI mạnh hơn → hy vọng JSON đúng
 ```
 
 Mà là:
 
 ```text
-AI được cấp bằng chứng đúng
-+ contract rõ
-+ quyền hạn nhỏ
-+ validator runtime
-+ render evidence
-+ score/gate
-= kết quả đáng tin cậy hơn
+runtime evidence đầy đủ
++ external self-describing package
++ scope-aware output contract
++ AI suy luận bên ngoài Elementor
++ runtime validator
++ Elementor persistence
++ rendered evidence
++ Fidelity Gate
+= external AI workflow đáng tin cậy
 ```
