@@ -70,13 +70,16 @@ Package đã chứa contract kỹ thuật nên người dùng không phải gi�
 
 ### Import AI Result
 
-ChatGPT nên trả một file JSON, ưu tiên:
+Contract kết quả phụ thuộc scope:
 
 ```text
-cresco-ai-mutation/v3
+Selected element/subtree → cresco-ai-mutation/v3 (ưu tiên)
+Entire page              → cresco-layer-patch/v1 + scope.mode=document (ưu tiên)
 ```
 
-Cresco vẫn hỗ trợ các format tương thích:
+Lý do: semantic mutation v3 được thiết kế quanh một Elementor root target cụ thể. Document là scope rộng hơn, nên Cresco dùng document patch contract để edit/insert/move toàn trang mà không giả lập một container root không tồn tại.
+
+Cresco vẫn nhận các format tương thích khi phù hợp:
 
 ```text
 cresco-ai-mutation/v3
@@ -110,7 +113,24 @@ contextQuality
 context
 ```
 
-`context` giữ Cresco AI Context v3 để AI bên ngoài có dữ liệu runtime đầy đủ.
+`context` giữ Cresco AI Context v3 để AI bên ngoài có dữ liệu runtime đầy đủ. External Exchange Policy chuẩn hóa `resultContract` ở lớp ngoài cùng, vì vậy ChatGPT phải ưu tiên contract này nếu một template legacy nằm sâu trong context có khác biệt.
+
+## External Exchange Policy
+
+Schema:
+
+```text
+cresco-external-exchange-policy/v1
+```
+
+Policy quyết định output contract theo scope:
+
+```text
+widget/subtree → semantic-target-mutation → cresco-ai-mutation/v3
+document       → document-patch          → cresco-layer-patch/v1
+```
+
+Với document scope, Cresco cho phép top-level `insert-element` bằng `parentId: ""`. Element mới có thể dùng temporary ref như `$new:hero`; Cresco sẽ cấp ID Elementor collision-free khi import. `replace-document` chỉ nên dùng khi người dùng thực sự yêu cầu rebuild toàn trang và toàn bộ content tree phải hợp lệ.
 
 ## Full Bundle v4
 
@@ -141,6 +161,8 @@ manifest.json
 Trước đây task hint nhập trong Elementor có thể giúp Cresco lazy-load widget capability theo yêu cầu. Workflow 0.24 cố ý bỏ prompt khỏi Elementor, vì người dùng chỉ muốn export rồi mô tả công việc bên ChatGPT.
 
 Do đó external export ưu tiên **Full Context profile** để package chứa detailed capability của runtime thay vì phụ thuộc task hint. Package lớn hơn nhưng ChatGPT ít phải đoán hơn khi người dùng yêu cầu thêm widget hoặc tái cấu trúc giao diện sau khi file đã rời Elementor.
+
+Exact Runtime sau đó dùng detailed `widgetCatalog`/`elementCatalog` từ Full Context làm construction set, nên external bundle có thể mang capability của toàn bộ widget/element đã đăng ký trong runtime hiện tại thay vì chỉ danh sách task-aware nhỏ.
 
 ## Runtime Control Registry
 
@@ -179,6 +201,8 @@ subtree
 selection
 document
 ```
+
+UI external 0.24 tập trung vào widget, subtree và document. Selection vẫn tồn tại ở backend contract cho workflow nâng cao.
 
 Khi import, `expectedScope` được gửi cùng result. Patch/semantic mutation không được thoát phạm vi đó.
 
