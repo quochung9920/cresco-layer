@@ -19,6 +19,7 @@ expect(engine.includes('previousId') && engine.includes('nextId'), 'Sibling grap
 expect(engine.includes('horizontalOverflow') && engine.includes('invalidGeometry'), 'Quality blockers missing.');
 expect(engine.includes('currentMode'), 'Elementor current breakpoint detection missing.');
 expect(engine.includes('scoreChecks') && engine.includes('categoryFloorFailures'), 'Fidelity scoring/gating missing.');
+expect(engine.includes('no-verification-evidence') && engine.includes("coverage: { checked: 0, status: 'unavailable' }"), 'No-evidence verification must fail closed.');
 expect(exporter.includes('visualContext') && exporter.includes('capturePackage'), 'AI export visual context integration missing.');
 expect(exporter.includes('fidelityPolicy') && exporter.includes('current-preview'), 'AI export fidelity policy/breakpoint contract missing.');
 expect(verifier.includes('Fidelity Score') && verifier.includes('Gate ') && verifier.includes('cresco-layer:fidelity-verified'), 'Rendered verification gate UI/event missing.');
