@@ -28,7 +28,7 @@
 		return (crc ^ 0xFFFFFFFF) >>> 0;
 	}
 	function u16(value) { var out = new Uint8Array(2); new DataView(out.buffer).setUint16(0, value, true); return out; }
-	function u32(value) { var out = new Uint8Array(4); new DataView(out.buffer).setUint32(0, value >>> 0); return out; }
+	function u32(value) { var out = new Uint8Array(4); new DataView(out.buffer).setUint32(0, value >>> 0, true); return out; }
 	function zip(files) {
 		var locals = [], centrals = [], offset = 0;
 		files.forEach(function (file) {
