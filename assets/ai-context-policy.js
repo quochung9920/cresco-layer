@@ -89,6 +89,34 @@
 		});
 		return out;
 	}
+	function structureGrammar(pkg) {
+		var runtime = pkg.runtime || {};
+		var out = {
+			schema: 'cresco-structure-grammar/v1',
+			source: 'active-runtime-element-kind+safe-containment-policy',
+			elements: {}, widgets: {},
+			rules: [
+				'Structural Elementor element types may own child elements when the current scope permits it.',
+				'Widgets do not accept arbitrary Elementor child nodes through semantic mutation. Nested/disclosure widgets must use their native runtime controls/repeaters unless a dedicated adapter proves a child grammar.',
+				'Never infer a nested child schema from rendered DOM.'
+			]
+		};
+		Object.keys(runtime.elements || {}).forEach(function (name) {
+			var entry = runtime.elements[name] || {};
+			out.elements[name] = { canAcceptChildren: true, childPolicy: 'elementor-structural-children', isAtomic: !!entry.isAtomic };
+		});
+		Object.keys(runtime.widgets || {}).forEach(function (name) {
+			var entry = runtime.widgets[name] || {};
+			var managedNested = /nested|accordion|tabs|carousel|slides|menu|loop/i.test(name);
+			out.widgets[name] = {
+				canAcceptChildren: false,
+				childPolicy: managedNested ? 'runtime-managed-nested-content' : 'widget-native-content-only',
+				runtimeManagedNestedContent: managedNested,
+				isAtomic: !!entry.isAtomic
+			};
+		});
+		return out;
+	}
 	function rebuildSkeleton(pkg, target) {
 		var current = pkg && pkg.currentInterface ? pkg.currentInterface.element : null;
 		var element = { id: target.id || '', elType: 'container', settings: {}, elements: [] };
@@ -126,6 +154,10 @@
 		pkg.target = target;
 		pkg = addEmittableKeys(pkg);
 		pkg.semanticBindings = semanticBindings(pkg);
+		pkg.structureGrammar = structureGrammar(pkg);
+		if (window.CrescoLayerDesignIntelligence && typeof window.CrescoLayerDesignIntelligence.enrich === 'function') {
+			pkg = window.CrescoLayerDesignIntelligence.enrich(pkg);
+		}
 		return pkg;
 	}
 	function jsonResponse(original, payload) {
@@ -144,5 +176,5 @@
 		};
 	}
 
-	window.CrescoLayerAIContextPolicy = { version: '1.3.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes, semanticBindings: semanticBindings };
+	window.CrescoLayerAIContextPolicy = { version: '1.4.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes, semanticBindings: semanticBindings, structureGrammar: structureGrammar };
 }());
