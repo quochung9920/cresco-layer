@@ -57,6 +57,12 @@
 			customUnit: 'Use clamp/min/max/calc/var only when the exact native control supports custom. Otherwise use a runtime-supported unit/value.',
 			globalFirst: 'Prefer existing Active Kit global references from designSystem/siteDesignContext when the requested design matches them.'
 		};
+		context.semanticDesignIntent.reasoningPolicy = {
+			brief: 'Read designReasoning before choosing composition, hierarchy, density, depth or motion.',
+			qualityGates: 'Critical designReasoning quality gates outrank decorative similarity to a reference image.',
+			reference: 'Translate reference hierarchy/proportion/rhythm through the current Elementor design system and runtime instead of copying raw values blindly.',
+			deltaOnly: 'Return only the final semantic design delta; do not narrate design reasoning or echo context.'
+		};
 		context.outputContract = context.outputContract || {};
 		context.outputContract.preferredSchema = 'cresco-ai-mutation/v3';
 		context.outputContract.templates = context.outputContract.templates || {};
@@ -64,11 +70,12 @@
 		context.outputContract.templates.semanticDesignEdit = templateEdit(context);
 		context.outputContract.rules = Array.isArray(context.outputContract.rules) ? context.outputContract.rules : [];
 		context.outputContract.rules.unshift('Prefer cresco-ai-mutation/v3 semantic design intent. Let Cresco resolve exact Elementor controls from the active runtime instead of writing raw setting keys when the v3 intent vocabulary can express the change.');
+		context.outputContract.rules.unshift('Use designReasoning to choose a professional hierarchy and composition, but output only the mutation. Do not output analysis or copy unsupported reference values.');
 		return context;
 	}
 
 	intelligence.enrich = function (context) { return contract(baseEnrich(context)); };
 	intelligence.contract = contract;
-	intelligence.version = '1.2.0';
+	intelligence.version = '1.3.0';
 	window.CrescoLayerDesignIntelligence = intelligence;
 }());
