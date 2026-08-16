@@ -9,7 +9,7 @@
 		categoryFloor: { geometry: 90, spacing: 90, typography: 90, color: 88, structure: 98, quality: 95 },
 		weights: { geometry: 0.30, spacing: 0.18, typography: 0.18, color: 0.12, structure: 0.12, quality: 0.10 },
 		tolerances: { geometryPx: 2, spacingPx: 2, typographyPx: 1.5, opacity: 0.03, overflowPx: 2 },
-		blockingRules: [ 'missing-element', 'parent-drift', 'horizontal-overflow', 'invisible-target', 'invalid-geometry' ],
+		blockingRules: [ 'missing-element', 'parent-drift', 'horizontal-overflow', 'invisible-target', 'invalid-geometry', 'no-verification-evidence' ],
 		capture: { maxElements: 500, includeDescendants: true, includeSiblingGraph: true, computedStyles: true, currentBreakpointOnly: true }
 	};
 
@@ -274,6 +274,12 @@
 	}
 	function scoreChecks(checks, customPolicy) {
 		var p = customPolicy || policy(), buckets = { geometry: [], spacing: [], typography: [], color: [], structure: [], quality: [] }, issues = [];
+		if (!checks || !checks.length) {
+			var emptyCategories = { geometry: 0, spacing: 0, typography: 0, color: 0, structure: 0, quality: 0 };
+			var emptyReport = { schema: 'cresco-fidelity-report/v1', mode: 'intent-verification', overall: 0, categories: emptyCategories, issues: [ { rule: 'no-verification-evidence', elementId: '', expected: 'rendered checks', actual: 'none', blocking: true } ], coverage: { checked: 0, status: 'unavailable' } };
+			emptyReport.gate = gate(emptyReport, p);
+			return emptyReport;
+		}
 		(checks || []).forEach(function (check) {
 			var category = categoryForCheck(check.name), value = check.status === 'pass' ? 100 : (check.status === 'warning' ? 55 : 0);
 			buckets[category].push(value);
@@ -284,7 +290,7 @@
 		var overall = 0, weightTotal = 0;
 		Object.keys(p.weights).forEach(function (category) { var w = Number(p.weights[category] || 0); overall += categories[category] * w; weightTotal += w; });
 		overall = weightTotal ? Math.round((overall / weightTotal) * 100) / 100 : 100;
-		var report = { schema: 'cresco-fidelity-report/v1', mode: 'intent-verification', overall: overall, categories: categories, issues: issues };
+		var report = { schema: 'cresco-fidelity-report/v1', mode: 'intent-verification', overall: overall, categories: categories, issues: issues, coverage: { checked: checks.length, status: 'measured' } };
 		report.gate = gate(report, p);
 		return report;
 	}
