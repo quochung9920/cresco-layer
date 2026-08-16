@@ -5,24 +5,28 @@ namespace CrescoLayer\AI;
  * Compiles AI-facing results into the internal `cresco-layer-patch/v1` representation.
  *
  * Full-tree AI results are allowed only for empty targets or explicit rebuilds. Incremental work
- * stays delta-first. Semantic mutation v2 is preferred for external AI: it is compiled to patch/v1,
- * then new subtree IDs and safe deterministic control-value repairs are owned by Cresco.
+ * stays delta-first. Semantic design mutation v3 is preferred for external AI: Cresco lowers
+ * design/layout intent to runtime-proven Elementor settings, compiles it through semantic mutation
+ * v2, then owns new subtree IDs and deterministic control-value repairs.
  */
 final class InternalPatchCompiler {
 	private ElementLocator $locator;
 	private AIResultNormalizer $normalizer;
 	private AIMutationCompiler $mutationCompiler;
+	private SemanticDesignCompiler $designCompiler;
 	private MutationNormalizer $mutationNormalizer;
 
 	public function __construct(
 		?ElementLocator $locator = null,
 		?AIResultNormalizer $normalizer = null,
 		?AIMutationCompiler $mutationCompiler = null,
+		?SemanticDesignCompiler $designCompiler = null,
 		?MutationNormalizer $mutationNormalizer = null
 	) {
 		$this->locator = $locator ?? new ElementLocator();
 		$this->normalizer = $normalizer ?? new AIResultNormalizer();
 		$this->mutationCompiler = $mutationCompiler ?? new AIMutationCompiler( $this->locator );
+		$this->designCompiler = $designCompiler ?? new SemanticDesignCompiler();
 		$this->mutationNormalizer = $mutationNormalizer ?? new MutationNormalizer( $this->locator );
 	}
 
@@ -38,6 +42,21 @@ final class InternalPatchCompiler {
 
 		if ( 'legacy-patch' === $normalized['kind'] ) {
 			return $this->finalize( $this->normalize_delta_patch( $normalized['result'], $elements ), $elements );
+		}
+
+		if ( 'semantic-design-mutation' === $normalized['kind'] ) {
+			$design = $this->designCompiler->lower( $normalized['result'] );
+			$semantic = $this->mutationCompiler->compile( $design['mutation'], $post_id, $elements, $selected );
+			$delta = $this->normalize_delta_patch( $semantic['patch'], $elements );
+			$delta['report'] = array_merge( $delta['report'], $semantic['report'], $design['report'], [
+				'source' => 'ai-mutation-v3',
+				'generatedIds' => $delta['report']['generatedIds'] ?? [],
+				'reusedIds' => $delta['report']['reusedIds'] ?? [],
+				'resolvedRefs' => $delta['report']['resolvedRefs'] ?? [],
+				'deltaNormalized' => true,
+				'semanticDesignCompiled' => true,
+			] );
+			return $this->finalize( $delta, $elements );
 		}
 
 		if ( 'semantic-mutation' === $normalized['kind'] ) {
@@ -59,7 +78,7 @@ final class InternalPatchCompiler {
 
 		if ( $this->has_live_content( $live_target ) && ! $this->explicit_replace_intent( $normalized['raw'] ) ) {
 			throw new \InvalidArgumentException(
-				'This target already contains live Elementor data, so Cresco will not compile a full-tree AI result into replace-element automatically. Return only the intended delta change using cresco-ai-mutation/v2 or insert-element/update-setting, or set intent to "replace-target" only when the user explicitly requested a complete rebuild of this target.'
+				'This target already contains live Elementor data, so Cresco will not compile a full-tree AI result into replace-element automatically. Return only the intended delta change using cresco-ai-mutation/v3 (preferred), cresco-ai-mutation/v2 or insert-element/update-setting, or set intent to "replace-target" only when the user explicitly requested a complete rebuild of this target.'
 			);
 		}
 
