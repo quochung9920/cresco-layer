@@ -158,6 +158,9 @@
 		if (window.CrescoLayerDesignIntelligence && typeof window.CrescoLayerDesignIntelligence.enrich === 'function') {
 			pkg = window.CrescoLayerDesignIntelligence.enrich(pkg);
 		}
+		if (window.CrescoLayerDesignReasoning && typeof window.CrescoLayerDesignReasoning.enrich === 'function') {
+			pkg = window.CrescoLayerDesignReasoning.enrich(pkg);
+		}
 		return pkg;
 	}
 	function jsonResponse(original, payload) {
@@ -176,5 +179,5 @@
 		};
 	}
 
-	window.CrescoLayerAIContextPolicy = { version: '1.4.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes, semanticBindings: semanticBindings, structureGrammar: structureGrammar };
+	window.CrescoLayerAIContextPolicy = { version: '1.5.0', patch: patchContract, responsiveSuffixes: responsiveSuffixes, semanticBindings: semanticBindings, structureGrammar: structureGrammar };
 }());
