@@ -80,18 +80,20 @@
 		});
 	}
 	function taskMarkdown(pkg, raster) {
-		var target = pkg.target || {}, task = pkg.task || {}, placement = pkg.placementContext || {}, output = pkg.outputContract || {}, design = pkg.designIntelligence || {};
+		var target = pkg.target || {}, task = pkg.task || {}, placement = pkg.placementContext || {}, output = pkg.outputContract || {}, design = pkg.designIntelligence || {}, reasoning = pkg.designReasoning || {};
 		var dials = design.designDials || {};
 		return [
 			'# Cresco AI Task', '',
 			'Goal:', task.request || '(No explicit request supplied)', '',
 			'Target:', 'Post ' + (target.postId || 0), 'Element ' + (target.id || ''), 'Scope ' + (target.scope || ''), '',
-			'Design intelligence:', 'Product: ' + (design.productArchetype || 'general-web'), 'Variance: ' + ((dials.variance || {}).tier || 'auto'), 'Motion: ' + ((dials.motion || {}).tier || 'auto'), 'Density: ' + ((dials.density || {}).tier || 'auto'), '',
+			'Design brief:', 'Product: ' + (reasoning.productArchetype || design.productArchetype || 'general-web'), 'Page: ' + (reasoning.pageArchetype || 'content-section'), 'Objective: ' + (reasoning.objective || 'Create a coherent accessible interface.'), 'Variance: ' + ((dials.variance || {}).tier || 'auto'), 'Motion: ' + ((dials.motion || {}).tier || 'auto'), 'Density: ' + ((dials.density || {}).tier || 'auto'), '',
+			'Decision order:', (reasoning.decisionOrder || []).join(' → '), '',
 			'Widget policy:', 'Use widget-guide.json and runtime-proven widget types only.', 'Use semantic layout/style intent before raw Elementor setting keys when possible.', '',
 			'Placement:', JSON.stringify(placement.allowedPlacements || []), '',
 			'IDs:', 'Do not invent final Elementor IDs. Omit id or use unique $new:<name> refs.', '',
 			'Output:', 'Preferred schema: ' + (output.preferredSchema || 'cresco-ai-mutation/v3'), 'Return only the intended mutation; do not echo source context.', '',
-			'Quality:', 'Accessibility and interaction safety outrank decorative styling. Reuse Active Kit globals and preserve behavioral bindings.', '',
+			'Quality gates:', 'Read 06-design-reasoning.json before finalizing. Accessibility, behavior safety, hierarchy, responsive fit and Active Kit consistency outrank decorative polish.', '',
+			'Reference image:', reasoning.referenceTranslation && reasoning.referenceTranslation.provided ? 'Analyze hierarchy, proportions, rhythm and visual character, then adapt through the active Elementor design system/runtime.' : 'No reference image is embedded for this task.', '',
 			'Visual:', raster ? 'current-desktop.png is a best-effort raster capture of the selected Elementor target.' : 'No trustworthy raster capture was produced. Use structured visualSnapshot/layoutGraph and attach the original reference image separately if needed.'
 		].join('\n');
 	}
@@ -106,14 +108,16 @@
 			var raster = parts[0], reference = parts[1]; state.lastCapture = raster ? { width: raster.width, height: raster.height, source: raster.source } : null;
 			var guide = { schema: 'cresco-widget-guide/v2', widgetIntelligence: pkg.widgetIntelligence || {}, constructionPlan: pkg.constructionPlan || {}, semanticBindings: pkg.semanticBindings || {}, structureGrammar: pkg.structureGrammar || {}, controlExamples: pkg.controlExamples || {}, semanticDesignIntent: pkg.semanticDesignIntent || {} };
 			var contract = pkg.outputContract || {};
-			var design = { schema: 'cresco-design-brief/v1', designIntelligence: pkg.designIntelligence || {}, designSystem: pkg.designSystem || {}, responsive: pkg.responsive || {}, mutationBoundary: pkg.mutationBoundary || {} };
-			var manifest = { schema: 'cresco-ai-bundle/v2', pluginVersion: (window.crescoLayerEditor || {}).version || '', createdAt: new Date().toISOString(), target: pkg.target || {}, contextQuality: pkg.contextQuality || {}, preferredOutputSchema: contract.preferredSchema || 'cresco-ai-mutation/v3', raster: raster ? { file: raster.name, width: raster.width, height: raster.height, source: raster.source } : { file: null, status: 'unavailable' }, reference: reference ? { file: reference.name } : { file: null }, files: [] };
+			var design = { schema: 'cresco-design-brief/v2', designIntelligence: pkg.designIntelligence || {}, designReasoning: pkg.designReasoning || {}, designSystem: pkg.designSystem || {}, responsive: pkg.responsive || {}, mutationBoundary: pkg.mutationBoundary || {} };
+			var reasoning = pkg.designReasoning || { schema: 'cresco-design-reasoning/v1', status: 'unavailable' };
+			var manifest = { schema: 'cresco-ai-bundle/v3', pluginVersion: (window.crescoLayerEditor || {}).version || '', createdAt: new Date().toISOString(), target: pkg.target || {}, contextQuality: pkg.contextQuality || {}, preferredOutputSchema: contract.preferredSchema || 'cresco-ai-mutation/v3', designReasoningSchema: reasoning.schema || null, raster: raster ? { file: raster.name, width: raster.width, height: raster.height, source: raster.source } : { file: null, status: 'unavailable' }, reference: reference ? { file: reference.name } : { file: null }, files: [] };
 			var files = [
 				{ name: '01-TASK.md', data: taskMarkdown(pkg, raster) },
 				{ name: '02-context.json', data: JSON.stringify(pkg, null, 2) },
 				{ name: '03-widget-guide.json', data: JSON.stringify(guide, null, 2) },
 				{ name: '04-output-contract.json', data: JSON.stringify(contract, null, 2) },
-				{ name: '05-design-intelligence.json', data: JSON.stringify(design, null, 2) }
+				{ name: '05-design-intelligence.json', data: JSON.stringify(design, null, 2) },
+				{ name: '06-design-reasoning.json', data: JSON.stringify(reasoning, null, 2) }
 			];
 			if (raster) files.push({ name: raster.name, data: raster.data }); if (reference) files.push(reference);
 			manifest.files = files.map(function (file) { return file.name; }).concat(['manifest.json']); files.push({ name: 'manifest.json', data: JSON.stringify(manifest, null, 2) });
@@ -124,5 +128,5 @@
 		return build(pkg, referenceFile).then(function (result) { var target = pkg.target && pkg.target.id || 'target'; downloadBlob('cresco-ai-bundle-' + target + '.zip', result.blob); return result.manifest; }).catch(function (error) { state.lastError = error && error.message ? error.message : String(error); throw error; });
 	}
 
-	window.CrescoLayerAIBundle = { version: '2.0.0', build: build, export: exportBundle, getDiagnostics: function () { return { lastCapture: state.lastCapture, lastError: state.lastError }; } };
+	window.CrescoLayerAIBundle = { version: '3.0.0', build: build, export: exportBundle, getDiagnostics: function () { return { lastCapture: state.lastCapture, lastError: state.lastError }; } };
 }());
