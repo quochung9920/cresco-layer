@@ -2,7 +2,20 @@
 	'use strict';
 
 	var api = window.CrescoLayerAIBundle;
+	var cfg = window.crescoLayerEditor || {};
+	var upstreamFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
 	if (!api) return;
+
+	function root() { return String(cfg.restRoot || '').replace(/\/$/, ''); }
+	function isExport(input) {
+		var url = typeof input === 'string' ? input : (input && input.url ? String(input.url) : '');
+		return !!url && root() && url.indexOf(root() + '/documents/') === 0 && url.indexOf('/export') !== -1;
+	}
+	function jsonResponse(original, payload) {
+		var headers = new Headers(original.headers || {});
+		headers.delete('content-length'); headers.delete('content-encoding'); headers.set('content-type', 'application/json; charset=UTF-8');
+		return new Response(JSON.stringify(payload), { status: original.status, statusText: original.statusText, headers: headers });
+	}
 
 	function documentTemplate(pkg) {
 		var target = pkg.target || {};
@@ -47,6 +60,7 @@
 
 	function normalize(pkg) {
 		if (!pkg || pkg.schema !== 'cresco-ai-context/v3') return pkg;
+		if (pkg.externalExchangePolicy && pkg.externalExchangePolicy.schema === 'cresco-external-exchange-policy/v1') return pkg;
 		var target = pkg.target || {};
 		var contract = pkg.outputContract || {};
 		contract.rules = Array.isArray(contract.rules) ? contract.rules : [];
@@ -95,8 +109,18 @@
 	api.externalPolicySchema = 'cresco-external-exchange-policy/v1';
 	api.version = '4.1.0';
 
+	if (upstreamFetch) {
+		window.fetch = function (input, init) {
+			if (!isExport(input)) return upstreamFetch(input, init);
+			return upstreamFetch(input, init).then(function (response) {
+				if (!response.ok) return response;
+				return response.clone().json().then(function (pkg) { return jsonResponse(response, normalize(pkg)); }).catch(function () { return response; });
+			});
+		};
+	}
+
 	window.CrescoLayerExternalAIExchangePolicy = {
-		version: '1.0.0',
+		version: '1.1.0',
 		schema: 'cresco-external-exchange-policy/v1',
 		normalize: normalize,
 		documentTemplate: documentTemplate,
