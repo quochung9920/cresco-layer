@@ -1,20 +1,21 @@
 # Cresco Layer External AI Intelligence
 
-Cresco Layer 0.18 introduces a semantic intelligence layer between the existing Exact Runtime export and external AI systems. Elementor remains the source of truth. Cresco does not become a page builder and does not maintain a parallel design system.
+Cresco Layer 0.18 introduced a semantic intelligence layer between the existing Exact Runtime export and external AI systems. Cresco Layer 0.19 extends that foundation with task-aware runtime discovery, runtime-derived semantic bindings and a raster-aware AI Bundle exporter. Elementor remains the source of truth. Cresco does not become a page builder and does not maintain a parallel design system.
 
 ## Goal
 
-An external model should not have to infer every design decision from a raw Elementor tree. The exported `cresco-ai-context/v3` now explains both **what exists** and **how the active Elementor installation can safely construct or edit it**.
+An external model should not have to infer every design decision from a raw Elementor tree. The exported `cresco-ai-context/v3` explains both **what exists** and **how the active Elementor installation can safely construct or edit it**.
 
 The intended flow is:
 
 ```text
 Elementor working document
   -> Exact Runtime + Active Kit + layout/visual context
+  -> task-aware runtime widget discovery
   -> Cresco AI Context v3
   -> External AI Intelligence enrichment
   -> external AI returns cresco-ai-mutation/v2 (preferred)
-  -> semantic mutation compiler
+  -> runtime semantic binding + semantic mutation compiler
   -> Cresco ID allocation + deterministic normalization
   -> internal cresco-layer-patch/v1
   -> SemanticPatchGuard
@@ -23,28 +24,19 @@ Elementor working document
 
 ## New exported intelligence
 
-The top-level context remains `cresco-ai-context/v3` for compatibility. Version 0.18 enriches it with additional contracts.
+The top-level context remains `cresco-ai-context/v3` for compatibility.
+
+### `taskRuntimeDiscovery`
+
+Schema: `cresco-task-runtime-discovery/v1`
+
+Exact Runtime uses the current task plus Elementor's live registry title/category/keyword metadata to load additional relevant widget detail. Only registered runtime types are eligible. This closes the gap where an FAQ/Carousel/Menu widget may be available in Elementor but absent from the selected subtree and old fixed construction set.
 
 ### `widgetIntelligence`
 
 Schema: `cresco-widget-intelligence/v1`
 
 For runtime-proven widget/element types it provides semantic family, purpose, preferred roles, important controls, risk and detail availability. The role matrix only recommends types that exist in the active runtime; a Pro or third-party widget is never assumed merely because Cresco knows its name.
-
-Example:
-
-```json
-{
-  "roles": {
-    "headline": {
-      "preferredWidget": "heading",
-      "alternatives": [],
-      "avoidWidgets": ["text-editor", "html"],
-      "runtimeProven": true
-    }
-  }
-}
-```
 
 ### `semanticScene`
 
@@ -82,11 +74,19 @@ Schema: `cresco-task-runtime-selection/v1`
 
 Identifies widget types relevant to the current interface and construction plan so an external model can focus on a smaller conceptual set. The full exact runtime is retained for validation and uncommon requirements.
 
+## Runtime semantic binding in 0.19
+
+The backend semantic compiler no longer assumes that all heading-like widgets use Elementor core keys such as `title` and `header_size`, or that every button uses `text` and `link`. For `content` shortcuts, Cresco first validates `widgetIntent` against the live capability catalog and then emits only candidate semantic control keys that actually exist on that runtime entry.
+
+This means a third-party heading exposing `headline`/`html_tag`, for example, can receive semantic text/heading-level content without pretending to be Elementor core. Exact explicit `settings` remain available and still pass through runtime validation and `SemanticPatchGuard`.
+
+Arbitrary child nodes under semantic widgets are rejected. Structural children belong under runtime-proven structural elements/Containers.
+
 ## Context Quality v3
 
 Schema: `cresco-context-quality/v3`
 
-Quality is now multi-dimensional rather than merely checking whether fields exist. The score covers runtime coverage, widget intelligence, semantic scene, visual confidence, Active Kit, responsive context, placement context, binding protection and output contract readiness.
+Quality is multi-dimensional rather than merely checking whether fields exist. The score covers runtime coverage, widget intelligence, semantic scene, visual confidence, Active Kit, responsive context, placement context, binding protection and output contract readiness.
 
 An untrusted visual snapshot lowers the score and produces an explicit warning.
 
@@ -128,11 +128,13 @@ Current supported repair:
 
 Cresco intentionally does **not** silently clamp values such as an icon size of `5px` when the runtime minimum is `6px`, and does not convert relative typography units to pixels unless equivalence can be proven. Ambiguous values continue to fail in `SemanticPatchGuard` with an actionable diagnostic.
 
-## Visual snapshot boundary
+## Visual snapshot and AI Bundle boundary
 
-The current visual snapshot is live **structured/computed geometry**, not a raster screenshot. Cresco resolves the Elementor preview iframe before editor chrome and publishes a trust status/confidence. Reference images are recorded as metadata and should still be attached separately to the external AI conversation.
+Structured visual context remains live computed geometry. Version 0.19 additionally adds a best-effort browser raster capture to `cresco-ai-bundle/v1`.
 
-Automatic raster PNG/WebP capture and ZIP bundle packaging are not part of 0.18.
+The bundle contains task/context/widget-guide/output-contract files, optional `current-desktop.png`, the selected reference image when provided, and a manifest. Raster capture is not guaranteed: if browser/cross-origin/rendering constraints prevent a trustworthy PNG, the bundle remains valid and explicitly reports the raster as unavailable rather than fabricating an image.
+
+See `docs/AI-BUNDLE.md`.
 
 ## Placement boundary
 
@@ -142,7 +144,7 @@ The preferred semantic mutation contract currently compiles Add operations insid
 
 ## Backward compatibility
 
-0.18 keeps accepting:
+0.19 keeps accepting:
 
 - `cresco-layer-patch/v1`
 - `cresco-layer-ai-result/v1`
