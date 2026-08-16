@@ -6,13 +6,87 @@
 	var installed = false;
 
 	function panel() { return window.CrescoLayerAIPanel || null; }
-	function open(tab) {
-		var api = panel();
-		if (api && typeof api.open === 'function') { api.open(tab); return true; }
-		return false;
-	}
 	function currentId() {
 		try { var d = bridge.getDiagnostics ? bridge.getDiagnostics() : null; return d && d.selectedElementId ? String(d.selectedElementId) : ''; } catch (e) { return ''; }
+	}
+	function setScope(box, name, scope) {
+		if (!box || ['widget', 'subtree', 'document'].indexOf(scope) === -1) return false;
+		var input = box.querySelector('input[name="' + name + '"][value="' + scope + '"]');
+		if (!input) return false;
+		input.checked = true;
+		return true;
+	}
+	function syncNoSelectionDefault() {
+		var box = document.getElementById('cresco-ai-panel');
+		if (!box || box.dataset.scopeTouched || currentId()) return;
+		setScope(box, 'cresco-export-scope', 'document');
+		setScope(box, 'cresco-import-scope', 'document');
+	}
+	function open(tab) {
+		var api = panel();
+		if (api && typeof api.open === 'function') {
+			api.open(tab);
+			syncNoSelectionDefault();
+			return true;
+		}
+		return false;
+	}
+	function stripFences(raw) {
+		var value = String(raw || '').trim();
+		var match = value.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+		return match ? match[1].trim() : value;
+	}
+	function unwrap(value) {
+		var keys = ['result', 'data', 'output', 'response', 'payload', 'aiResult', 'ai_result', 'json', 'patch'];
+		for (var depth = 0; value && typeof value === 'object' && !value.schema && depth < 6; depth++) {
+			var next = null;
+			for (var i = 0; i < keys.length; i++) {
+				if (value[keys[i]] && typeof value[keys[i]] === 'object') { next = value[keys[i]]; break; }
+			}
+			if (!next) break;
+			value = next;
+		}
+		return value;
+	}
+	function inferScope(raw) {
+		try {
+			var value = unwrap(JSON.parse(stripFences(raw)));
+			if (!value || typeof value !== 'object') return '';
+			var targetScope = value.target && typeof value.target === 'object' ? String(value.target.scope || '') : '';
+			var patchScope = value.scope && typeof value.scope === 'object' ? String(value.scope.mode || '') : '';
+			var scope = targetScope || patchScope;
+			return ['widget', 'subtree', 'document'].indexOf(scope) >= 0 ? scope : '';
+		} catch (e) { return ''; }
+	}
+	function syncScopeFromRaw(raw) {
+		var box = document.getElementById('cresco-ai-panel');
+		var scope = inferScope(raw);
+		if (!box || !scope) return;
+		if (setScope(box, 'cresco-import-scope', scope)) box.dataset.scopeTouched = '1';
+	}
+	function readFileText(file) {
+		if (!file) return;
+		if (typeof file.text === 'function') {
+			file.text().then(syncScopeFromRaw).catch(function () {});
+			return;
+		}
+		try {
+			var reader = new FileReader();
+			reader.onload = function () { syncScopeFromRaw(String(reader.result || '')); };
+			reader.readAsText(file);
+		} catch (e) {}
+	}
+	function bindPanelScope() {
+		var box = document.getElementById('cresco-ai-panel');
+		if (!box || box.dataset.externalScopeBound) { syncNoSelectionDefault(); return; }
+		box.dataset.externalScopeBound = '1';
+		var area = box.querySelector('[data-cresco-ai-import]');
+		if (area) area.addEventListener('input', function () { syncScopeFromRaw(area.value); });
+		var file = box.querySelector('[data-cresco-ai-import-file]');
+		if (file) file.addEventListener('change', function () { readFileText(file.files && file.files[0]); });
+		var drop = box.querySelector('.cresco-ai-import-drop');
+		if (drop) drop.addEventListener('drop', function (event) { readFileText(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]); });
+		syncNoSelectionDefault();
 	}
 	function group() {
 		return {
@@ -67,12 +141,14 @@
 		bridge.openImport = function () { open('import'); };
 		bridge.externalExchange = true;
 	}
-	function boot() { redirectBridge(); install(); }
+	function boot() { redirectBridge(); install(); bindPanelScope(); }
 
 	window.CrescoLayerExternalAIEntrypoints = {
-		version: '1.0.0',
+		version: '1.1.0',
 		install: install,
 		replaceGroup: replaceGroup,
+		inferScope: inferScope,
+		syncScopeFromRaw: syncScopeFromRaw,
 		open: open,
 		getDiagnostics: function () { return { installed: installed, selectedElementId: currentId(), externalPanel: !!panel() }; }
 	};
