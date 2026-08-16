@@ -9,10 +9,13 @@ final class PatchValidator {
 	private const MAX_OPERATIONS = 1000;
 	private const MAX_DEPTH = 24;
 	private const MAX_STRING = 262144;
-	private PatchCapabilityValidator $capabilityValidator;
+	private ?PatchCapabilityValidator $capabilityValidator;
 
 	public function __construct( ?PatchCapabilityValidator $capability_validator = null ) {
-		$this->capabilityValidator = $capability_validator ?? new PatchCapabilityValidator();
+		$this->capabilityValidator = $capability_validator;
+		if ( null === $this->capabilityValidator && class_exists( PatchCapabilityValidator::class ) ) {
+			$this->capabilityValidator = new PatchCapabilityValidator();
+		}
 	}
 
 	public function validate( array $patch, int $expected_post_id = 0 ): array {
@@ -46,7 +49,7 @@ final class PatchValidator {
 		// When Elementor is actually running, generic JSON safety is only the first gate. The second
 		// gate resolves the live widget/element registry and rejects invented controls, invalid
 		// responsive suffixes, unsupported units/options/ranges and invalid global references.
-		if ( $expected_post_id && class_exists( '\\Elementor\\Plugin' ) ) {
+		if ( $expected_post_id && null !== $this->capabilityValidator && class_exists( '\\Elementor\\Plugin' ) ) {
 			$out['runtimeValidation'] = $this->capabilityValidator->validate_for_post( $out, $post_id );
 		}
 		return $out;
