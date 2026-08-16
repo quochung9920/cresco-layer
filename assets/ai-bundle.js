@@ -100,10 +100,15 @@
 		var target = pkg.target || {};
 		return 'cresco-ai-result-' + (target.id || ('post-' + (target.postId || 0))) + '.json';
 	}
+	function acceptedResultSchemas(target) {
+		if (target && target.scope === 'document') return ['cresco-layer-patch/v1'];
+		return ['cresco-ai-mutation/v3', 'cresco-ai-mutation/v2', 'cresco-layer-patch/v1', 'cresco-layer-ai-result/v1'];
+	}
 	function externalPackage(pkg) {
 		if (!pkg || pkg.schema !== 'cresco-ai-context/v3') throw new Error('Cresco AI Context v3 is required.');
 		var output = pkg.outputContract || {};
 		var target = Object.assign({}, pkg.target || {});
+		var preferred = output.preferredSchema || (target.scope === 'document' ? 'cresco-layer-patch/v1' : 'cresco-ai-mutation/v3');
 		return {
 			schema: PACKAGE_SCHEMA,
 			packageId: packageId(pkg),
@@ -122,8 +127,8 @@
 				'Return valid JSON without markdown fences. If file creation is available, create the requested result filename.'
 			],
 			resultContract: {
-				preferredSchema: output.preferredSchema || 'cresco-ai-mutation/v3',
-				acceptedSchemas: ['cresco-ai-mutation/v3', 'cresco-ai-mutation/v2', 'cresco-layer-patch/v1', 'cresco-layer-ai-result/v1'],
+				preferredSchema: preferred,
+				acceptedSchemas: acceptedResultSchemas(target),
 				filename: resultFilename(pkg),
 				targetRule: 'Keep the original target postId/id. Include target.scope when the output schema permits it.',
 				responseRule: 'Return only JSON or a JSON file. Do not return prose around the payload.'
@@ -149,6 +154,7 @@
 			'- Scope: ' + (target.scope || 'document'), '',
 			'## Output',
 			'- Preferred schema: ' + (contract.preferredSchema || 'cresco-ai-mutation/v3'),
+			'- Accepted schemas for this scope: ' + (contract.acceptedSchemas || []).join(', '),
 			'- Suggested filename: ' + (contract.filename || resultFilename(pkg)),
 			'- JSON only; no markdown fences or explanatory prose.', '',
 			'## Mandatory safety rules',
@@ -189,6 +195,7 @@
 				target: packaged.target,
 				contextQuality: packaged.contextQuality,
 				preferredOutputSchema: packaged.resultContract.preferredSchema,
+				acceptedOutputSchemas: packaged.resultContract.acceptedSchemas,
 				resultFilename: packaged.resultContract.filename,
 				raster: raster ? { file: raster.name, width: raster.width, height: raster.height, source: raster.source } : { file: null, status: 'unavailable' },
 				reference: reference ? { file: reference.name } : { file: null },
