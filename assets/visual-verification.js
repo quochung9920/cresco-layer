@@ -1,6 +1,11 @@
 (function () {
 	'use strict';
 
+	var cfg = window.crescoLayerEditor || {};
+	var upstreamFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
+	var state = { mutation: null, targetId: '', resolvedRefs: {}, lastResult: null };
+
+	function root() { return String(cfg.restRoot || '').replace(/\/$/, ''); }
 	function previewDocument() {
 		var frame = document.querySelector('#elementor-preview-iframe,iframe[name="elementor-preview-iframe"],iframe[src*="elementor-preview"]');
 		try { return frame && frame.contentDocument ? frame.contentDocument : null; } catch (e) { return null; }
@@ -80,10 +85,7 @@
 		add(checks, 'ux.horizontalOverflow', false, overflows, !overflows, 'warning');
 	}
 	function walkMutation(nodes, out) {
-		(nodes || []).forEach(function (node) {
-			if (!node || typeof node !== 'object') return;
-			out.push(node); walkMutation(node.children || node.elements || [], out);
-		});
+		(nodes || []).forEach(function (node) { if (!node || typeof node !== 'object') return; out.push(node); walkMutation(node.children || node.elements || [], out); });
 	}
 	function resolveId(node, refs) {
 		if (node.id) return String(node.id);
@@ -116,16 +118,62 @@
 		var failCount = all.filter(function (item) { return item.status === 'fail'; }).length;
 		var warningCount = all.filter(function (item) { return item.status === 'warning'; }).length;
 		var passCount = all.filter(function (item) { return item.status === 'pass'; }).length;
-		return {
-			schema: 'cresco-visual-verification/v1',
-			status: failCount ? 'mismatch' : (warningCount ? 'partial' : (all.length ? 'pass' : 'unavailable')),
-			targetId: targetId,
-			summary: { pass: passCount, warning: warningCount, fail: failCount, checked: all.length },
-			elements: reports,
-			checks: all,
-			note: 'This verifier checks rendered geometry/computed styles and UX guardrails. It does not claim pixel-perfect image similarity.'
-		};
+		return { schema: 'cresco-visual-verification/v1', status: failCount ? 'mismatch' : (warningCount ? 'partial' : (all.length ? 'pass' : 'unavailable')), targetId: targetId, summary: { pass: passCount, warning: warningCount, fail: failCount, checked: all.length }, elements: reports, checks: all, note: 'Rendered geometry/computed-style verification; not a claim of pixel-perfect image similarity.' };
 	}
 
-	window.CrescoLayerVisualVerification = { version: '1.0.0', verify: verify, captureNode: nodeById };
+	function extractMutation(raw) {
+		if (!raw) return null;
+		try {
+			var parsed = JSON.parse(raw); var depth = 0;
+			while (parsed && typeof parsed === 'object' && !parsed.schema && depth++ < 5) parsed = parsed.result || parsed.data || parsed.output || parsed.response || parsed.payload || parsed.aiResult || parsed;
+			return parsed && (parsed.schema === 'cresco-ai-mutation/v3' || parsed.schema === 'cresco-ai-mutation/v2') ? parsed : null;
+		} catch (e) { return null; }
+	}
+	function isApply(input) {
+		var url = typeof input === 'string' ? input : (input && input.url ? String(input.url) : '');
+		return !!url && root() && url.indexOf(root() + '/documents/') === 0 && /\/apply(?:\?|$)/.test(url);
+	}
+	function captureApplyRequest(init) {
+		if (!init || typeof init.body !== 'string') return null;
+		try {
+			var body = JSON.parse(init.body); var mutation = extractMutation(body.aiResult || '');
+			return mutation ? { mutation: mutation, targetId: String(body.selectedElementId || (mutation.target && mutation.target.id) || '') } : null;
+		} catch (e) { return null; }
+	}
+	function enableButton() {
+		var button = document.querySelector('[data-cresco-visual-verify]'); if (button) button.disabled = !state.mutation;
+	}
+	if (upstreamFetch) {
+		window.fetch = function (input, init) {
+			if (!isApply(input)) return upstreamFetch(input, init);
+			var pending = captureApplyRequest(init);
+			return upstreamFetch(input, init).then(function (response) {
+				if (!response.ok || !pending) return response;
+				return response.clone().json().then(function (body) {
+					state.mutation = pending.mutation; state.targetId = pending.targetId; state.resolvedRefs = body && body.aiImport && body.aiImport.resolvedRefs ? body.aiImport.resolvedRefs : {}; state.lastResult = null; enableButton(); return response;
+				}).catch(function () { return response; });
+			});
+		};
+	}
+	function renderResult(result) {
+		var wrap = document.querySelector('[data-cresco-ai-preview]'); if (!wrap || !result) return;
+		var summary = result.summary || {}; var old = wrap.querySelector('[data-cresco-visual-verification-result]'); if (old) old.remove();
+		var box = document.createElement('div'); box.setAttribute('data-cresco-visual-verification-result', ''); box.style.marginTop = '10px';
+		box.innerHTML = '<strong>Rendered verification: ' + String(result.status || 'unavailable') + '</strong><small style="display:block;margin-top:4px">' + Number(summary.pass || 0) + ' pass · ' + Number(summary.warning || 0) + ' warnings · ' + Number(summary.fail || 0) + ' mismatches.</small>';
+		wrap.appendChild(box);
+	}
+	function injectButton() {
+		var panel = document.getElementById('cresco-ai-panel'); if (!panel || panel.querySelector('[data-cresco-visual-verify]')) return;
+		var actions = panel.querySelector('[data-cresco-ai-pane="import"] .cresco-ai-actions'); if (!actions) return;
+		var button = document.createElement('button'); button.type = 'button'; button.className = 'cresco-ai-secondary'; button.setAttribute('data-cresco-visual-verify', ''); button.textContent = 'Verify Render'; button.disabled = !state.mutation;
+		button.addEventListener('click', function () { state.lastResult = verify(state.targetId, state.mutation, state.resolvedRefs); renderResult(state.lastResult); });
+		actions.appendChild(button);
+	}
+	function boot() {
+		injectButton();
+		if (window.MutationObserver && document.documentElement) new MutationObserver(function () { injectButton(); enableButton(); }).observe(document.documentElement, { childList: true, subtree: true });
+	}
+
+	window.CrescoLayerVisualVerification = { version: '1.1.0', verify: verify, captureNode: nodeById, getLastResult: function () { return state.lastResult; }, getLastApply: function () { return { targetId: state.targetId, resolvedRefs: state.resolvedRefs, hasMutation: !!state.mutation }; } };
+	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 }());
