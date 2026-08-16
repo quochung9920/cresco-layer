@@ -16,6 +16,7 @@ final class AIResultNormalizer {
 	public const SCHEMA = 'cresco-layer-ai-result/v1';
 	public const LEGACY_PATCH_SCHEMA = 'cresco-layer-patch/v1';
 	public const MUTATION_SCHEMA = 'cresco-ai-mutation/v2';
+	public const DESIGN_MUTATION_SCHEMA = 'cresco-ai-mutation/v3';
 
 	/** Envelope keys a model commonly wraps its answer in. */
 	private const WRAPPERS = [ 'result', 'data', 'output', 'response', 'payload', 'aiResult', 'ai_result', 'json' ];
@@ -23,7 +24,7 @@ final class AIResultNormalizer {
 
 	/**
 	 * @return array{kind:string,result:array,raw:array}
-	 *   kind: 'ai-result' | 'legacy-patch' | 'semantic-mutation'
+	 *   kind: 'ai-result' | 'legacy-patch' | 'semantic-mutation' | 'semantic-design-mutation'
 	 * @throws \InvalidArgumentException when the payload cannot be recognised.
 	 */
 	public function normalize( string $input ): array {
@@ -32,6 +33,9 @@ final class AIResultNormalizer {
 
 		$schema = is_array( $candidate ) ? (string) ( $candidate['schema'] ?? '' ) : '';
 
+		if ( self::DESIGN_MUTATION_SCHEMA === $schema ) {
+			return [ 'kind' => 'semantic-design-mutation', 'result' => $candidate, 'raw' => $candidate ];
+		}
 		if ( self::MUTATION_SCHEMA === $schema ) {
 			return [ 'kind' => 'semantic-mutation', 'result' => $candidate, 'raw' => $candidate ];
 		}
@@ -145,9 +149,10 @@ final class AIResultNormalizer {
 		$schema = (string) ( $candidate['schema'] ?? '' );
 		$found = '' !== $schema ? sprintf( 'Detected schema: %s.', $schema ) : 'No schema field was found.';
 		return sprintf(
-			"Unsupported AI result. %s Detected top-level keys: %s. Expected %s (semantic mutation), %s (an Elementor element tree) or legacy %s.",
+			"Unsupported AI result. %s Detected top-level keys: %s. Expected %s (semantic design mutation), %s (semantic mutation), %s (an Elementor element tree) or legacy %s.",
 			$found,
 			$keys ? implode( ', ', $keys ) : '(none)',
+			self::DESIGN_MUTATION_SCHEMA,
 			self::MUTATION_SCHEMA,
 			self::SCHEMA,
 			self::LEGACY_PATCH_SCHEMA
