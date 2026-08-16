@@ -1,8 +1,8 @@
 {
   "name": "cresco-layer",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "private": true,
-  "description": "Lossless scoped AI exchange, runtime-proven Elementor control validation, computed fidelity snapshots, semantic design compilation and rendered verification.",
+  "description": "External-first Elementor to ChatGPT file exchange with full runtime capability context, safe scoped import and computed fidelity verification.",
   "scripts": {
     "lint:js": "node --check assets/admin.js && node --check assets/editor.js && node --check assets/clipboard-guard.js && node --check assets/exact-runtime-export.js && node --check assets/fidelity-engine.js && node --check assets/fidelity-export.js && node --check assets/ai-context-v3.js && node --check assets/external-ai-intelligence.js && node --check assets/design-intelligence.js && node --check assets/semantic-design-contract.js && node --check assets/design-reasoning.js && node --check assets/ai-context-policy.js && node --check assets/ai-bundle.js && node --check assets/visual-verification.js && node --check assets/fidelity-verification.js && node --check assets/ai-panel.js && node --check assets/semantic-design-ui.js && node --check assets/skills.js && node --check assets/skills-accuracy.js && node --check assets/local-ai-admin.js && node --check assets/semantic-ai.js",
     "test:editor-bootstrap": "node tests/js/editor-bootstrap-test.mjs",
