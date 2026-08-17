@@ -10,6 +10,12 @@ assert.match(source, /X-Cresco-Request-Id/, 'Export requests need a correlation 
 assert.match(source, /cresco_export_fatal/, 'Fatal PHP payload normalization is missing.');
 assert.match(source, /isServerFailurePayload/, 'Successful HTTP responses carrying fatal payloads must be detected.');
 assert.match(source, /getLastError/, 'Last export diagnostic must be inspectable from DevTools.');
+assert.match(source, /copyLastError/, 'Diagnostics must be copyable without using DevTools object inspection.');
+assert.match(source, /cresco-export-diagnostic-card/, 'The export panel needs a visible diagnostic card.');
+assert.match(source, /Copy diagnostics/, 'The visible diagnostic card must offer one-click copy.');
+assert.match(source, /cresco_recovery=1/, 'Full-context server failures need a bounded automatic recovery marker.');
+assert.match(source, /context=smart/, 'Automatic recovery must fall back to the bounded Smart server context.');
+assert.match(source, /recovered-smart-context/, 'Recovered exports need an explicit diagnostic state.');
 assert.ok(
   bootstrap.indexOf("'export-error-diagnostics.js'") < bootstrap.indexOf("'exact-runtime-export.js'"),
   'Backend diagnostics must wrap fetch before Exact Runtime so fatal payloads are preserved.'
@@ -17,12 +23,18 @@ assert.ok(
 
 async function runWithFetch(fetchImpl) {
   const errors = [];
+  const document = { getElementById() { return null; } };
   const context = {
     window: {
       crescoLayerEditor: { restRoot: 'http://localhost/wp-json/cresco-layer/v1' },
       fetch: fetchImpl,
       crypto: { randomUUID: () => '12345678-1234-1234-1234-123456789abc' },
+      document,
+      navigator: {},
+      dispatchEvent() {},
     },
+    document,
+    navigator: {},
     Response,
     Headers,
     Date,
@@ -30,6 +42,7 @@ async function runWithFetch(fetchImpl) {
     JSON,
     Promise,
     String,
+    CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
     console: { error: (...args) => errors.push(args) },
   };
   context.window.window = context.window;
