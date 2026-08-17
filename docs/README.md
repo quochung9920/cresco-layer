@@ -18,11 +18,15 @@ Nếu bạn phát triển plugin:
 5. [SCHEMA-REFERENCE.md](SCHEMA-REFERENCE.md) — tra cứu schema/contract.
 6. [PHAT-TRIEN-KIEM-THU.md](PHAT-TRIEN-KIEM-THU.md) — quy tắc phát triển và quality gate.
 7. [SITE-SETTINGS.md](SITE-SETTINGS.md) — Elementor Global Settings/Kit engine.
+8. [SAFE-BOOTSTRAP.md](SAFE-BOOTSTRAP.md) — cơ chế startup fail-passive, lazy loading và `cresco_safe=1` để cứu Elementor editor.
 
 ## Workflow chính từ 0.24
 
 ```text
 Elementor
+→ Safe Bootstrap chờ Elementor ready
+→ người dùng mở Cresco
+→ lazy-load external exchange pipeline
 → Export for ChatGPT
 → cresco-external-ai-package/v1 hoặc cresco-ai-bundle/v4
 → cresco-external-exchange-policy/v1 chọn output contract theo scope
@@ -35,7 +39,7 @@ Elementor
 → rendered fidelity verification
 ```
 
-Không có bước bắt buộc “Create / Edit bằng AI” trong Elementor.
+Không có bước bắt buộc “Create / Edit bằng AI” trong Elementor, và các module AI/runtime nặng không còn nằm trên critical startup path của Elementor.
 
 ## Ba lớp dữ liệu cần phân biệt
 
@@ -80,6 +84,7 @@ cresco-fidelity-gate/v1
 ## Quy ước chất lượng
 
 - Elementor luôn là source of truth.
+- Cresco startup phải fail-passive: không observer/polling/fetch interception trước khi Elementor ready.
 - External export dùng Full Context để không phụ thuộc prompt/task hint viết trong Elementor.
 - `cresco-external-exchange-policy/v1` quyết định output contract theo scope: widget/subtree ưu tiên semantic mutation v3, document ưu tiên patch v1.
 - Không invent Elementor control, responsive suffix, unit, option, Dynamic Tag hay global reference.
