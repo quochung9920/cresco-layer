@@ -83,7 +83,13 @@ final class ExportDiagnostics {
 			}
 		}
 
-		self::$active = null;
+		// Keep a lightweight diagnostic scope alive through WordPress REST JSON serialization.
+		// A large package can fail after the callback returned successfully (for example during
+		// json_encode); the second buffer lets shutdown replace that fatal output with clean JSON.
+		self::$active['callbackStage'] = (string) ( $diagnostic['stage'] ?? '' );
+		self::$active['bufferBase'] = ob_get_level();
+		ob_start();
+		self::$active['stage'] = 'rest-response-serialization';
 		return $response;
 	}
 
@@ -125,6 +131,7 @@ final class ExportDiagnostics {
 			],
 		];
 		if ( isset( $active['stageContext'] ) ) { $diagnostic['stageContext'] = $active['stageContext']; }
+		if ( isset( $active['callbackStage'] ) ) { $diagnostic['callbackStage'] = (string) $active['callbackStage']; }
 		return array_replace_recursive( $diagnostic, self::sanitize_context( $extra ) );
 	}
 
@@ -133,7 +140,7 @@ final class ExportDiagnostics {
 		$error = error_get_last();
 		$fatal_types = [ E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR ];
 		if ( ! is_array( $error ) || ! in_array( (int) ( $error['type'] ?? 0 ), $fatal_types, true ) ) {
-			self::drain_output_buffer();
+			self::flush_output_buffer();
 			self::$active = null;
 			return;
 		}
@@ -206,6 +213,12 @@ final class ExportDiagnostics {
 			if ( is_string( $chunk ) && '' !== $chunk ) { $chunks = $chunk . $chunks; }
 		}
 		return trim( $chunks );
+	}
+
+	private static function flush_output_buffer(): void {
+		if ( ! self::$active ) { return; }
+		$base = (int) ( self::$active['bufferBase'] ?? ob_get_level() );
+		while ( ob_get_level() > $base ) { ob_end_flush(); }
 	}
 
 	private static function clean_excerpt( string $value ): string {
