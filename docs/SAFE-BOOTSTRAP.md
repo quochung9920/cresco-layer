@@ -1,6 +1,6 @@
 # Safe Bootstrap cho Elementor Editor
 
-Tài liệu này mô tả cơ chế bảo vệ editor của Cresco Layer 0.24.
+Tài liệu này mô tả cơ chế bảo vệ editor của Cresco Layer 0.24+.
 
 ## Mục tiêu
 
@@ -10,10 +10,11 @@ Luồng chuẩn:
 
 ```text
 WordPress / Elementor editor request
-→ chỉ nạp editor-bootstrap.js
+→ nạp editor-bootstrap.js
+→ nạp export-target-sync.js ở trạng thái passive (một click listener, không REST/polling)
 → chờ Elementor ready
 → tạo launcher Cresco + context-menu entry nhẹ
-→ không nạp AI/runtime module nào khác
+→ không nạp AI/runtime module nặng nào khác
 → người dùng bấm Cresco
 → lazy-load external exchange pipeline
 → mở Export / Import panel
@@ -46,6 +47,26 @@ semantic-ai.js
 ```
 
 Các file legacy vẫn được giữ trong repository để tương thích/test, nhưng không còn nằm trên critical startup path.
+
+## Startup-safe scripts
+
+Hai script được phép tồn tại trên editor shell trước khi user mở exchange:
+
+```text
+editor-bootstrap.js
+export-target-sync.js
+```
+
+`export-target-sync.js` chỉ cài một delegated click listener cho hai nút Export. Trước khi user click Export, file này:
+
+- không gọi REST;
+- không gọi Elementor autosave;
+- không dùng `MutationObserver`;
+- không dùng `setInterval`;
+- không monkey-patch `window.fetch`;
+- không scan controls/computed styles.
+
+Vì vậy Target Sync không đưa workload cũ quay lại critical startup path.
 
 ## `editor-bootstrap.js`
 
@@ -100,6 +121,7 @@ Ví dụ:
 Khi flag này tồn tại:
 
 - Cresco không enqueue editor bootstrap;
+- Cresco không enqueue export target sync guard;
 - Cresco không enqueue AI panel CSS;
 - không có runtime scanner/observer/timer/fetch wrapper từ Cresco trên editor shell;
 - frontend widget CSS vẫn có thể tồn tại ở preview/front-end vì nó là lớp render widget, không phải editor bootstrap.
@@ -127,6 +149,12 @@ safe-mode
 
 `passive-timeout` có nghĩa Cresco đã tự dừng để không cản Elementor.
 
+Target Sync có diagnostics riêng:
+
+```js
+window.CrescoLayerExportTargetSync?.getState()
+```
+
 ## Nguyên tắc phát triển tiếp theo
 
 Mọi feature mới của Cresco phải được phân loại:
@@ -138,4 +166,4 @@ post-import verification
 legacy/admin only
 ```
 
-Chỉ code `startup-safe` mới được phép nằm trong `editor-bootstrap.js`. Các module còn lại phải lazy-load hoặc chạy ở admin/REST khi người dùng thực sự yêu cầu.
+Chỉ code thực sự `startup-safe` mới được phép enqueue trước khi người dùng mở Cresco. Code user-triggered có thể có một listener passive ở startup, nhưng mọi REST request, autosave, runtime scan, visual capture và AI processing phải chờ hành động rõ ràng của người dùng.
