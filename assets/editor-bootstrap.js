@@ -30,7 +30,8 @@
 		'external-ai-exchange-policy.js',
 		'visual-verification.js',
 		'fidelity-verification.js',
-		'ai-panel.js'
+		'ai-panel.js',
+		'export-error-diagnostics.js'
 	];
 
 	function assetUrl(file) {
@@ -275,7 +276,7 @@
 	}
 
 	window.CrescoLayerSafeBootstrap = {
-		version: '1.2.0',
+		version: '1.3.0',
 		mode: 'safe-lazy',
 		open: open,
 		ensure: function (group) { return group === 'exchange' ? ensureExchange() : Promise.resolve(); },
