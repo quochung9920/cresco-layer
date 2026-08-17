@@ -108,7 +108,7 @@ final class Assets {
 
 	private function is_safe_mode(): bool {
 		if ( ! isset( $_GET['cresco_safe'] ) ) { return false; } // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only rescue flag.
-		$value = strtolower( trim( sanitize_text_field( wp_unslash( (string) $_GET['cresco_safe'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only rescue flag.
+		$value = strtolower( trim( sanitize_text_field( wp_unslash( (string) $_GET['cresco_safe'] ) ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only rescue flag.
 		return in_array( $value, [ '1', 'true', 'yes', 'on' ], true );
 	}
 
