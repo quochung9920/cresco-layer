@@ -4,7 +4,10 @@
 	var cfg = window.crescoLayerEditor || {};
 	var nativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
 	var storageKey = 'cresco-layer-ai-context-profile';
-	var state = { profile: 'exact', installed: false, lastError: '', lastCapabilityCount: 0, lastDiscovery: null };
+	var MAX_WORKERS = 2;
+	var MAX_OPTIONAL_FETCH_WIDGETS = 12;
+	var MAX_OPTIONAL_FETCH_ELEMENTS = 6;
+	var state = { profile: 'exact', installed: false, lastError: '', lastCapabilityCount: 0, lastDiscovery: null, lastFetchReport: null };
 	var constructionWidgets = [
 		'heading', 'text-editor', 'button', 'image', 'icon', 'icon-list', 'divider', 'spacer', 'form',
 		'cresco-advanced-heading', 'cresco-advanced-button', 'cresco-smart-image', 'cresco-advanced-icon', 'cresco-divider', 'cresco-spacer',
@@ -61,7 +64,7 @@
 
 	function isExport(input) {
 		var url = typeof input === 'string' ? input : (input && input.url ? String(input.url) : '');
-		return !!url && url.indexOf(root() + '/documents/') === 0 && url.indexOf('/export') !== -1;
+		return !!url && url.indexOf(root() + '/documents/') === 0 && /\/export(?:\?|$)/.test(url) && url.indexOf('/export-target-status') === -1;
 	}
 	async function getJson(path) {
 		if (!nativeFetch || !root()) throw new Error('Cresco Layer REST configuration is unavailable.');
@@ -108,34 +111,87 @@
 		return unique(names).slice(0, 24);
 	}
 	function typeSet(pkg) {
-		var widgets = [], elements = [];
-		collectTypes(pkg.document ? pkg.document.content : [], widgets, elements);
-		collectTypes(pkg.elementContext || [], widgets, elements);
-		widgets.push.apply(widgets, Object.keys(pkg.widgetCatalog || {}));
-		elements.push.apply(elements, Object.keys(pkg.elementCatalog || {}));
-		constructionWidgets.forEach(function (name) { if (registered(pkg, 'widget', name)) widgets.push(name); });
-		constructionElements.forEach(function (name) { if (registered(pkg, 'element', name)) elements.push(name); });
+		var requiredWidgets = [], requiredElements = [];
+		collectTypes(pkg.document ? pkg.document.content : [], requiredWidgets, requiredElements);
+		collectTypes(pkg.elementContext || [], requiredWidgets, requiredElements);
+		requiredWidgets = unique(requiredWidgets).filter(function (name) { return registered(pkg, 'widget', name); });
+		requiredElements = unique(requiredElements).filter(function (name) { return registered(pkg, 'element', name); });
+
+		var optionalWidgets = Object.keys(pkg.widgetCatalog || {});
+		var optionalElements = Object.keys(pkg.elementCatalog || {});
+		constructionWidgets.forEach(function (name) { if (registered(pkg, 'widget', name)) optionalWidgets.push(name); });
+		constructionElements.forEach(function (name) { if (registered(pkg, 'element', name)) optionalElements.push(name); });
 		var discovered = taskAwareWidgets(pkg);
-		widgets.push.apply(widgets, discovered);
+		optionalWidgets.push.apply(optionalWidgets, discovered);
+		optionalWidgets = unique(optionalWidgets).filter(function (name) { return registered(pkg, 'widget', name) && requiredWidgets.indexOf(name) === -1; });
+		optionalElements = unique(optionalElements).filter(function (name) { return registered(pkg, 'element', name) && requiredElements.indexOf(name) === -1; });
 		state.lastDiscovery = { request: taskText(), widgets: discovered.slice() };
 		return {
-			widgets: unique(widgets).filter(function (name) { return registered(pkg, 'widget', name); }),
-			elements: unique(elements).filter(function (name) { return registered(pkg, 'element', name); }),
+			requiredWidgets: requiredWidgets,
+			requiredElements: requiredElements,
+			optionalWidgets: optionalWidgets,
+			optionalElements: optionalElements,
 			taskDiscoveredWidgets: discovered
 		};
 	}
-	async function loadDetails(kind, names) {
-		var queue = names.slice(), out = {};
+	function existingDetails(kind, names, pkg) {
+		var source = kind === 'widget' ? (pkg.widgetCatalog || {}) : (pkg.elementCatalog || {});
+		var entries = {}, reused = [];
+		names.forEach(function (name) {
+			var entry = source[name];
+			if (entry && entry.detailLoaded === true) { entries[name] = entry; reused.push(name); }
+		});
+		return { entries: entries, reused: reused };
+	}
+	async function loadDetails(kind, names, strict) {
+		var queue = names.slice(), out = {}, failed = [];
 		async function worker() {
 			while (queue.length) {
 				var name = queue.shift();
-				var payload = await getJson('/elementor-catalog/' + kind + '/' + encodeURIComponent(name));
-				if (!payload.entry || payload.entry.detailLoaded !== true) throw new Error('Incomplete Exact Runtime capability for ' + kind + ' "' + name + '".');
-				out[name] = payload.entry;
+				try {
+					var payload = await getJson('/elementor-catalog/' + kind + '/' + encodeURIComponent(name));
+					if (!payload.entry || payload.entry.detailLoaded !== true) throw new Error('Incomplete Exact Runtime capability for ' + kind + ' "' + name + '".');
+					out[name] = payload.entry;
+				} catch (error) {
+					if (strict) throw error;
+					failed.push({ name: name, message: error && error.message ? error.message : String(error) });
+				}
 			}
 		}
-		await Promise.all(Array.from({ length: Math.min(4, Math.max(1, names.length)) }, worker));
-		return out;
+		if (names.length) await Promise.all(Array.from({ length: Math.min(MAX_WORKERS, names.length) }, worker));
+		return { entries: out, failed: failed };
+	}
+	function merge(target, source) { Object.keys(source || {}).forEach(function (key) { target[key] = source[key]; }); return target; }
+	async function resolveDetails(kind, requiredNames, optionalNames, pkg) {
+		var allNames = unique(requiredNames.concat(optionalNames));
+		var seeded = existingDetails(kind, allNames, pkg);
+		var entries = seeded.entries;
+		var missingRequired = requiredNames.filter(function (name) { return !entries[name]; });
+		var requiredFetched = await loadDetails(kind, missingRequired, true);
+		merge(entries, requiredFetched.entries);
+		var stillMissingRequired = requiredNames.filter(function (name) { return !entries[name]; });
+		if (stillMissingRequired.length) throw new Error('Required Exact Runtime capabilities are missing for ' + kind + ': ' + stillMissingRequired.join(', ') + '.');
+
+		var optionalMissing = optionalNames.filter(function (name) { return !entries[name]; });
+		var maxOptional = kind === 'widget' ? MAX_OPTIONAL_FETCH_WIDGETS : MAX_OPTIONAL_FETCH_ELEMENTS;
+		var optionalFetchNames = optionalMissing.slice(0, maxOptional);
+		var omitted = optionalMissing.slice(maxOptional);
+		var optionalFetched = await loadDetails(kind, optionalFetchNames, false);
+		merge(entries, optionalFetched.entries);
+
+		return {
+			entries: entries,
+			report: {
+				required: requiredNames.slice(),
+				optionalRequested: optionalNames.slice(),
+				reused: seeded.reused,
+				fetchedRequired: Object.keys(requiredFetched.entries),
+				fetchedOptional: Object.keys(optionalFetched.entries),
+				failedOptional: optionalFetched.failed,
+				omittedOptional: omitted,
+				available: Object.keys(entries)
+			}
+		};
 	}
 	function prefixed(source, prefixes) {
 		var out = {};
@@ -163,7 +219,8 @@
 			'- Never invent or infer an Elementor control key. Emit a setting only when that exact key exists for that runtime widget/element type.',
 			'- Respect responsive flags/suffixes, control types, units, ranges, options, conditions, selectors and Atomic bindings exactly as exported.',
 			'- Use native Elementor controls first. custom_css is allowed only when no runtime control can express the required visual property.',
-			'- Do not use element/widget types absent from runtimeCapabilities. Do not guess missing capabilities.',
+			'- Do not use element/widget types absent from runtimeCapabilities. Optional construction capabilities can be omitted when runtime detail loading fails or exceeds the bounded fetch budget.',
+			'- All element/widget types already present in the editable target or read-only context are required capabilities and are never allowed to degrade silently.',
 			'- Reuse siteDesignContext/designSystem and the responsive foundation instead of creating near-duplicate local styles.',
 			'- taskRuntimeDiscovery contains additional runtime-proven widgets loaded because their registry metadata matched the current task.'
 		].join('\n');
@@ -171,13 +228,22 @@
 	async function enrich(pkg) {
 		if (!pkg || pkg.schema !== 'cresco-layer-ai-package/v2') throw new Error('Exact Runtime requires cresco-layer-ai-package/v2.');
 		var set = typeSet(pkg);
-		var groups = await Promise.all([ loadDetails('widget', set.widgets), loadDetails('element', set.elements) ]);
-		var widgets = groups[0], elements = groups[1];
+		var groups = await Promise.all([
+			resolveDetails('widget', set.requiredWidgets, set.optionalWidgets, pkg),
+			resolveDetails('element', set.requiredElements, set.optionalElements, pkg)
+		]);
+		var widgets = groups[0].entries, elements = groups[1].entries;
+		var fetchReport = { widgets: groups[0].report, elements: groups[1].report };
+		state.lastFetchReport = fetchReport;
 		state.lastCapabilityCount = Object.keys(widgets).length + Object.keys(elements).length;
+		var optionalPartial = fetchReport.widgets.failedOptional.length || fetchReport.widgets.omittedOptional.length || fetchReport.elements.failedOptional.length || fetchReport.elements.omittedOptional.length;
 		pkg.runtimeCapabilities = {
-			schema: 'cresco-runtime-capabilities/v1', mode: 'exact-runtime', source: 'live-elementor-catalog',
+			schema: 'cresco-runtime-capabilities/v1', mode: 'exact-runtime', source: 'server-reuse-plus-live-elementor-catalog',
 			controlMetadataVersion: pkg.registryIndex ? (pkg.registryIndex.controlMetadataVersion || 0) : 0,
-			constructionSet: { widgets: set.widgets, elements: set.elements }, widgets: widgets, elements: elements
+			constructionSet: { widgets: Object.keys(widgets), elements: Object.keys(elements) },
+			requiredSet: { widgets: set.requiredWidgets, elements: set.requiredElements },
+			coverage: { requiredComplete: true, optionalPartial: !!optionalPartial, fetch: fetchReport },
+			widgets: widgets, elements: elements
 		};
 		pkg.taskRuntimeDiscovery = {
 			schema: 'cresco-task-runtime-discovery/v1',
@@ -188,7 +254,8 @@
 		pkg.capabilityLock = {
 			schema: 'cresco-capability-lock/v1', mode: 'runtime-exact', status: 'trusted', inventControls: false,
 			inventResponsiveSuffixes: false, requireDetailedCapability: true, validateControlShape: true,
-			validateUnitsOptionsRangesConditions: true, customCssPolicy: 'only-when-no-native-control-can-express-property'
+			validateUnitsOptionsRangesConditions: true, optionalConstructionPartial: !!optionalPartial,
+			customCssPolicy: 'only-when-no-native-control-can-express-property'
 		};
 		pkg.siteDesignContext = designContext(pkg);
 		pkg.widgetCatalog = widgets; pkg.elementCatalog = elements;
@@ -196,7 +263,7 @@
 		pkg.relevantCapabilities.widgets = widgets; pkg.relevantCapabilities.elements = elements;
 		pkg.relevantCapabilities.controlMetadataVersion = pkg.runtimeCapabilities.controlMetadataVersion;
 		pkg.manifest = pkg.manifest || {}; pkg.manifest.contextProfile = 'exact-runtime';
-		pkg.contextResolver = pkg.contextResolver || {}; pkg.contextResolver.profile = 'exact-runtime';
+		pkg.contextResolver = pkg.contextResolver || {}; pkg.contextResolver.profile = 'exact-runtime'; pkg.contextResolver.exactRuntimeFetch = fetchReport;
 		pkg.capabilities = pkg.capabilities || {}; pkg.capabilities.runtimeExactExport = true;
 		pkg.capabilities.capabilityLock = 'runtime-exact'; pkg.capabilities.customCssFallbackPolicy = pkg.capabilityLock.customCssPolicy;
 		pkg.instructions = strictInstructions(pkg.instructions);
@@ -208,7 +275,7 @@
 	}
 	function failed(message) {
 		state.lastError = String(message || 'Exact Runtime export failed.');
-		return new Response(JSON.stringify({ code: 'cresco_exact_runtime_export_failed', message: state.lastError }), { status: 502, headers: { 'content-type': 'application/json; charset=UTF-8' } });
+		return new Response(JSON.stringify({ code: 'cresco_exact_runtime_export_failed', message: state.lastError, data: { status: 502, stage: 'exact-runtime-enrich' } }), { status: 502, headers: { 'content-type': 'application/json; charset=UTF-8', 'x-cresco-diagnostic-stage': 'exact-runtime-enrich' } });
 	}
 	if (nativeFetch) {
 		state.installed = true;
@@ -226,7 +293,7 @@
 		var anchor = modal.querySelector('#cresco-layer-selection-panel') || modal.querySelector('#cresco-layer-export-error');
 		if (!anchor || !anchor.parentNode) return;
 		var panel = document.createElement('div'); panel.className = 'cresco-layer-selection-panel'; panel.setAttribute('data-cresco-runtime-profile', '');
-		panel.innerHTML = '<div class="cresco-layer-selection-panel__head"><strong>AI runtime context</strong><span>Exact Runtime recommended for redesigns</span></div><div class="cresco-layer-scope-cards"><label class="cresco-layer-scope-card"><input type="radio" name="cresco-runtime-profile" value="exact"><span><strong>Exact Runtime</strong><small>Real runtime control keys, defaults, units, options, ranges, conditions, selectors, Atomic metadata and task-aware widget discovery. Fails closed instead of guessing.</small></span></label><label class="cresco-layer-scope-card"><input type="radio" name="cresco-runtime-profile" value="smart"><span><strong>Smart</strong><small>Smaller package for edits that do not need broad construction capability.</small></span></label></div>';
+		panel.innerHTML = '<div class="cresco-layer-selection-panel__head"><strong>AI runtime context</strong><span>Exact Runtime recommended for redesigns</span></div><div class="cresco-layer-scope-cards"><label class="cresco-layer-scope-card"><input type="radio" name="cresco-runtime-profile" value="exact"><span><strong>Exact Runtime</strong><small>Real runtime control keys, defaults, units, options, ranges, conditions, selectors, Atomic metadata and task-aware widget discovery. Required target capabilities fail closed; optional construction capabilities are bounded and reusable.</small></span></label><label class="cresco-layer-scope-card"><input type="radio" name="cresco-runtime-profile" value="smart"><span><strong>Smart</strong><small>Smaller package for edits that do not need broad construction capability.</small></span></label></div>';
 		anchor.parentNode.insertBefore(panel, anchor);
 		Array.prototype.forEach.call(panel.querySelectorAll('input[name="cresco-runtime-profile"]'), function (input) { input.checked = input.value === state.profile; input.addEventListener('change', function () { if (input.checked) setProfile(input.value); }); });
 	}
@@ -236,8 +303,8 @@
 		new MutationObserver(addProfilePanel).observe(document.documentElement, { childList: true, subtree: true });
 	}
 	window.CrescoLayerExactRuntimeExport = {
-		version: '1.1.0', getProfile: function () { return state.profile; }, setProfile: setProfile,
-		getDiagnostics: function () { return { profile: state.profile, installed: state.installed, lastError: state.lastError, lastCapabilityCount: state.lastCapabilityCount, lastDiscovery: state.lastDiscovery }; },
+		version: '1.2.0', getProfile: function () { return state.profile; }, setProfile: setProfile,
+		getDiagnostics: function () { return { profile: state.profile, installed: state.installed, lastError: state.lastError, lastCapabilityCount: state.lastCapabilityCount, lastDiscovery: state.lastDiscovery, lastFetchReport: state.lastFetchReport }; },
 		constructionSet: { widgets: constructionWidgets.slice(), elements: constructionElements.slice() },
 		discoverTaskWidgets: function (pkg) { return taskAwareWidgets(pkg || {}); }
 	};
