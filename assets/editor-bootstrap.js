@@ -17,6 +17,7 @@
 	};
 
 	var exchangeScripts = [
+		'export-error-diagnostics.js',
 		'exact-runtime-export.js',
 		'fidelity-engine.js',
 		'fidelity-export.js',
@@ -30,8 +31,7 @@
 		'external-ai-exchange-policy.js',
 		'visual-verification.js',
 		'fidelity-verification.js',
-		'ai-panel.js',
-		'export-error-diagnostics.js'
+		'ai-panel.js'
 	];
 
 	function assetUrl(file) {
@@ -276,7 +276,7 @@
 	}
 
 	window.CrescoLayerSafeBootstrap = {
-		version: '1.3.0',
+		version: '1.3.1',
 		mode: 'safe-lazy',
 		open: open,
 		ensure: function (group) { return group === 'exchange' ? ensureExchange() : Promise.resolve(); },
