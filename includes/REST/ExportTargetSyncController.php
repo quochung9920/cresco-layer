@@ -1,7 +1,6 @@
 <?php
 namespace CrescoLayer\REST;
 
-use CrescoLayer\AI\ContextResolver;
 use CrescoLayer\AI\ExportTargetResolver;
 use WP_Error;
 use WP_REST_Request;
