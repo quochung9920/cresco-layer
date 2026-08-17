@@ -3,6 +3,7 @@ namespace CrescoLayer;
 
 use CrescoLayer\Admin\AdminPage;
 use CrescoLayer\AI\ExchangeSafetyGuard;
+use CrescoLayer\AI\ExportTargetResolver;
 use CrescoLayer\AI\PackageBuilder;
 use CrescoLayer\AI\PatchApplier;
 use CrescoLayer\AI\PatchValidator;
@@ -23,6 +24,7 @@ use CrescoLayer\LocalAI\ProviderManager as LocalAIProviderManager;
 use CrescoLayer\LocalAI\RESTController as LocalAIRESTController;
 use CrescoLayer\LocalAI\Settings as LocalAISettings;
 use CrescoLayer\REST\Controller;
+use CrescoLayer\REST\ExportTargetSyncController;
 use CrescoLayer\SiteSettings\RESTController as SiteSettingsRESTController;
 use CrescoLayer\Skills\WidgetSkillRuntime;
 use CrescoLayer\Support\Assets;
@@ -71,11 +73,13 @@ final class Plugin {
 		$local_ai   = new LocalAIManager( $local_settings, $local_providers );
 		$applier    = new PatchApplier( $validator, $auditor );
 		$controller = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $skills, $applier, $auditor );
+		$target_sync = new ExportTargetSyncController( new ExportTargetResolver() );
 		$local_rest = new LocalAIRESTController( $local_ai, $local_analyzer );
 		$standard   = new StandardController( $applier );
 		$admin      = new AdminPage();
 
 		add_action( 'rest_api_init', [ $controller, 'register_routes' ] );
+		add_action( 'rest_api_init', [ $target_sync, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $local_rest, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $standard, 'register_routes' ] );
 		add_action( 'rest_api_init', [ new SiteSettingsRESTController(), 'register_routes' ] );
