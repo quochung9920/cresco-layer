@@ -100,7 +100,13 @@
 					};
 					remember(entry);
 
-					if (parsed && parsed.message) return response;
+					if (parsed && parsed.message) {
+						if (serverDiagnostic.errorId && String(parsed.message).indexOf(serverId) === -1) {
+							parsed.message = String(parsed.message) + ' [' + stage + ' | ' + serverId + ']';
+							return responseWithJson(response, parsed, serverId, stage);
+						}
+						return response;
+					}
 					var message = 'Cresco export failed at ' + stage + ' [' + serverId + '] (HTTP ' + response.status + ').';
 					var short = excerpt(text);
 					if (short) message += ' Server response: ' + short;
@@ -126,7 +132,7 @@
 	}
 
 	window.CrescoLayerExportDiagnostics = {
-		version: '1.1.0',
+		version: '1.1.1',
 		schema: 'cresco-export-client-diagnostic/v1',
 		getLastError: function () { return history.length ? history[0] : null; },
 		getHistory: function () { return history.slice(); },
