@@ -6,7 +6,7 @@
   "scripts": {
     "lint:js": "node --check assets/admin.js && node --check assets/editor-bootstrap.js && node --check assets/export-target-sync.js && node --check assets/editor.js && node --check assets/clipboard-guard.js && node --check assets/exact-runtime-export.js && node --check assets/fidelity-engine.js && node --check assets/fidelity-export.js && node --check assets/ai-context-v3.js && node --check assets/external-ai-intelligence.js && node --check assets/design-intelligence.js && node --check assets/semantic-design-contract.js && node --check assets/design-reasoning.js && node --check assets/ai-context-policy.js && node --check assets/ai-bundle.js && node --check assets/external-ai-exchange-policy.js && node --check assets/visual-verification.js && node --check assets/fidelity-verification.js && node --check assets/ai-panel.js && node --check assets/external-ai-entrypoints.js && node --check assets/semantic-design-ui.js && node --check assets/skills.js && node --check assets/skills-accuracy.js && node --check assets/local-ai-admin.js && node --check assets/semantic-ai.js",
     "test:safe-bootstrap": "node tests/js/safe-bootstrap-contract-test.mjs && node tests/js/safe-bootstrap-behavior-test.mjs",
-    "test:export-target-sync": "node tests/js/export-target-sync-contract-test.mjs",
+    "test:export-target-sync": "node tests/js/export-target-sync-contract-test.mjs && node tests/js/export-target-sync-behavior-test.mjs",
     "test:editor-bootstrap": "node tests/js/editor-bootstrap-test.mjs",
     "test:editor-live-apply": "node tests/js/editor-live-apply-test.mjs",
     "test:editor-ai-ux": "node tests/js/editor-ai-ux-contract-test.mjs",
