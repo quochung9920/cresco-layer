@@ -7,6 +7,7 @@
 	var state = {
 		status: 'booting',
 		activated: false,
+		passive: false,
 		loading: null,
 		loaded: false,
 		lastError: '',
@@ -121,6 +122,8 @@
 			}
 			state.loaded = true;
 			state.status = 'ready';
+			var safeLauncher = document.getElementById('cresco-safe-launcher');
+			if (safeLauncher) safeLauncher.hidden = true;
 			return window.CrescoLayerAIPanel;
 		}).catch(function (error) {
 			state.lastError = error && error.message ? error.message : String(error);
@@ -140,13 +143,13 @@
 		button.type = 'button';
 		button.className = 'cresco-ai-launcher';
 		button.innerHTML = '<span>&harr;</span> Cresco Export / Import';
-		button.addEventListener('click', function () { open('export'); });
+		button.addEventListener('click', function () { open('export', '').catch(function () {}); });
 		document.body.appendChild(button);
 		return button;
 	}
 
 	function setLauncherBusy(busy) {
-		var button = launcher();
+		var button = document.getElementById('cresco-safe-launcher');
 		if (!button) return;
 		button.disabled = !!busy;
 		if (busy) {
@@ -158,8 +161,9 @@
 		}
 	}
 
-	function open(tab) {
-		if (!state.activated || !ready()) {
+	function open(tab, contextTargetId) {
+		state.contextTargetId = /^[A-Za-z0-9_-]{1,64}$/.test(String(contextTargetId || '')) ? String(contextTargetId) : '';
+		if (state.passive || !state.activated || !ready()) {
 			state.lastError = 'Elementor is not ready. Cresco stayed passive to avoid blocking the editor.';
 			return Promise.reject(new Error(state.lastError));
 		}
@@ -173,11 +177,8 @@
 		}).finally(function () { setLauncherBusy(false); });
 	}
 
-	function rememberView(view) {
-		try {
-			var id = modelId(view && view.model);
-			if (id) state.contextTargetId = id;
-		} catch (e) {}
+	function viewId(view) {
+		try { return modelId(view && view.model); } catch (e) { return ''; }
 	}
 
 	function contextGroup() {
@@ -189,14 +190,14 @@
 					icon: 'eicon-export-kit',
 					title: 'Cresco - Export to ChatGPT',
 					isEnabled: function () { return true; },
-					callback: function (view) { rememberView(view); open('export').catch(function () {}); }
+					callback: function (view) { open('export', viewId(view)).catch(function () {}); }
 				},
 				{
 					name: 'cresco-import-external-ai',
 					icon: 'eicon-import-kit',
 					title: 'Cresco - Import AI Result',
 					isEnabled: function () { return true; },
-					callback: function (view) { rememberView(view); open('import').catch(function () {}); }
+					callback: function (view) { open('import', viewId(view)).catch(function () {}); }
 				}
 			]
 		};
@@ -230,7 +231,7 @@
 	}
 
 	function activate() {
-		if (state.activated || !ready()) return false;
+		if (state.passive || state.activated || !ready()) return false;
 		state.activated = true;
 		state.status = 'ready';
 		launcher();
@@ -240,7 +241,7 @@
 	}
 
 	function start() {
-		if (cfg.safeMode) { state.status = 'safe-mode'; return; }
+		if (cfg.safeMode) { state.passive = true; state.status = 'safe-mode'; return; }
 		if (activate()) return;
 
 		window.addEventListener('elementor/init', function () { activate(); }, { once: true });
@@ -248,8 +249,9 @@
 
 		// One bounded watchdog only. No setInterval, no DOM observer, no infinite retries.
 		setTimeout(function () {
-			if (state.activated) return;
+			if (state.activated || state.passive) return;
 			if (activate()) return;
+			state.passive = true;
 			state.status = 'passive-timeout';
 			state.lastError = 'Elementor did not become ready within the Cresco bootstrap budget. Cresco stopped itself and left the editor untouched.';
 			try { console.warn('[Cresco Safe Bootstrap] ' + state.lastError); } catch (e) {}
@@ -257,7 +259,7 @@
 	}
 
 	window.CrescoLayerSafeBootstrap = {
-		version: '1.0.0',
+		version: '1.1.0',
 		mode: 'safe-lazy',
 		open: open,
 		ensure: function (group) { return group === 'exchange' ? ensureExchange() : Promise.resolve(); },
@@ -265,6 +267,7 @@
 			return {
 				status: state.status,
 				activated: state.activated,
+				passive: state.passive,
 				loaded: state.loaded,
 				lastError: state.lastError,
 				selectedElementId: selectedId(),
