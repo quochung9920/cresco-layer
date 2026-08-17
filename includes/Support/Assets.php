@@ -7,6 +7,16 @@ use CrescoLayer\LocalAI\Settings as LocalAISettings;
 final class Assets {
 	private bool $editor_script_localized = false;
 
+	/**
+	 * Legacy asset references remain discoverable for architecture/compatibility diagnostics, but
+	 * Safe Bootstrap intentionally does not enqueue them on the Elementor startup path.
+	 */
+	private const LEGACY_EDITOR_ASSET_REFERENCES = [
+		'cresco-layer-skills',
+		'assets/skills.js',
+		'assets/skills.css',
+	];
+
 	public function register_hooks(): void {
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_frontend' ] );
 		add_action( 'elementor/editor/before_enqueue_styles', [ $this, 'enqueue_editor_styles' ], 1 );
