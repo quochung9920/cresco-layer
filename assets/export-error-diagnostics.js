@@ -243,6 +243,11 @@
 			if (!history.length) return Promise.reject(new Error('No export diagnostic is available.'));
 			return copyText(diagnosticText(history[0]));
 		},
+		recordClientError: function (entry) {
+			entry = entry && typeof entry === 'object' ? entry : { schema: 'cresco-export-client-diagnostic/v1', stage: 'client', status: 0, message: String(entry || 'Client export error.') };
+			remember(entry, entry.message || 'Cresco captured a client-side export failure.', false);
+			return entry;
+		},
 		clear: function () { history.length = 0; var card = window.document && document.getElementById ? document.getElementById('cresco-export-diagnostic-card') : null; if (card) card.hidden = true; }
 	};
 }());
