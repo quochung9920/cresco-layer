@@ -10,6 +10,7 @@ use CrescoLayer\AI\PatchValidator;
 use CrescoLayer\AI\SemanticPatchGuard;
 use CrescoLayer\Audit\Auditor;
 use CrescoLayer\DesignSystem\StandardController;
+use CrescoLayer\Diagnostics\ExportDiagnostics;
 use CrescoLayer\Elementor\ConfigurationCatalog;
 use CrescoLayer\Elementor\DynamicTagRegistry;
 use CrescoLayer\Elementor\ProRegistry;
@@ -48,6 +49,7 @@ final class Plugin {
 		}
 
 		( new Assets() )->register_hooks();
+		( new ExportDiagnostics() )->register_hooks();
 		( new ExchangeSafetyGuard() )->register_hooks();
 		add_action( 'elementor/widgets/register', [ new WidgetRegistry(), 'register' ] );
 		add_action( 'elementor/dynamic_tags/register', [ new DynamicTagRegistry(), 'register' ] );
