@@ -19,6 +19,7 @@ Nếu bạn phát triển plugin:
 6. [PHAT-TRIEN-KIEM-THU.md](PHAT-TRIEN-KIEM-THU.md) — quy tắc phát triển và quality gate.
 7. [SITE-SETTINGS.md](SITE-SETTINGS.md) — Elementor Global Settings/Kit engine.
 8. [SAFE-BOOTSTRAP.md](SAFE-BOOTSTRAP.md) — cơ chế startup fail-passive, lazy loading và `cresco_safe=1` để cứu Elementor editor.
+9. [TARGET-SYNC-PREFLIGHT.md](TARGET-SYNC-PREFLIGHT.md) — force autosave trước export, Target Resolver và diagnostics khi editor client đi trước server working document.
 
 ## Workflow chính từ 0.24
 
@@ -27,7 +28,9 @@ Elementor
 → Safe Bootstrap chờ Elementor ready
 → người dùng mở Cresco
 → lazy-load external exchange pipeline
-→ Export for ChatGPT
+→ chọn target và bấm Export for ChatGPT
+→ Target Sync Preflight force-autosave working data
+→ Target Resolver xác nhận target trong server working document
 → cresco-external-ai-package/v1 hoặc cresco-ai-bundle/v4
 → cresco-external-exchange-policy/v1 chọn output contract theo scope
 → ChatGPT nhận yêu cầu thiết kế trong cuộc trò chuyện
@@ -63,6 +66,8 @@ JSON hợp lệ
 ## Các schema chính
 
 ```text
+cresco-export-target-status/v1
+cresco-export-target-sync/v1
 cresco-external-ai-package/v1
 cresco-ai-bundle/v4
 cresco-external-exchange-policy/v1
@@ -85,6 +90,8 @@ cresco-fidelity-gate/v1
 
 - Elementor luôn là source of truth.
 - Cresco startup phải fail-passive: không observer/polling/fetch interception trước khi Elementor ready.
+- Export target sync chỉ được chạy sau thao tác Export của người dùng và phải dùng Elementor autosave thay vì tự ghi `_elementor_data`.
+- Target Resolver chỉ đọc working/main document và không được thay thế Elementor data bằng client JSON.
 - External export dùng Full Context để không phụ thuộc prompt/task hint viết trong Elementor.
 - `cresco-external-exchange-policy/v1` quyết định output contract theo scope: widget/subtree ưu tiên semantic mutation v3, document ưu tiên patch v1.
 - Không invent Elementor control, responsive suffix, unit, option, Dynamic Tag hay global reference.
