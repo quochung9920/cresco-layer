@@ -36,7 +36,7 @@
 	function diagnosticFrom(parsed) {
 		return parsed && parsed.data && parsed.data.crescoDiagnostic ? parsed.data.crescoDiagnostic : (parsed && parsed.crescoDiagnostic ? parsed.crescoDiagnostic : null);
 	}
-	function responseWithJson(response, payload, id, stage) {
+	function responseWithJson(response, payload, id, stage, statusOverride) {
 		var headers = new Headers(response.headers || {});
 		headers.delete('content-length');
 		headers.delete('content-encoding');
@@ -44,10 +44,16 @@
 		headers.set('x-cresco-request-id', id);
 		headers.set('x-cresco-diagnostic-stage', stage);
 		return new Response(JSON.stringify(payload), {
-			status: response.status,
+			status: statusOverride || response.status,
 			statusText: response.statusText,
 			headers: headers
 		});
+	}
+	function isServerFailurePayload(parsed) {
+		if (!parsed || typeof parsed !== 'object') return false;
+		if (parsed.code === 'cresco_export_fatal' || parsed.code === 'cresco_export_http_error') return true;
+		var status = parsed.data && Number(parsed.data.status || 0);
+		return status >= 500 && !!(parsed.message || diagnosticFrom(parsed));
 	}
 
 	if (previousFetch) {
@@ -60,17 +66,29 @@
 			nextInit.headers = headersFor(input, init, requestId);
 
 			return previousFetch(input, nextInit).then(function (response) {
-				if (response.ok) return response;
 				return response.clone().text().catch(function () { return ''; }).then(function (text) {
 					var parsed = null;
 					try { parsed = text ? JSON.parse(text) : null; } catch (e) {}
 					var serverDiagnostic = diagnosticFrom(parsed) || {};
 					var serverId = serverDiagnostic.errorId || response.headers.get('x-cresco-request-id') || requestId;
-					// Prefer the structured server diagnostic. Headers can reflect a later serialization stage
-					// while the body records the actual callback stage that raised the error.
 					var stage = serverDiagnostic.stage || response.headers.get('x-cresco-diagnostic-stage') || '';
 					if (!stage && parsed && parsed.code === 'cresco_exact_runtime_export_failed') stage = 'exact-runtime-enrich';
-					if (!stage) stage = 'http-response';
+					if (!stage) stage = response.ok ? 'response' : 'http-response';
+
+					// PHP can fail during REST response serialization after WordPress has already emitted a
+					// 200 status header. The fatal shutdown body carries data.status=500; normalize that
+					// transport anomaly before Exact Runtime sees the response.
+					if (response.ok && isServerFailurePayload(parsed)) {
+						var fatalEntry = {
+							schema: 'cresco-export-client-diagnostic/v1', errorId: serverId, stage: stage,
+							status: 500, transportStatus: response.status, elapsedMs: Math.max(0, Date.now() - startedAt),
+							server: serverDiagnostic, responseExcerpt: excerpt(text)
+						};
+						remember(fatalEntry);
+						return responseWithJson(response, parsed, serverId, stage, Number(parsed.data && parsed.data.status || 500));
+					}
+
+					if (response.ok) return response;
 					var entry = {
 						schema: 'cresco-export-client-diagnostic/v1',
 						errorId: serverId,
@@ -108,7 +126,7 @@
 	}
 
 	window.CrescoLayerExportDiagnostics = {
-		version: '1.0.1',
+		version: '1.1.0',
 		schema: 'cresco-export-client-diagnostic/v1',
 		getLastError: function () { return history.length ? history[0] : null; },
 		getHistory: function () { return history.slice(); },
