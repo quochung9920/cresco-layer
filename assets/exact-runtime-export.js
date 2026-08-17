@@ -273,9 +273,24 @@
 		var headers = new Headers(original.headers || {}); headers.delete('content-length'); headers.delete('content-encoding'); headers.set('content-type', 'application/json; charset=UTF-8');
 		return new Response(JSON.stringify(payload), { status: original.status, statusText: original.statusText, headers: headers });
 	}
-	function failed(message) {
+	function failed(message, originalResponse) {
 		state.lastError = String(message || 'Exact Runtime export failed.');
-		return new Response(JSON.stringify({ code: 'cresco_exact_runtime_export_failed', message: state.lastError, data: { status: 502, stage: 'exact-runtime-enrich' } }), { status: 502, headers: { 'content-type': 'application/json; charset=UTF-8', 'x-cresco-diagnostic-stage': 'exact-runtime-enrich' } });
+		var errorId = '';
+		try { errorId = originalResponse && originalResponse.headers ? String(originalResponse.headers.get('x-cresco-request-id') || '') : ''; } catch (e) {}
+		if (!errorId) errorId = 'CX-exact-runtime-' + Date.now().toString(36);
+		var diagnostic = {
+			schema: 'cresco-export-client-diagnostic/v1', errorId: errorId, stage: 'exact-runtime-enrich', status: 502,
+			message: state.lastError, exactRuntime: state.lastFetchReport
+		};
+		try {
+			if (window.CrescoLayerExportDiagnostics && typeof window.CrescoLayerExportDiagnostics.recordClientError === 'function') {
+				window.CrescoLayerExportDiagnostics.recordClientError(diagnostic);
+			}
+		} catch (e2) {}
+		return new Response(JSON.stringify({
+			code: 'cresco_exact_runtime_export_failed', message: state.lastError + ' [exact-runtime-enrich | ' + errorId + ']',
+			data: { status: 502, crescoDiagnostic: diagnostic }
+		}), { status: 502, headers: { 'content-type': 'application/json; charset=UTF-8', 'x-cresco-request-id': errorId, 'x-cresco-diagnostic-stage': 'exact-runtime-enrich' } });
 	}
 	if (nativeFetch) {
 		state.installed = true;
@@ -283,7 +298,7 @@
 			if (state.profile !== 'exact' || !isExport(input)) return nativeFetch(input, init);
 			return nativeFetch(input, init).then(function (response) {
 				if (!response.ok) return response;
-				return response.clone().json().then(enrich).then(function (pkg) { return jsonResponse(response, pkg); }).catch(function (error) { return failed(error && error.message ? error.message : String(error)); });
+				return response.clone().json().then(enrich).then(function (pkg) { return jsonResponse(response, pkg); }).catch(function (error) { return failed(error && error.message ? error.message : String(error), response); });
 			});
 		};
 	}
