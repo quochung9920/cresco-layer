@@ -79,9 +79,6 @@ final class AdminPage {
 				<?php endif; ?>
 				<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="history"><?php echo esc_html__( 'History', 'cresco-layer' ); ?></button>
 				<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="inspector"><?php echo esc_html__( 'Runtime Inspector', 'cresco-layer' ); ?></button>
-				<?php if ( $can_manage ) : ?>
-					<button type="button" class="cresco-layer-tab" role="tab" aria-selected="false" data-cresco-tab="local-ai"><?php echo esc_html__( 'Local AI', 'cresco-layer' ); ?></button>
-				<?php endif; ?>
 			</nav>
 
 			<div class="cresco-layer-tab-panel" data-cresco-tab-panel="exchange" role="tabpanel">
@@ -290,12 +287,6 @@ final class AdminPage {
 					</div>
 				</section>
 			</div>
-
-			<?php if ( $can_manage ) : ?>
-				<div class="cresco-layer-tab-panel" data-cresco-tab-panel="local-ai" role="tabpanel" hidden>
-					<div id="cresco-layer-local-ai-slot"></div>
-				</div>
-			<?php endif; ?>
 
 			<div class="cresco-layer-toasts" id="cresco-layer-toasts"></div>
 		</div>

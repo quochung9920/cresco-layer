@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feat/**', 'fix/**']
+    branches: [main, 'feat/**', 'fix/**', 'refactor/**']
   pull_request:
 
 permissions:
@@ -56,14 +56,8 @@ jobs:
         run: php tests/php/skill-atomic-binding-test.php
       - name: Widget skill runtime contract tests
         run: php tests/php/widget-skill-runtime-contract-test.php
-      - name: Local AI manager contract tests
-        run: php tests/php/local-ai-contract-test.php
-      - name: Semantic Local AI context tests
-        run: php tests/php/semantic-ai-context-test.php
-      - name: Semantic Local AI plan validation tests
-        run: php tests/php/semantic-plan-validator-test.php
-      - name: Accuracy Core tests
-        run: php tests/php/accuracy-core-test.php
+      - name: Removed subsystem invariants
+        run: php tests/php/no-local-ai-remnants-test.php
       - name: Design standard math tests
         run: php tests/php/design-standard-math-test.php
       - name: Design standard planning tests

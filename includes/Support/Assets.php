@@ -2,7 +2,6 @@
 namespace CrescoLayer\Support;
 
 use CrescoLayer\AI\FidelityPolicy;
-use CrescoLayer\LocalAI\Settings as LocalAISettings;
 
 final class Assets {
 	private bool $editor_script_localized = false;
@@ -65,7 +64,6 @@ final class Assets {
 
 		if ( $this->editor_script_localized ) { return; }
 		$this->editor_script_localized = true;
-		$local_ai = ( new LocalAISettings() )->editor_summary();
 		wp_localize_script( 'cresco-layer-editor-bootstrap', 'crescoLayerEditor', [
 			'nonce'               => wp_create_nonce( 'wp_rest' ),
 			'restRoot'            => esc_url_raw( rest_url( 'cresco-layer/v1' ) ),
@@ -75,7 +73,6 @@ final class Assets {
 			'version'             => CRESCO_LAYER_VERSION,
 			'elementorVersion'    => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : null,
 			'elementorProVersion' => defined( 'ELEMENTOR_PRO_VERSION' ) ? ELEMENTOR_PRO_VERSION : null,
-			'localAI'             => $local_ai,
 			'fidelityPolicy'      => FidelityPolicy::config(),
 			'safeMode'            => false,
 			'bootstrap'           => [

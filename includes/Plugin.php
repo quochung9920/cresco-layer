@@ -16,14 +16,6 @@ use CrescoLayer\Elementor\DynamicTagRegistry;
 use CrescoLayer\Elementor\ProRegistry;
 use CrescoLayer\Elementor\RuntimeSnapshotCoordinator;
 use CrescoLayer\Elementor\WidgetRegistry;
-use CrescoLayer\LocalAI\AdminIntegration as LocalAIAdminIntegration;
-use CrescoLayer\LocalAI\Analyzer as LocalAIAnalyzer;
-use CrescoLayer\LocalAI\ContextCompiler as LocalAIContextCompiler;
-use CrescoLayer\LocalAI\Manager as LocalAIManager;
-use CrescoLayer\LocalAI\PlanValidator as LocalAIPlanValidator;
-use CrescoLayer\LocalAI\ProviderManager as LocalAIProviderManager;
-use CrescoLayer\LocalAI\RESTController as LocalAIRESTController;
-use CrescoLayer\LocalAI\Settings as LocalAISettings;
 use CrescoLayer\REST\Controller;
 use CrescoLayer\REST\ExportTargetSyncController;
 use CrescoLayer\SiteSettings\RESTController as SiteSettingsRESTController;
@@ -67,27 +59,18 @@ final class Plugin {
 		$catalog    = new ConfigurationCatalog();
 		$snapshot   = new RuntimeSnapshotCoordinator();
 		$skills     = new WidgetSkillRuntime( $catalog );
-		$local_settings = new LocalAISettings();
-		$local_providers = new LocalAIProviderManager( $local_settings );
-		$local_context = new LocalAIContextCompiler( $skills );
-		$local_plan_validator = new LocalAIPlanValidator( $skills );
-		$local_analyzer = new LocalAIAnalyzer( $local_context, $local_providers, $local_plan_validator );
-		$local_ai   = new LocalAIManager( $local_settings, $local_providers );
 		$applier    = new PatchApplier( $validator, $auditor );
 		$controller = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $skills, $applier, $auditor );
 		$target_sync = new ExportTargetSyncController( new ExportTargetResolver() );
-		$local_rest = new LocalAIRESTController( $local_ai, $local_analyzer );
 		$standard   = new StandardController( $applier );
 		$admin      = new AdminPage();
 
 		add_action( 'rest_api_init', [ $controller, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $target_sync, 'register_routes' ] );
-		add_action( 'rest_api_init', [ $local_rest, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $standard, 'register_routes' ] );
 		add_action( 'rest_api_init', [ new SiteSettingsRESTController(), 'register_routes' ] );
 		add_action( 'admin_menu', [ $admin, 'register_menu' ] );
 		add_action( 'admin_enqueue_scripts', [ $admin, 'enqueue_assets' ] );
-		( new LocalAIAdminIntegration() )->register_hooks();
 		add_action( 'elementor/editor/after_save', [ $auditor, 'invalidate_post_cache' ], 10, 2 );
 	}
 }
