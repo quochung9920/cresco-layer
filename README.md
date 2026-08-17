@@ -2,7 +2,7 @@
 
 **Cầu nối file-based, lossless và runtime-aware giữa Elementor ↔ ChatGPT/AI bên ngoài.**
 
-Phiên bản hiện tại: **0.24.0 — External AI Bridge**.
+Phiên bản hiện tại: **0.24.3 — External AI Bridge**.
 
 Cresco Layer không cố biến Elementor thành một chatbot và không thay Elementor bằng page builder riêng. Plugin giữ Elementor là nguồn sự thật cho document, widget, control, breakpoint, Global Styles, render, history và persistence; sau đó đóng gói những dữ liệu này thành một package mà AI bên ngoài có thể hiểu và trả kết quả về an toàn.
 
@@ -158,11 +158,11 @@ manifest.json
 
 ## Vì sao external export dùng Full Context?
 
-Trước đây task hint nhập trong Elementor có thể giúp Cresco lazy-load widget capability theo yêu cầu. Workflow 0.24 cố ý bỏ prompt khỏi Elementor, vì người dùng chỉ muốn export rồi mô tả công việc bên ChatGPT.
+Prompt thiết kế được viết sau khi file đã rời Elementor, nên Cresco không thể dựa vào task hint nhập trước để biết chính xác widget nào ChatGPT sẽ cần. External export vì vậy vẫn dùng **Full Context profile**, nhưng “Full” hiện có nghĩa là **full runtime awareness**, không phải hydrate toàn bộ control stack của mọi widget trong một REST request.
 
-Do đó external export ưu tiên **Full Context profile** để package chứa detailed capability của runtime thay vì phụ thuộc task hint. Package lớn hơn nhưng ChatGPT ít phải đoán hơn khi người dùng yêu cầu thêm widget hoặc tái cấu trúc giao diện sau khi file đã rời Elementor.
+Cụ thể, Cresco giữ **toàn bộ registry index** để AI biết những widget/element type nào thực sự tồn tại trong runtime, đồng thời hydrate detailed capability theo một budget an toàn. Target, editable types và read-only context types là bắt buộc và không được silently truncate; các construction candidate quan trọng được ưu tiên. Dynamic Tags và module runtime dùng metadata/summary compact để tránh làm package hoặc PHP request phình không kiểm soát.
 
-Exact Runtime sau đó dùng detailed `widgetCatalog`/`elementCatalog` từ Full Context làm construction set, nên external bundle có thể mang capability của toàn bộ widget/element đã đăng ký trong runtime hiện tại thay vì chỉ danh sách task-aware nhỏ.
+Exact Runtime ở browser reuse những capability detail server đã cung cấp và chỉ fetch phần còn thiếu trong bounded worker/fetch budget. Capability bắt buộc của target/context vẫn **fail-closed**; capability construction phụ có thể fail-soft và được ghi rõ trong coverage report. Cách này giữ độ chính xác runtime mà tránh double-enrich và giảm rủi ro timeout/out-of-memory khi Elementor/Pro/addon đăng ký catalog lớn.
 
 ## Runtime Control Registry
 
