@@ -52,6 +52,17 @@ final class Assets {
 			true
 		);
 
+		// This tiny preflight guard is intentionally safe on startup: it adds one delegated click
+		// listener only. It does not poll, observe the DOM or wrap fetch. Autosave/status checks run
+		// only after the user explicitly clicks an external Export button.
+		wp_enqueue_script(
+			'cresco-layer-export-target-sync',
+			CRESCO_LAYER_URL . 'assets/export-target-sync.js',
+			[ 'cresco-layer-editor-bootstrap' ],
+			CRESCO_LAYER_VERSION,
+			true
+		);
+
 		if ( $this->editor_script_localized ) { return; }
 		$this->editor_script_localized = true;
 		$local_ai = ( new LocalAISettings() )->editor_summary();
@@ -97,7 +108,7 @@ final class Assets {
 
 	private function is_safe_mode(): bool {
 		if ( ! isset( $_GET['cresco_safe'] ) ) { return false; } // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only rescue flag.
-		$value = strtolower( trim( sanitize_text_field( wp_unslash( (string) $_GET['cresco_safe'] ) ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only rescue flag.
+		$value = strtolower( trim( sanitize_text_field( wp_unslash( (string) $_GET['cresco_safe'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only rescue flag.
 		return in_array( $value, [ '1', 'true', 'yes', 'on' ], true );
 	}
 
