@@ -9,15 +9,21 @@ final class ContextResolver {
 	public const PROFILE_SMART = 'smart';
 	public const PROFILE_FULL = 'full';
 	public const PROFILES = [ self::PROFILE_SMART, self::PROFILE_FULL ];
-	private const DETAIL_BUDGET_WIDGETS = 24;
-	private const DETAIL_BUDGET_ELEMENTS = 12;
+	private const DETAIL_BUDGET_WIDGETS = 12;
+	private const DETAIL_BUDGET_ELEMENTS = 6;
 
 	private CapabilityScanner $scanner;
 	private RuntimeDiscovery $runtime;
+	private ExportRuntimeCatalog $exportRuntime;
 
-	public function __construct( ?CapabilityScanner $scanner = null, ?RuntimeDiscovery $runtime = null ) {
+	public function __construct(
+		?CapabilityScanner $scanner = null,
+		?RuntimeDiscovery $runtime = null,
+		?ExportRuntimeCatalog $exportRuntime = null
+	) {
 		$this->scanner = $scanner ?? new CapabilityScanner();
 		$this->runtime = $runtime ?? new RuntimeDiscovery( $this->scanner );
+		$this->exportRuntime = $exportRuntime ?? new ExportRuntimeCatalog();
 	}
 
 	public function resolve( array $editableElements, array $readOnlyContext = [], string $scope = 'document', string $profile = self::PROFILE_SMART ): array {
@@ -33,10 +39,9 @@ final class ContextResolver {
 		$this->filter_registered_roles( $roles, $index, $capabilityErrors );
 
 		if ( self::PROFILE_FULL === $profile ) {
-			// Full export keeps the entire runtime registry in registryIndex, but detailed control
-			// metadata is resource-bounded. Existing/editable types always win the budget; the rest
-			// stays index-only so external AI can still see what the runtime supports without forcing
-			// PHP to instantiate every Elementor control stack on every export.
+			// Keep the full registry as a light index, but never instantiate every control stack in
+			// the same REST request. Target/context types and common construction types win the detail
+			// budget; Exact Runtime can fetch any remaining construction capability separately.
 			foreach ( array_keys( (array) ( $index['widgets'] ?? [] ) ) as $name ) {
 				$name = (string) $name;
 				$roles['widgets'][ $name ] = $this->stronger_role( $roles['widgets'][ $name ] ?? '', 'full-profile' );
@@ -66,9 +71,9 @@ final class ContextResolver {
 		$breakpoints = $this->breakpoints( $siteErrors );
 		$designSystem = $this->design_system( $siteErrors );
 
-		ExportDiagnostics::stage( 'context.runtime-catalogs' );
-		$dynamicTags = $this->runtime->dynamic_tag_catalog();
-		$modules = $this->runtime->module_catalog();
+		ExportDiagnostics::stage( 'context.runtime-catalogs', [ 'strategy' => 'compact-export' ] );
+		$dynamicTags = $this->exportRuntime->dynamic_tags();
+		$modules = $this->exportRuntime->module_summary();
 		$dependencies = $this->runtime->dependency_map();
 
 		$controlStatus = $this->status_from_errors(
@@ -88,10 +93,11 @@ final class ContextResolver {
 		ExportDiagnostics::stage( 'context.complete', [
 			'loadedCapabilities' => $loadedCapabilities,
 			'errors' => count( $errors ),
+			'runtimeStrategy' => 'compact-export',
 		] );
 		return [
 			'profile' => $profile,
-			'resolver' => 'cresco-context-resolver/v2',
+			'resolver' => 'cresco-context-resolver/v3',
 			'registryIndex' => [
 				'widgets' => $index['widgets'] ?? [],
 				'elements' => $index['elements'] ?? [],
@@ -115,10 +121,12 @@ final class ContextResolver {
 			'dynamicTags' => [
 				'tags' => $dynamicTags['tags'] ?? [],
 				'groups' => $dynamicTags['groups'] ?? [],
+				'strategy' => (string) ( $dynamicTags['strategy'] ?? 'metadata-only' ),
 			],
 			'runtime' => [
-				'elementorModuleCount' => count( array_filter( (array) ( $modules['core'] ?? [] ), static fn( array $item ): bool => true === ( $item['active'] ?? null ) ) ),
-				'elementorProModuleCount' => count( array_filter( (array) ( $modules['pro'] ?? [] ), static fn( array $item ): bool => true === ( $item['active'] ?? null ) ) ),
+				'elementorModuleCount' => (int) ( $modules['core']['count'] ?? 0 ),
+				'elementorProModuleCount' => (int) ( $modules['pro']['count'] ?? 0 ),
+				'moduleDiscoveryStrategy' => (string) ( $modules['strategy'] ?? 'summary' ),
 				'dependencies' => $dependencies,
 			],
 			'capabilityCoverage' => [
@@ -137,6 +145,7 @@ final class ContextResolver {
 				'indexOnlyWidgets' => max( 0, count( (array) ( $index['widgets'] ?? [] ) ) - count( $widgets ) ),
 				'indexOnlyElements' => max( 0, count( (array) ( $index['elements'] ?? [] ) ) - count( $elements ) ),
 				'detailStrategy' => (string) ( $budget['strategy'] ?? 'bounded-detail' ),
+				'runtimeCatalogStrategy' => 'compact-export',
 				'budget' => $budget,
 				'dynamicTags' => (int) ( $dynamicTags['count'] ?? 0 ),
 				'errors' => count( $errors ),
