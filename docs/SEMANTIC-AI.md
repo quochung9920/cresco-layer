@@ -1,10 +1,19 @@
 # Cresco Semantic Local AI
 
-Cresco Layer 0.8 adds a semantic context and planning pipeline between Elementor and the configured local model.
+Cresco Layer 0.8 bổ sung pipeline semantic context + planning giữa Elementor và local model đã cấu hình.
 
-## Why semantic context
+## Vì sao cần semantic context?
 
-The local model does not receive a raw Elementor document or a full catalog dump. Cresco first translates the selected runtime element into a compact, purpose-oriented context. This reduces noise, prevents the model from inventing Elementor setting keys and makes small local models more useful.
+Local model không nhận raw Elementor document hoặc full catalog dump. Cresco chuyển selected runtime element thành context gọn, tập trung vào mục đích và capability thật.
+
+Mục tiêu:
+
+- giảm noise;
+- tránh model invent setting key;
+- giúp model local nhỏ vẫn reasoning hữu ích;
+- giữ execution deterministic.
+
+Pipeline:
 
 ```text
 Selected Elementor element
@@ -23,103 +32,161 @@ Selected Elementor element
 
 ## Semantic context
 
-The context schema is `cresco-layer-semantic-context/v1`. Its stable top-level blocks are:
+Schema:
 
-- `task`: the user's instruction and analysis goal;
-- `selectedElement`: the selected Elementor runtime element;
-- `expertCard`: semantic purpose, important parts, design rules and common failure patterns for the widget family;
-- `contextGraph`: summarized parent, siblings and direct children when neighbor context is enabled;
-- `effectiveState`: explicit, inherited and effective values by responsive device for executable skills;
-- `availableSkills`: only executable skills proven by the selected element's current Elementor capability metadata;
-- `designSystem`: safe summary of global/dynamic binding presence;
-- `constraints`: scope, preservation and execution rules;
-- `contextBudget`: metadata describing context trimming.
+```text
+cresco-layer-semantic-context/v1
+```
 
-Raw Elementor setting names are not the AI vocabulary. `availableSkills` exposes a semantic `property`, input kind, allowed options/units/ranges, devices and risk while keeping the exact skill ID required for deterministic execution.
+Các block chính:
 
-## Expert cards
+- `task` — user instruction + analysis goal.
+- `selectedElement` — selected Elementor runtime element.
+- `expertCard` — semantic purpose, important parts, design rules, common failure patterns.
+- `contextGraph` — parent/sibling/direct-child summary khi neighbor context bật.
+- `effectiveState` — explicit/inherited/effective values theo responsive device.
+- `availableSkills` — chỉ executable skills được runtime chứng minh.
+- `designSystem` — safe summary của global/dynamic bindings.
+- `constraints` — scope/preservation/execution rules.
+- `contextBudget` — metadata về trimming.
 
-`WidgetExpertRegistry` maps runtime element types into semantic families such as layout, heading, text, button, image, form, navigation, query, carousel, disclosure, video, icon, code and commerce. Third-party or unknown widgets fall back to the generic runtime-proven profile.
+AI không dùng raw Elementor setting name làm vocabulary chính. `availableSkills` expose semantic property/input rules nhưng vẫn giữ exact `skillId` cho deterministic execution.
 
-Expert cards are guidance, not execution code. Runtime capabilities remain the source of truth.
+## Expert Cards
+
+`WidgetExpertRegistry` nhóm runtime type thành semantic family như:
+
+```text
+layout
+heading
+text
+button
+image
+form
+navigation
+query
+carousel
+disclosure
+video
+icon
+code
+commerce
+```
+
+Third-party/unknown widget fallback về generic runtime-proven profile.
+
+Expert card là guidance, không tạo capability. Runtime metadata vẫn là source of truth.
 
 ## Responsive effective state
 
-`EffectiveValueResolver` reports each available device with:
+`EffectiveValueResolver` cho mỗi device biết:
 
-- whether a value is explicitly stored for that device;
-- the explicit value;
-- the effective value;
-- whether the effective value is explicit, inherited, a runtime default or unset;
-- the larger device from which an inherited value came.
+- có explicit value không;
+- explicit value;
+- effective value;
+- source của effective value: explicit/inherited/runtime-default/unset;
+- inherited từ device lớn nào.
 
-This lets the model reason about statements such as "mobile is still inheriting desktop padding" without reading raw responsive setting suffixes.
+Nhờ vậy model hiểu được câu như:
+
+> “Mobile vẫn đang inherit desktop padding.”
+
+mà không cần đọc raw responsive suffix.
 
 ## Planning contract
 
-The model must return `cresco-layer-local-ai-plan/v2` JSON. A plan contains:
+Model phải trả:
 
-- intent and confidence;
+```text
+cresco-layer-local-ai-plan/v2
+```
+
+Plan gồm:
+
+- intent/confidence;
 - summary;
 - diagnosis problem;
-- one or more evidence statements grounded in the semantic context;
-- requested skills with exact `skillId`, parameters and reason;
-- clarification questions when evidence is insufficient.
+- evidence statements dựa trên semantic context;
+- requested skills với exact `skillId`, params, reason;
+- clarification questions khi evidence chưa đủ.
 
-The full JSON Schema is included in the model system message on every analysis request. The system prompt also includes the Cresco skill parameter grammar for dimensions, sliders, numbers, switchers, selects, URLs and structured expert values.
+System prompt phải mang output schema + parameter grammar phù hợp cho dimensions, sliders, numbers, switchers, selects, URLs và structured values.
 
-The same responsive skill can be requested more than once when the parameter sets are genuinely different, for example desktop and mobile padding.
+Một responsive skill có thể được yêu cầu nhiều lần nếu params thật sự khác, ví dụ desktop padding và mobile padding.
 
 ## Prompt-injection boundary
 
-Page text, labels, captions, placeholders and `contentHint` values are explicitly described to the local model as untrusted data. They are context, not instructions. Only the user task and Cresco's system contract are instructions.
+Page text, label, caption, placeholder và `contentHint` là **untrusted data**, không phải instruction.
+
+Chỉ:
+
+- user task;
+- Cresco system contract
+
+mới là instruction authority.
 
 ## Runtime validation
 
-A structurally valid model plan is not considered executable yet. `PlanValidator` resolves every proposed step through the real `WidgetSkillRuntime` before Cresco marks the plan accepted.
+Plan đúng schema chưa có nghĩa executable.
 
-The validator rejects:
+`PlanValidator` resolve từng step qua real `WidgetSkillRuntime` và reject:
 
-- unknown or unavailable skills;
-- invalid units, ranges, options or responsive devices;
-- operations outside the selected element;
-- non-setting operations;
-- expert, structural or external-risk skills in semantic AI mode;
-- writes to Global-bound settings;
-- writes to Dynamic Tag-bound settings;
-- no-op changes;
-- contradictory values for the same native setting.
+- unknown/unavailable skill;
+- invalid unit/range/option/device;
+- operation ngoài selected element;
+- non-setting operation;
+- expert/structural/external-risk skill trong semantic AI mode;
+- write vào Global-bound setting;
+- write vào Dynamic Tag-bound setting;
+- no-op;
+- contradictory values cùng native setting.
 
-This produces a native before/after preview before the user can apply the plan.
+Kết quả là native before/after preview trước Apply.
 
 ## Local inference modes
 
 ### Browser / Local Bridge
 
-The WordPress server prepares and redacts the semantic context and planning contract. The browser sends that prepared request to the local model endpoint, then returns only the generated plan to WordPress. Cresco rebuilds the current context and validates the plan server-side before accepting it.
+WordPress chuẩn bị + redact context/contract. Browser gửi request đã chuẩn bị tới local model, sau đó gửi **plan result** về WordPress.
 
-Saved API tokens are never exposed to browser inference.
+Server rebuild current context và validate lại trước khi chấp nhận.
+
+Saved API token không expose sang browser inference.
 
 ### WordPress server direct
 
-The WordPress server sends the semantic request directly to the configured local endpoint. Ollama uses `/api/chat`; OpenAI-compatible local providers use `/chat/completions`.
+WordPress server gọi local endpoint trực tiếp.
+
+- Ollama: `/api/chat`.
+- OpenAI-compatible local providers: `/chat/completions`.
 
 ## Apply boundary
 
-Accepted plans are still not allowed to write Elementor directly. Before apply, the editor resolves every requested skill again against current live settings. Only `update-setting` and `remove-setting` operations for the selected element are accepted.
+Accepted plan vẫn không được write Elementor trực tiếp.
 
-All resolved operations execute inside one Elementor history transaction. Cresco snapshots touched live settings and attempts rollback if any operation in the batch fails.
+Trước Apply:
+
+```text
+re-resolve requested skills
+→ validate current live settings
+→ only update-setting/remove-setting cho selected element
+→ one Elementor history transaction
+```
+
+Cresco snapshot touched settings và rollback nếu batch execution lỗi.
 
 ## Accuracy strategy
 
-Cresco improves local-model accuracy by reducing the task rather than asking the model to memorize Elementor:
+Cresco tăng độ chính xác bằng cách **thu nhỏ bài toán**, không bắt model nhớ Elementor:
 
-1. runtime capabilities establish what is actually possible;
-2. semantic context explains the current state in a model-friendly vocabulary;
-3. expert cards explain what matters for the widget family;
-4. context budgeting removes unrelated noise;
-5. the full output schema and parameter grammar are supplied every time;
-6. diagnosis and evidence are mandatory before planning;
-7. exact skill IDs are whitelisted;
-8. the native Skill Runtime pre-validates every parameter;
-9. the user receives a preview before execution.
+1. runtime capability xác định cái gì có thể làm;
+2. semantic context giải thích current state;
+3. expert cards giải thích điều gì quan trọng;
+4. context budget loại noise;
+5. output schema + parameter grammar luôn được cung cấp;
+6. diagnosis + evidence là bắt buộc;
+7. exact skill IDs được whitelist;
+8. Skill Runtime pre-validates params;
+9. user xem Preview trước execution.
+
+Các phiên bản mới hơn có thể nâng schema/evidence model, nhưng trust boundary này phải được giữ.

@@ -1,55 +1,134 @@
-# Cresco Layer 0.19 Semantic Runtime Compiler
+# Cresco Layer 0.19 — Semantic Runtime Compiler
 
-Cresco Layer 0.19 focuses on the three accuracy gaps that matter most when an external AI is asked to reproduce a design inside Elementor: finding the right installed widget for the task, mapping semantic content through the live widget controls instead of core-only assumptions, and packaging a usable visual/context bundle.
+> **Tài liệu lịch sử:** mô tả các cải tiến ở 0.19. External workflow hiện tại đã lên 0.24+, nhưng các nguyên tắc runtime-first widget discovery và semantic binding vẫn là nền tảng quan trọng.
+
+Cresco Layer 0.19 tập trung vào ba khoảng trống độ chính xác khi external AI tái tạo thiết kế trong Elementor:
+
+1. chọn đúng widget đã được cài/đăng ký cho task;
+2. map semantic content qua live widget controls thay vì giả định core-only;
+3. đóng gói visual/context bundle đủ dùng.
 
 ## Task-aware runtime discovery
 
-Exact Runtime now considers the current AI request when selecting construction capabilities. It still starts from the current document, read-only context and the proven construction set, then adds only widget types that are present in Elementor's live registry and match either deterministic task hints or registry title/category/keyword metadata.
+Exact Runtime xét cả current AI request khi chọn construction capabilities.
 
-The export records this in `taskRuntimeDiscovery` with schema `cresco-task-runtime-discovery/v1`.
+Nó bắt đầu từ:
 
-No missing or unregistered widget is invented. A request such as "create an FAQ accordion" can therefore load the registered Accordion/Nested Accordion/Toggle detail even when that widget is not already present in the selected subtree.
+- current document types;
+- read-only context types;
+- proven construction set;
+
+sau đó chỉ bổ sung widget type nếu:
+
+- type thực sự tồn tại trong live Elementor registry;
+- task hint hoặc registry title/category/keyword cho thấy liên quan.
+
+Export ghi thông tin này trong:
+
+```text
+cresco-task-runtime-discovery/v1
+```
+
+Không invent widget thiếu/unregistered.
+
+Ví dụ task:
+
+> “create an FAQ accordion”
+
+có thể khiến Cresco tải Accordion/Nested Accordion/Toggle detail **nếu các type đó đang thực sự registered** dù chúng chưa xuất hiện trong selected subtree.
 
 ## Runtime semantic bindings
 
-`cresco-ai-mutation/v2` content shortcuts no longer blindly assume that every heading uses `title`/`header_size` or every button uses `text`/`link`. The compiler first validates `widgetIntent` against the active Elementor catalog, then emits a semantic shortcut only through a candidate control key that actually exists for that runtime widget.
+`cresco-ai-mutation/v2` content shortcut không được giả định mọi widget dùng cùng setting key.
 
-Examples:
+Ví dụ semantic text:
 
-- a core Heading may resolve `content.text` to `title`;
-- a third-party heading that exposes `headline` may resolve the same semantic content to `headline`;
-- semantic heading level is emitted only when a compatible runtime control such as `header_size`, `html_tag` or `tag` exists and accepts the requested level;
-- button label and URL similarly bind only to controls actually present in the runtime entry.
+```text
+content.text
+```
 
-Explicit `settings` still take precedence and remain subject to `SemanticPatchGuard`.
+có thể map thành:
 
-Widgets are not treated as arbitrary layout containers. A semantic widget with nested child nodes is rejected; structural children must be placed under a runtime-proven structural element such as a Container.
+- Core Heading → `title`.
+- Third-party heading → `headline` nếu runtime chứng minh control đó.
 
-## External AI bundle
+Semantic heading level chỉ emit khi runtime có control tương thích như:
 
-The editor adds an `Export AI Bundle` action after context preparation. It produces `cresco-ai-bundle-<target>.zip` containing:
+```text
+header_size
+html_tag
+tag
+```
 
-- `01-TASK.md`
-- `02-context.json`
-- `03-widget-guide.json`
-- `04-output-contract.json`
-- `manifest.json`
-- `current-desktop.png` when a same-origin browser raster capture succeeds
-- the selected reference image when provided
+và option requested hợp lệ.
 
-Raster capture is best-effort. It is generated from the selected target inside Elementor's preview iframe by cloning the rendered subtree with computed styles into an SVG `foreignObject`, then rasterizing that SVG to PNG. Browsers can refuse or taint rasterization when the target depends on cross-origin assets or unsupported rendering features. In that case the bundle remains valid without a raster file and the manifest marks the raster as unavailable; Cresco does not fabricate an image.
+Button label/URL cũng chỉ bind vào control thật.
 
-The ZIP writer is local and uncompressed, so no external JavaScript archive dependency is required.
+Explicit `settings` có ưu tiên cao hơn shortcut và vẫn qua `SemanticPatchGuard`.
 
-## Safety remains unchanged
+## Widget không phải arbitrary container
 
-0.19 does not weaken the existing boundaries:
+Semantic widget có nested child nodes tùy ý phải bị reject.
 
-- Elementor runtime remains authoritative.
-- Active Kit remains the design-system source of truth.
-- External AI does not own final Elementor IDs.
-- Semantic mutation remains delta-first.
-- Protected form/query/navigation/commerce/code behavior is preserved unless explicitly requested.
-- `MutationNormalizer` performs only deterministic semantics-preserving repair.
-- `SemanticPatchGuard` remains the final runtime/semantic authority before apply.
-- Existing `cresco-layer-patch/v1` and `cresco-layer-ai-result/v1` imports remain supported.
+Structural children nên đặt dưới runtime-proven structural element như Container.
+
+Điều này tránh việc model nhìn DOM rồi tự invent internal storage model cho widget phức tạp.
+
+## External AI Bundle ở 0.19
+
+Editor từng cung cấp action `Export AI Bundle` sau context preparation.
+
+ZIP lịch sử:
+
+```text
+cresco-ai-bundle-<target>.zip
+```
+
+có thể chứa:
+
+```text
+01-TASK.md
+02-context.json
+03-widget-guide.json
+04-output-contract.json
+manifest.json
+current-desktop.png
+reference image
+```
+
+External workflow mới hơn dùng bundle v4, nhưng nguyên tắc bundle self-contained vẫn còn.
+
+## Raster capture
+
+Raster là best-effort:
+
+```text
+selected target trong preview iframe
+→ clone subtree + computed styles
+→ SVG foreignObject
+→ canvas
+→ PNG
+```
+
+Có thể thất bại vì cross-origin asset hoặc unsupported rendering. Khi đó bundle vẫn hợp lệ và manifest phải ghi raster unavailable; Cresco không fabricate image.
+
+ZIP writer local, uncompressed, không cần external archive dependency.
+
+## Safety không thay đổi
+
+- Elementor runtime là authority.
+- Active Kit là design-system source of truth.
+- External AI không sở hữu final Elementor IDs.
+- Semantic mutation là delta-first.
+- Form/query/navigation/commerce/code behavior được preserve nếu user không yêu cầu đổi.
+- `MutationNormalizer` chỉ sửa deterministic, semantics-preserving issues.
+- `SemanticPatchGuard` là runtime/semantic authority trước Apply.
+- Legacy `cresco-layer-patch/v1` và `cresco-layer-ai-result/v1` vẫn có thể được support qua compatibility layer.
+
+## Giá trị kiến trúc còn giữ tới hiện tại
+
+Điểm quan trọng nhất của Semantic Runtime Compiler:
+
+> **Semantic intent chỉ có giá trị khi cuối cùng bind được vào control thực sự tồn tại trong runtime hiện tại.**
+
+AI không được phép biến semantic convenience thành một đường invent Elementor settings.

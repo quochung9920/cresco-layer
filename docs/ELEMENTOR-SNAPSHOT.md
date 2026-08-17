@@ -1,12 +1,12 @@
 # Full Elementor Runtime Snapshot v1
 
-`cresco-elementor-snapshot/v1` is the administrator-only configuration snapshot produced by Cresco Layer 0.5.0.
+`cresco-elementor-snapshot/v1` là snapshot cấu hình dành cho administrator, được giới thiệu trong Cresco Layer 0.5.0.
 
-The snapshot is intentionally broader than the widget catalog. Its goal is to collect every meaningful Elementor Core, Elementor Pro and registered addon configuration value that can be serialized safely at runtime, while preserving both an AI-friendly normalized representation and the closest safe raw representation available from WordPress/Elementor.
+Snapshot rộng hơn widget catalog. Mục tiêu là thu thập tối đa cấu hình Elementor Core, Elementor Pro và addon đã đăng ký mà runtime có thể serialize an toàn, đồng thời giữ cả representation dễ đọc và raw representation gần nguồn nhất có thể.
 
 ## Contract
 
-Every lazily loaded snapshot payload contains:
+Mỗi payload lazy-loaded có dạng:
 
 ```json
 {
@@ -26,38 +26,65 @@ Every lazily loaded snapshot payload contains:
 }
 ```
 
-`normalized` is stable, named data intended for inspection and AI reasoning. `raw` preserves serializable Elementor/WordPress runtime structures so new Elementor fields are not silently lost simply because Cresco does not understand them yet.
+- `normalized` — dữ liệu ổn định, có tên rõ, phù hợp inspection/AI reasoning.
+- `raw` — giữ runtime/WordPress structure có thể serialize để field Elementor mới không bị mất chỉ vì Cresco chưa hiểu.
 
-## Snapshot sections
+## Các section chính
 
-The index endpoint advertises these lazy sections:
+Index endpoint có thể expose:
 
-- `environment`: WordPress/PHP/Elementor/Elementor Pro versions, active theme and active plugin stack;
-- `global-settings`: Elementor-related WordPress options, multisite options and current-user Elementor editor metadata;
-- `features`: runtime Elementor feature/experiment definitions plus saved experiment states;
-- `breakpoints`: all and active Elementor breakpoint definitions exposed by the current runtime;
-- `active-kit`: active Site Kit, Site Settings, Global Colors, Global Fonts, settings/data and Kit post meta;
-- `dynamic-tags`: registered Dynamic Tags from the current Elementor runtime, including exposed controls;
-- `runtime`: Elementor/Elementor Pro module inventory, dependency-aware Pro capability signals and the lightweight widget/element registry;
-- `records`: Elementor-owned post types and an index of Elementor documents, templates, Theme Builder records, popups, custom fonts, custom icons, custom code and other recognized Elementor records.
+- `environment` — WordPress/PHP/Elementor/Pro version, active theme, plugin stack.
+- `global-settings` — Elementor-related options, multisite options, current-user editor metadata.
+- `features` — feature/experiment definitions + saved state.
+- `breakpoints` — all/active breakpoint definitions.
+- `active-kit` — active Site Kit, Site Settings, Global Colors/Fonts, settings/data/meta.
+- `dynamic-tags` — registered Dynamic Tags và metadata được runtime expose.
+- `runtime` — Core/Pro modules, dependency-aware Pro capabilities, lightweight widget/element registry.
+- `records` — Elementor-owned post types và index documents/templates/Theme Builder/popups/custom fonts/icons/code.
 
-Widget and element details are fetched separately through the runtime `CapabilityScanner`. Classic controls, Atomic/V4 controls and Atomic props schema are all represented.
+Widget/element detail được lấy riêng qua `CapabilityScanner`, bao gồm Classic controls và Atomic/V4 metadata khi runtime expose.
 
-Elementor-owned records are also fetched one-by-one. A record snapshot preserves its WordPress post fields, post meta, taxonomies, persisted Elementor document data, page settings and current-user working/autosave document data when Elementor exposes it.
+Elementor-owned record được tải từng record. Snapshot có thể giữ:
 
-## Runtime discovery v2
+- WordPress post fields;
+- post meta;
+- taxonomies;
+- persisted Elementor document data;
+- page settings;
+- current-user working/autosave data.
 
-Cresco 0.5.0 corrects two important Elementor 4.x runtime-discovery assumptions.
+## Runtime discovery
 
-Dynamic Tags are read from Elementor's `get_tags()` registry records using their registered `instance` instead of treating the registry record itself as the tag object. If Elementor Pro is active and the registry remains empty after registration is requested, Dynamic Tags coverage becomes `partial` rather than silently returning a trusted empty list.
+Cresco sửa hai giả định quan trọng với Elementor 4.x.
 
-Core/Pro module discovery now enumerates `get_modules_names()` and resolves each module with `get_modules($name)`. Cresco never calls `get_modules()` without its required module name. This prevents the Elementor Pro `ArgumentCountError` seen with the previous runtime scanner.
+### Dynamic Tags
 
-The runtime section also reports dependency-aware Pro capability signals. Licensed features whose external dependency (for example WooCommerce, ACF, Pods or Toolset) is not active are identified as `dependency-inactive`; they are not presented as live registered controls.
+Dynamic Tag được đọc từ registry record qua registered `instance`, không coi registry record tự nó là tag object.
+
+Nếu Elementor Pro active nhưng registry vẫn rỗng sau registration request:
+
+```text
+coverage = partial
+```
+
+thay vì trả trusted empty catalog.
+
+### Module discovery
+
+Module manager được đọc bằng:
+
+```text
+get_modules_names()
+→ get_modules($name)
+```
+
+Không gọi `get_modules()` thiếu argument. Điều này tránh `ArgumentCountError` trên một số Elementor Pro 4.x runtime.
+
+Runtime section còn phân biệt licensed feature với dependency active. Ví dụ WooCommerce/ACF/Pods/Toolset feature có thể tồn tại về license nhưng dependency không active; khi đó báo `dependency-inactive` thay vì coi là live capability.
 
 ## REST API
 
-All snapshot routes require `manage_options`.
+Mọi snapshot route yêu cầu `manage_options`.
 
 ```text
 GET /wp-json/cresco-layer/v1/elementor-snapshot
@@ -67,28 +94,59 @@ GET /wp-json/cresco-layer/v1/elementor-snapshot/element/{name}
 GET /wp-json/cresco-layer/v1/elementor-snapshot/record/{postId}
 ```
 
-The index includes a `downloadPlan` containing the section names, registered widget names, registered element names and recognized Elementor record IDs. The WordPress admin downloader executes that plan sequentially and assembles the final JSON in the browser. This prevents one giant PHP request from exhausting memory and isolates failures to the individual section/widget/element/record that failed.
+Index có `downloadPlan` chứa section names, registered widgets/elements và record IDs.
 
-## Secret handling
+Browser downloader chạy plan tuần tự:
 
-Cresco never intentionally exports credentials. The shared `SerializableSanitizer` redacts keys matching common secret/credential patterns, including passwords, API keys, access/refresh tokens, private keys, consumer/client/app secrets, license keys, SMTP passwords, webhook secrets, authorization values and nonces. Non-secret public configuration such as public keys remains available.
+```text
+index
+→ section từng phần
+→ widget từng phần
+→ element từng phần
+→ record từng phần
+→ ghép JSON cuối ở browser
+```
 
-It also redacts common secret-bearing URL query parameters and bearer tokens before output.
+Cách này tránh một PHP request khổng lồ gây memory exhaustion và cô lập failure theo từng mục.
 
-Unsupported runtime objects, resources, callbacks, object cycles, excessive nesting and bounded-size truncations are not stringified. They are omitted and their paths are reported under `omissions`.
+## Xử lý secret
+
+`SerializableSanitizer` phải redact key giống:
+
+- password;
+- API key;
+- access/refresh token;
+- private key;
+- consumer/client/app secret;
+- license key;
+- SMTP password;
+- webhook secret;
+- authorization value;
+- nonce.
+
+Secret-bearing URL query parameter và bearer token cũng phải được xử lý trước output.
+
+Unsupported runtime object/resource/callback, cycle, excessive nesting và bounded truncation không được stringify tùy tiện; chúng được omit và ghi path trong `omissions`.
 
 ## Coverage semantics
 
-A section is `complete` when its scanner completed without runtime exceptions. It is `partial` when the scanner recovered from one or more exceptions. Redactions and intentional non-serializable runtime omissions do not by themselves mark the section partial; they are expected safety behavior and are counted separately.
+- `complete` — scanner hoàn thành không có runtime exception/hidden partial.
+- `partial` — scanner recover được nhưng có phần không đọc được.
+- `failed` — phần đó không scan thành công.
 
-The browser-built snapshot aggregates both HTTP/request failures and each payload's internal `coverage.status`. Therefore the top-level snapshot cannot report `complete` when a section/widget/element/record returned `partial`, `failed` or `unavailable` inside an otherwise successful HTTP response.
+Redaction hoặc omission có chủ đích vì safety **không tự động** biến coverage thành partial.
 
-A failed addon widget therefore produces a partial snapshot with an explicit error instead of making the entire export fail or hiding the missing coverage.
+Browser-built snapshot phải aggregate cả HTTP failure lẫn `coverage.status` nội bộ. Một request HTTP 200 nhưng payload `partial` không được biến thành top-level `complete`.
 
-## Relationship to the AI package
+## Quan hệ với AI package
 
-The full snapshot is deliberately separate from `cresco-layer-ai-package/v2`. A full-site runtime snapshot can be very large and should not be injected into every AI edit request.
+Full snapshot là artifact riêng với `cresco-layer-ai-package/v2` vì có thể rất lớn.
 
-Cresco 0.5.0 adds `cresco-context-resolver/v1`. Normal AI exports use the `smart` profile: the package keeps a compact index of every registered type but expands only controls relevant to the editable scope/read-only context plus a bounded set of insertion candidates. A `full` profile is available when the AI genuinely needs detailed controls for every registered type.
+Normal AI editing nên dùng scoped/bounded context. Snapshot phù hợp cho:
 
-See `docs/AI-CONTEXT-RESOLVER.md` for the complete export/import context contract.
+- diagnostics;
+- runtime inspection;
+- compatibility investigation;
+- full-site knowledge export khi administrator chủ động yêu cầu.
+
+Không nhúng full snapshot vào mọi AI edit request.

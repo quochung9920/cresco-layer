@@ -1,78 +1,119 @@
 # Design Intelligence
 
-Cresco Layer 0.20 introduced a deterministic design-guidance layer to the external-AI context. Cresco Layer 0.21 adds a second `cresco-design-reasoning/v1` layer that converts those general principles into product/page-specific objectives, visual hierarchy, composition strategy, reference-image translation and quality gates.
+Cresco Layer 0.20 giới thiệu lớp hướng dẫn thiết kế deterministic cho external-AI context. Cresco Layer 0.21 bổ sung thêm `cresco-design-reasoning/v1` để chuyển các nguyên tắc chung thành objective, hierarchy, composition, reference translation và quality gate phù hợp từng product/page.
 
-Neither layer replaces Elementor Site Settings or creates a second token system. Active Elementor Kit values and the live Elementor runtime remain authoritative.
+Hai lớp này **không thay Elementor Site Settings** và không tạo token system song song. Active Elementor Kit và live runtime vẫn là source of truth.
 
-## UI/UX Pro Max inspiration
+## Nguồn tham khảo UI/UX Pro Max
 
-The design-quality model is informed by the public MIT-licensed project [`nextlevelbuilder/ui-ux-pro-max-skill`](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill), reviewed at revision `a38d04c3d5c298c851dbe5e6ee1965ee3de42cb5`.
+Mô hình chất lượng được tham khảo từ dự án MIT công khai:
 
-Cresco does **not** depend on that repository at runtime and does not import its large searchable datasets, Python search tooling or generated design-system files. Instead it adopts compatible high-level ideas that are useful for Elementor compilation:
+```text
+nextlevelbuilder/ui-ux-pro-max-skill
+revision: a38d04c3d5c298c851dbe5e6ee1965ee3de42cb5
+```
 
-- analyze product and page intent before picking style;
-- accessibility before decoration;
+Cresco không phụ thuộc runtime vào repo này và không import dataset lớn, Python search tool hay generated design systems của nó.
+
+Các ý tưởng cấp cao được kế thừa gồm:
+
+- hiểu product/page intent trước khi chọn style;
+- accessibility trước decoration;
 - touch/interaction safety;
-- performance and layout stability;
+- performance + layout stability;
 - visual consistency;
 - responsive/fluid layout;
-- typography and color legibility;
-- purposeful motion with reduced-motion support;
-- form feedback and behavioral preservation;
+- typography/color legibility;
+- motion có mục đích và hỗ trợ reduced motion;
+- form feedback + behavior preservation;
 - predictable navigation;
-- explicit design dials for variance, motion and density;
-- a pre-delivery quality checklist rather than style-only generation.
+- explicit variance/motion/density controls;
+- quality checklist trước delivery.
 
-The reference project is MIT licensed. Cresco records source repository, revision, license and integration mode inside exported design metadata for provenance.
+Provenance nguồn tham khảo được ghi trong exported design metadata.
 
 ## Design dials
 
-The AI panel exposes three optional dials. `Auto` lets Cresco infer a conservative starting point from the task.
+Panel có ba dial tùy chọn. `Auto` cho phép Cresco suy ra mức conservative từ task.
 
-- **Variance** — minimal/structured through balanced to bold/asymmetric.
-- **Motion** — subtle through standard to expressive.
-- **Density** — spacious through standard to dense.
+### Variance
 
-These dials do not directly write CSS or Elementor settings. They are design constraints provided to the external model together with the active Kit and runtime.
+Mức độ khác biệt của composition:
+
+```text
+minimal / structured
+→ balanced
+→ bold / asymmetric
+```
+
+### Motion
+
+```text
+subtle
+→ standard
+→ expressive
+```
+
+### Density
+
+```text
+spacious
+→ standard
+→ dense
+```
+
+Các dial chỉ là **design constraint** cho model. Chúng không tự ghi CSS hoặc Elementor setting.
 
 ## Context contracts
 
-`cresco-design-intelligence/v1` contains:
+### `cresco-design-intelligence/v1`
+
+Có thể chứa:
 
 - product archetype;
 - style keywords;
-- design dial values and tiers;
+- design dial values/tiers;
 - semantic spacing intent scale;
 - ordered quality priorities;
-- Active Kit availability summary;
-- design anti-patterns;
+- Active Kit availability;
+- anti-patterns;
 - core design principles.
 
-`cresco-design-reasoning/v1` then adds:
+### `cresco-design-reasoning/v1`
+
+Bổ sung:
 
 - page archetype;
 - audience signals;
 - product/page objective;
 - ordered visual hierarchy;
-- composition and proof strategy;
+- composition/proof strategy;
 - semantic emphasis/surface/depth vocabulary;
-- machine-readable critical/high/advisory quality gates;
+- critical/high/advisory quality gates;
 - reference-image adaptation rules;
-- a professional conflict-resolution order.
+- conflict-resolution order.
 
-The external model is asked to reuse the existing Elementor design language before inventing local values. Global Colors, Global Fonts, Dynamic Tags and behavioral bindings remain preserve-by-default.
+External model phải reuse design language của site trước khi invent local values. Global Colors, Global Fonts, Dynamic Tags và behavioral bindings đều preserve-by-default.
 
 ## Semantic design intent
 
-`cresco-semantic-design-intent/v1` defines the vocabulary accepted by `cresco-ai-mutation/v3`. Common properties include layout direction/alignment/gap/width/padding, typography and colors, responsive variants and accessibility intent.
+`cresco-semantic-design-intent/v1` định nghĩa vocabulary mà `cresco-ai-mutation/v3` có thể dùng.
 
-The vocabulary intentionally stays smaller than Elementor's control surface. If a requested property cannot be represented safely by semantic intent, the model may use explicit runtime-proven `settings`; those settings still pass through the normal semantic guard.
+Các nhóm intent phổ biến:
 
-The reasoning layer chooses *what the design should prioritize*. `SemanticDesignCompiler` still decides whether the requested layout/style values can be expressed through exact controls in the active Elementor installation.
+- layout direction/alignment/gap/width/padding;
+- typography;
+- colors;
+- responsive variants;
+- accessibility intent.
 
-## Quality hierarchy
+Vocabulary cố ý nhỏ hơn toàn bộ Elementor control surface. Nếu semantic intent không đủ, model có thể dùng explicit runtime-proven `settings`; chúng vẫn phải qua semantic/runtime validation.
 
-The default decision order is:
+`Design Reasoning` quyết định **nên ưu tiên điều gì**. `SemanticDesignCompiler` quyết định **runtime hiện tại có biểu đạt được không**.
+
+## Thứ tự chất lượng
+
+Thứ tự mặc định:
 
 ```text
 accessibility + behavior safety
@@ -85,6 +126,14 @@ accessibility + behavior safety
   -> decorative polish
 ```
 
-Cresco should never trade readable contrast, keyboard focus, touch usability, reduced-motion behavior or preserved form/query/navigation behavior for closer decorative similarity to a reference image.
+Không được đánh đổi contrast dễ đọc, keyboard focus, touch usability, reduced-motion hoặc form/query/navigation behavior để giống reference image hơn về mặt trang trí.
 
-The combined Design Intelligence + Design Reasoning layers are meant to make external AI output more coherent, product-aware and professionally constrained while keeping Elementor itself as the editable source of truth.
+## Mục tiêu cuối
+
+Design Intelligence + Design Reasoning giúp external AI:
+
+- hiểu mục tiêu giao diện rõ hơn;
+- tạo composition có chủ đích hơn;
+- nhất quán với site hiện tại hơn;
+- ít invent local design value hơn;
+- nhưng vẫn để Elementor làm source of truth và Cresco quyết định runtime legality.

@@ -1,16 +1,35 @@
-# Cresco Layer — Safe AI Exchange Boundary
+# Ranh giới Safe AI Exchange của Cresco Layer
 
-Version introduced: **0.15.1**
+Phiên bản giới thiệu: **0.15.1**.
 
-This document explains the boundary between **what already exists in Elementor** and **what the AI is allowed to change**.
+Tài liệu này giải thích ranh giới giữa:
 
-## Why this boundary exists
+- dữ liệu **đã tồn tại trong Elementor**;
+- dữ liệu **AI thực sự được phép thay đổi**.
 
-An AI export contains a large amount of current Elementor state so the model can understand the page: containers, widgets, settings, responsive values, Site Settings and live runtime controls. That exported state is **context**, not a template that should be copied back into Elementor.
+## Vì sao cần ranh giới này?
 
-Before 0.15.1, a small request such as “add a marquee below this hero” could be implemented by copying the whole exported subtree, appending one new element and returning `replace-element` for the root. If any exported value had been shortened or redacted, that placeholder could then overwrite the real live value. A deep serializer limit made this visible as literal `[TRUNCATED]` values and broken widget controls.
+AI export chứa nhiều state hiện tại để model hiểu page:
 
-0.15.1 separates those responsibilities explicitly.
+- containers/widgets;
+- settings;
+- responsive values;
+- Site Settings;
+- live runtime controls.
+
+Đó là **context để đọc**, không phải template phải copy ngược trở lại Elementor.
+
+Trước 0.15.1, một yêu cầu nhỏ như “thêm marquee dưới hero” có thể bị AI thực hiện theo cách nguy hiểm:
+
+```text
+copy toàn bộ exported subtree
+→ thêm node mới
+→ replace-element root
+```
+
+Nếu exported context có field bị redact/truncate, placeholder đó có thể overwrite live value thật.
+
+Vì vậy Cresco tách source context khỏi mutation output.
 
 ## Mental model
 
@@ -21,11 +40,11 @@ LIVE ELEMENTOR
     v
 READ-ONLY SOURCE CONTEXT
     |
-    | AI reasons about existing UI
+    | AI hiểu UI hiện tại
     v
 DELTA MUTATION OUTPUT
     |
-    | Cresco validates scope + runtime controls
+    | Cresco validate scope + runtime
     v
 PREVIEW
     |
@@ -33,38 +52,47 @@ PREVIEW
 APPLY TO LIVE ELEMENTOR
 ```
 
-The important rule is:
+Rule quan trọng:
 
-> **Existing Elementor data may be read by AI, but it must not be echoed back merely to preserve it. Only the intended change should be returned.**
+> **AI có thể đọc existing Elementor data nhưng không được echo lại chỉ để “giữ nguyên”. Result chỉ nên chứa thay đổi thật sự được yêu cầu.**
 
 ## Read-only source context
 
-The export policy identifies these paths as read-only reference data:
+Các path điển hình:
 
-- `document.content`
-- `elementContext`
-- `elementStates`
+```text
+document.content
+elementContext
+elementStates
+```
 
-The AI may use these fields to understand current content, IDs, hierarchy and effective settings. It must not copy the existing subtree into the mutation result when the task only adds or changes a small part.
+AI dùng chúng để hiểu content, ID, hierarchy, effective settings. Với task nhỏ, không copy entire existing subtree vào mutation result.
 
-## Delta-first mutation model
+## Delta-first mutation
 
-For normal design work, prefer the smallest operation that expresses the requested change.
-
-| User intent | Preferred operation | Why |
+| User intent | Operation ưu tiên | Lý do |
 |---|---|---|
-| Add a new section/widget/container | `insert-element` | Existing content is untouched |
-| Change one native widget/container control | `update-setting` | Only that setting changes |
-| Remove one setting override | `remove-setting` | Elementor can fall back to inherited/default value |
-| Reorder/move an existing element | `move-element` | Existing element data is preserved |
-| Delete an explicitly requested element | `remove-element` | Narrow destructive action |
-| Fully rebuild an exact target | `replace-element` | Only for explicit complete rebuilds |
+| Thêm section/widget/container | `insert-element` | Existing content không bị chạm |
+| Đổi một native control | `update-setting` | Chỉ setting đó thay đổi |
+| Bỏ override | `remove-setting` | Elementor fallback về inherited/default |
+| Reorder/move | `move-element` | Giữ dữ liệu element |
+| Xóa element được yêu cầu rõ | `remove-element` | Destructive action có phạm vi nhỏ |
+| Rebuild hoàn toàn target | `replace-element` | Chỉ dùng khi explicit full rebuild |
 
-`replace-element`, `replace-settings`, `remove-element` and `replace-document` are classified as destructive operations. They are not the default way to make incremental visual changes.
+Các operation destructive:
 
-### Example: add a marquee below an existing hero
+```text
+replace-element
+replace-settings
+remove-element
+replace-document
+```
 
-Correct:
+không phải default cho visual tweak bình thường.
+
+## Ví dụ: thêm marquee dưới hero
+
+Đúng — chỉ insert phần mới:
 
 ```json
 {
@@ -91,21 +119,24 @@ Correct:
 }
 ```
 
-Incorrect for an incremental addition:
+Không nên với incremental addition:
 
 ```text
-copy current 3ed4781 subtree
+copy subtree 3ed4781
 + append marquee
 + replace-element 3ed4781
 ```
 
-The second pattern unnecessarily takes ownership of every existing heading, icon, form setting, dynamic value and unknown persisted field.
+Pattern thứ hai vô tình nhận ownership của toàn bộ heading/icon/form/dynamic value/unknown fields hiện có.
 
-## Full-tree AI results are protected
+## Full-tree result được bảo vệ
 
-`cresco-layer-ai-result/v1` can still describe a complete Elementor tree. On an **empty construction target**, Cresco may compile that result to `replace-element` automatically.
+`cresco-layer-ai-result/v1` có thể mô tả complete Elementor tree.
 
-On a target that already contains settings, children or other persisted data, Cresco 0.15.1 refuses an implicit full-tree replacement. A complete rebuild must be explicit:
+- Nếu construction target thật sự rỗng, Cresco có thể compile full tree thành replacement.
+- Nếu target đã có settings/children/persisted data, implicit replacement phải bị chặn.
+
+Complete rebuild cần explicit intent:
 
 ```json
 {
@@ -124,18 +155,16 @@ On a target that already contains settings, children or other persisted data, Cr
 }
 ```
 
-Use this only when the user actually requested a complete rebuild of that exact target.
-
 ## Serialization integrity
 
-The export sanitizer still removes secrets and protects against pathological payloads, but the normal recursion ceiling is now high enough for deeply nested Elementor structures. The old depth of 14 could reach a legitimate nested widget/control value and replace it with `[TRUNCATED]`; the ceiling is now 64.
+Export sanitizer phải bảo vệ secret nhưng cũng không được truncate normal Elementor tree ở depth thông thường.
 
-The safety boundary is deliberately two-sided:
+Safety có hai phía:
 
-1. **Export side:** normal Elementor trees should remain lossless instead of being truncated at ordinary nesting depths.
-2. **Import side:** if a hard-limit placeholder is ever present anyway, Cresco blocks it before Preview or Apply.
+1. **Export:** legitimate Elementor data phải lossless trong budget.
+2. **Import:** nếu hard-limit placeholder xuất hiện, Cresco phải chặn trước Preview/Apply.
 
-Blocked serialization markers:
+Các marker bị block:
 
 ```text
 [TRUNCATED]
@@ -143,23 +172,23 @@ Blocked serialization markers:
 __cresco_truncated__
 ```
 
-This means a placeholder from an AI context package cannot become a real Elementor setting value.
+Placeholder từ context không được trở thành real Elementor setting.
 
-## Native-control policy remains authoritative
+## Native-control policy
 
-This safety change does not relax runtime validation.
+Safe exchange không làm yếu runtime validation.
 
-AI-generated changes should still follow these rules:
+AI vẫn phải:
 
-- Use live Elementor native controls whenever the runtime exposes them.
-- Use Container `gap`, row gap or column gap for sibling rhythm instead of margin chains.
-- Do not invent widget settings or responsive suffixes.
-- Respect allowed units, options, ranges and control value shapes.
-- Use `custom_css` only when no native control in the current runtime can express the required result.
+- dùng live native controls khi có;
+- ưu tiên Container `gap`/row-gap/column-gap cho sibling rhythm;
+- không invent widget setting/responsive suffix;
+- tuân unit/options/ranges/value shape;
+- chỉ dùng `custom_css` khi runtime không có native path phù hợp.
 
-## Export contract added in 0.15.1
+## Exchange policy
 
-Every REST AI export is decorated with:
+Policy lịch sử mô tả separation:
 
 ```json
 {
@@ -190,36 +219,19 @@ Every REST AI export is decorated with:
 }
 ```
 
-The same contract is also appended to the human-readable AI instructions inside the export.
+External workflow mới còn có `cresco-external-exchange-policy/v1`, nhưng nguyên tắc source-context read-only + delta-first vẫn không đổi.
 
-## Result
-
-The intended workflow is now:
+## Kết quả mong muốn
 
 ```text
-Select target in Elementor
-        |
-        v
-Export for AI
-        |
-        v
-AI reads current source context
-        |
-        | returns only requested change
-        v
-Delta patch
-        |
-        v
-Placeholder guard
-        |
-        v
-Runtime + scope validation
-        |
-        v
-Preview
-        |
-        v
-Apply
+Select target
+→ Export
+→ AI đọc current source context
+→ AI trả only intended delta
+→ Placeholder guard
+→ Runtime + scope validation
+→ Preview
+→ Apply
 ```
 
-A change in one new component no longer needs to take ownership of the complete existing section. This reduces accidental overwrites, duplicate reconstruction and corruption from incomplete exported context while retaining explicit full-rebuild support when that is actually the requested operation.
+Một component mới không cần nhận ownership của toàn section. Điều này giảm accidental overwrite, duplicate reconstruction và corruption do context không đầy đủ.

@@ -1,45 +1,59 @@
 # Professional Design Reasoning
 
-Cresco Layer 0.21 adds `cresco-design-reasoning/v1`, a deterministic design-brief layer for external AI. It sits above Exact Runtime and Widget Intelligence and below the final AI mutation contract.
+Cresco Layer 0.21 bổ sung `cresco-design-reasoning/v1`, một lớp design brief deterministic dành cho external AI. Lớp này nằm **trên Exact Runtime + Widget Intelligence** và **dưới output mutation contract**.
 
-The goal is not to make Cresco another design-system product. Elementor Active Kit remains the editable source of truth. Design Reasoning helps an external model decide **what hierarchy and composition are appropriate**, while Cresco continues to decide **which Elementor widgets and controls are actually legal**.
+Mục tiêu không phải biến Cresco thành một design-system product. Active Elementor Kit vẫn là editable source of truth.
 
-## UI/UX Pro Max reference
+Phân công trách nhiệm:
 
-The reasoning workflow is informed by the public MIT-licensed project `nextlevelbuilder/ui-ux-pro-max-skill`, reviewed at revision `a38d04c3d5c298c851dbe5e6ee1965ee3de42cb5`.
+```text
+External AI / Design Reasoning
+→ quyết định hierarchy, composition, product/page intent
 
-Cresco adopts compatible concepts such as:
+Cresco / Exact Runtime
+→ quyết định widget/control nào thực sự hợp lệ
+```
 
-- analyze product/page intent before picking a visual style;
-- accessibility and interaction safety before decoration;
-- explicit variance, motion and density controls;
-- product/page-specific design reasoning;
-- quality checks for responsive layout, typography, forms, navigation and performance;
-- a pre-delivery checklist rather than style-only generation.
+## Nguồn tham khảo
 
-Cresco does **not** vendor the reference project's searchable datasets, Python search tool or generated design systems. There is no runtime dependency. The source repository, revision, license and integration mode are exported for provenance.
+Workflow tham khảo các khái niệm từ dự án MIT công khai `nextlevelbuilder/ui-ux-pro-max-skill` tại revision:
 
-## Export contract
+```text
+a38d04c3d5c298c851dbe5e6ee1965ee3de42cb5
+```
 
-`designReasoning` contains:
+Các khái niệm được áp dụng ở mức nguyên tắc:
 
-- `productArchetype` — SaaS, dashboard, commerce, service, editorial, portfolio or general web;
-- `pageArchetype` — landing, dashboard, pricing, checkout, article, portfolio, lead generation or content section;
-- `audienceSignals` — conservative task-derived usage signals;
-- `objective` — the design outcome Cresco expects the region to serve;
-- `visualHierarchy` — ordered attention priorities;
-- `compositionStrategy` — recommended composition patterns;
-- `pageStrategy` — action, proof and rhythm guidance for the page type;
-- `designVocabulary` — semantic emphasis, surface, depth and spacing roles;
-- `qualityGates` — critical, high and advisory checks;
-- `referenceTranslation` — how to adapt a supplied reference image through the current site and Elementor runtime;
-- `antiPatterns` — product/task-specific failure modes;
-- `decisionOrder` — the order to resolve conflicts between usability, hierarchy, runtime fit and decorative polish;
-- `elementorTranslation` — final hand-off rules into semantic mutation v3.
+- phân tích product/page intent trước style;
+- accessibility + interaction safety trước decoration;
+- variance/motion/density controls;
+- reasoning theo product/page cụ thể;
+- quality checks cho responsive, typography, forms, navigation, performance;
+- checklist trước delivery.
+
+Cresco không vendor dataset/search tooling/Python/generated design system từ repo tham khảo và không có runtime dependency vào nó.
+
+## Contract `designReasoning`
+
+Các field có thể gồm:
+
+- `productArchetype` — SaaS, dashboard, commerce, service, editorial, portfolio hoặc general web.
+- `pageArchetype` — landing, dashboard, pricing, checkout, article, portfolio, lead generation hoặc content section.
+- `audienceSignals` — tín hiệu conservative suy ra từ task.
+- `objective` — kết quả thiết kế vùng/page cần đạt.
+- `visualHierarchy` — thứ tự attention priority.
+- `compositionStrategy` — pattern composition khuyến nghị.
+- `pageStrategy` — action/proof/rhythm guidance.
+- `designVocabulary` — semantic emphasis/surface/depth/spacing roles.
+- `qualityGates` — critical/high/advisory checks.
+- `referenceTranslation` — cách chuyển reference image qua site/runtime hiện tại.
+- `antiPatterns` — failure modes theo product/task.
+- `decisionOrder` — thứ tự xử lý conflict.
+- `elementorTranslation` — rule hand-off sang semantic mutation v3.
 
 ## Decision order
 
-The default professional priority is:
+Priority mặc định:
 
 ```text
 accessibility + behavior safety
@@ -52,11 +66,11 @@ accessibility + behavior safety
   -> decorative polish
 ```
 
-This prevents a visually attractive reference from overriding accessibility, form behavior, responsive correctness or Elementor-native semantics.
+Một reference đẹp không được override accessibility, form behavior, responsive correctness hoặc Elementor-native semantics.
 
-## Reference images
+## Reference image
 
-When a reference image is supplied, Cresco asks the external model to extract:
+Khi có reference image, model được yêu cầu phân tích:
 
 - visual hierarchy;
 - section composition;
@@ -69,19 +83,45 @@ When a reference image is supplied, Cresco asks the external model to extract:
 - imagery treatment;
 - visible interaction/motion cues.
 
-The external model should then translate those qualities through Widget Intelligence, Active Kit and Exact Runtime. It should not blindly copy raw pixel values, framework markup, brand identity or unsupported interaction behavior.
+Sau đó chuyển các quality này qua:
+
+```text
+Widget Intelligence
++ Active Kit
++ Exact Runtime
+```
+
+Không copy mù raw pixel, framework markup, brand identity hoặc interaction mà runtime không hỗ trợ.
 
 ## Quality gates
 
-Critical gates cover readable contrast, visible focus, touch usability and preservation of behavioral/external configuration. High-priority gates cover responsive overflow, hierarchy, Active Kit consistency and layout stability. Advisory gates cover purposeful motion, richer product proof and section rhythm.
+### Critical
 
-These gates are design guidance for the external model. Runtime legality and mutation safety are still enforced by Cresco's compiler, Mutation Normalizer, SemanticPatchGuard and post-apply verification.
+- readable contrast;
+- visible focus;
+- touch usability;
+- behavior/external configuration preservation.
+
+### High priority
+
+- responsive overflow;
+- hierarchy;
+- Active Kit consistency;
+- layout stability.
+
+### Advisory
+
+- purposeful motion;
+- richer product proof;
+- section rhythm.
+
+Quality gate ở đây là **design guidance**. Runtime legality và mutation safety vẫn do compiler, `MutationNormalizer`, `SemanticPatchGuard` và post-apply verification enforce.
 
 ## AI Bundle
 
-AI Bundle v3 adds `06-design-reasoning.json` as a standalone file. `01-TASK.md` points the model to this brief before it returns a mutation.
+Ở AI Bundle v3, `06-design-reasoning.json` là file riêng và task brief hướng model đọc nó trước khi trả mutation.
 
-The intended sequence is:
+Luồng mong muốn:
 
 ```text
 Task + reference
@@ -91,7 +131,7 @@ Task + reference
   -> cresco-ai-mutation/v3
   -> SemanticDesignCompiler
   -> validation / preview / apply
-  -> rendered visual verification
+  -> rendered verification
 ```
 
-External AI should return only the final semantic mutation. It should not return design analysis prose or echo the reasoning context.
+AI bên ngoài chỉ nên trả final mutation/result theo contract, không trả thêm design-analysis prose nếu package yêu cầu JSON importable.

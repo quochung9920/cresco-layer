@@ -1,72 +1,115 @@
 # Cresco Local AI Manager
 
-Cresco Layer 0.7 introduces an administrator-only Local AI Manager inside the existing Cresco Layer page.
+Cresco Layer 0.7 giới thiệu Local AI Manager dành cho administrator trong Cresco admin.
 
-## Product boundary
+## Ranh giới sản phẩm
 
-Local AI is an analysis and planning layer, not an Elementor executor.
+Local AI là **lớp phân tích và lập kế hoạch**, không phải Elementor executor.
 
 ```text
 User request
-  -> deterministic router when possible
-  -> local AI analysis for ambiguous/complex requests
+  -> deterministic router khi có thể
+  -> local AI analysis cho task mơ hồ/phức tạp
   -> cresco-layer-local-ai-plan/v1
-  -> validate exact skill IDs against the selected runtime skill registry
+  -> validate exact skill IDs với selected runtime skill registry
   -> preview/risk policy
   -> Cresco Skill Runtime
   -> Elementor
 ```
 
-The model is never allowed to invent Elementor setting keys, emit arbitrary CSS as a replacement for native controls, write the document directly, execute JavaScript, escape the selected scope or bypass Cresco validation.
+Model không được:
 
-## Providers
+- invent Elementor setting key;
+- dùng arbitrary CSS thay native control;
+- ghi document trực tiếp;
+- execute JavaScript;
+- thoát selected scope;
+- bypass Cresco validation.
 
-The manager exposes adapters for:
+## Provider hỗ trợ
 
-- Ollama (`http://127.0.0.1:11434`, `/api/version`, `/api/tags`, `/api/chat`)
-- LM Studio OpenAI-compatible API (`http://127.0.0.1:1234/v1`, `/models`, `/chat/completions`)
-- llama.cpp server (`http://127.0.0.1:8080/v1`, `/models`, `/chat/completions`)
-- a custom OpenAI-compatible local API
+Manager có adapter cho:
 
-The endpoint policy accepts only localhost, loopback, RFC1918 private IPv4 ranges, `host.docker.internal`, or `.local` hosts. This prevents the Local AI module from becoming a generic remote HTTP relay.
+- Ollama — `http://127.0.0.1:11434`, `/api/version`, `/api/tags`, `/api/chat`.
+- LM Studio OpenAI-compatible — `http://127.0.0.1:1234/v1`, `/models`, `/chat/completions`.
+- llama.cpp server — `http://127.0.0.1:8080/v1`, `/models`, `/chat/completions`.
+- custom OpenAI-compatible local API.
+
+Endpoint policy chỉ chấp nhận local/private host như:
+
+- localhost/loopback;
+- RFC1918 private IPv4;
+- `host.docker.internal`;
+- `.local` host.
+
+Mục tiêu là không biến Local AI module thành generic remote HTTP relay.
 
 ## Connection modes
 
 ### Browser / Local Bridge
 
-Recommended when WordPress is hosted remotely. The browser running Elementor/Cresco talks to the local endpoint on the user's computer. WordPress does not need network access to that machine.
+Khuyến nghị khi WordPress nằm trên remote server nhưng model chạy trên máy người dùng.
 
-Saved API tokens are intentionally not exposed to browser-mode JavaScript. Use an unauthenticated trusted local endpoint/bridge or server-direct mode when an Authorization header is required.
+```text
+browser đang chạy Elementor/Cresco
+→ local model endpoint trên máy user
+```
+
+WordPress server không cần truy cập máy local.
+
+Saved API token **không được expose sang browser mode JavaScript**. Nếu endpoint cần Authorization header, dùng trusted local bridge không auth hoặc server-direct mode phù hợp.
 
 ### WordPress server direct
 
-Use when Ollama/LM Studio/llama.cpp is reachable from the PHP/WordPress host itself. In this mode `127.0.0.1` means the WordPress server.
+Dùng khi PHP/WordPress host truy cập được Ollama/LM Studio/llama.cpp.
+
+Trong mode này:
+
+```text
+127.0.0.1 = WordPress server
+```
+
+không phải máy browser của user.
 
 ## Settings
 
-The administrator can configure:
+Administrator có thể cấu hình:
 
-- enable/disable Local AI;
-- provider and connection mode;
-- private endpoint and optional token;
+- bật/tắt Local AI;
+- provider + connection mode;
+- private endpoint + optional token;
 - analysis/planning model;
 - optional vision model;
-- temperature, context window and maximum output tokens;
+- temperature;
+- context window;
+- maximum output tokens;
 - minimum confidence;
 - preview requirement;
-- SAFE-only auto apply policy flag;
-- parent/sibling context inclusion;
+- SAFE-only auto-apply policy flag;
+- parent/sibling context;
 - local canvas screenshot permission.
 
-Sensitive-context redaction is forced on and cannot be disabled in 0.7.
+Sensitive-context redaction là bắt buộc ở 0.7.
 
 ## Diagnostics
 
-The admin panel can test the active route, discover installed models and verify the selected analysis model. Browser mode performs its connectivity/model checks in the browser; server-direct mode runs through the WordPress HTTP client.
+Admin panel có thể:
+
+- test active route;
+- discover installed models;
+- verify selected analysis model.
+
+Browser mode chạy connectivity/model checks trong browser; server-direct dùng WordPress HTTP client.
 
 ## Planning schema
 
-Local AI output is constrained to `cresco-layer-local-ai-plan/v1`:
+Local AI output bị giới hạn bởi:
+
+```text
+cresco-layer-local-ai-plan/v1
+```
+
+Ví dụ:
 
 ```json
 {
@@ -77,7 +120,10 @@ Local AI output is constrained to `cresco-layer-local-ai-plan/v1`:
   "requestedSkills": [
     {
       "skillId": "control.padding",
-      "params": { "device": "mobile", "value": "20px" },
+      "params": {
+        "device": "mobile",
+        "value": "20px"
+      },
       "reason": "Improve mobile spacing"
     }
   ],
@@ -85,8 +131,28 @@ Local AI output is constrained to `cresco-layer-local-ai-plan/v1`:
 }
 ```
 
-Every `skillId` must already exist in the selected Elementor element's compiled Cresco skill registry. Validation fails closed for unknown skills.
+Mỗi `skillId` phải tồn tại trong compiled Cresco skill registry của selected Elementor element. Unknown skill → fail-closed.
 
-## Current scope
+## Scope của 0.7
 
-0.7 provides configuration, provider abstraction, model discovery, browser/server connection modes, diagnostics and the strict planning contract. The next integration layer can feed the selected widget Context Graph to the configured model and pass validated plans into the existing Skill Runtime without changing this trust boundary.
+0.7 tập trung vào:
+
+- configuration;
+- provider abstraction;
+- model discovery;
+- browser/server connection modes;
+- diagnostics;
+- strict planning contract.
+
+Execution vẫn phải đi qua Skill Runtime/runtime validation. Local AI không được trở thành đường tắt bỏ qua trust boundary.
+
+## Quan hệ với các phiên bản sau
+
+Các phiên bản Local AI sau này bổ sung semantic context, evidence validation và task-aware skill retrieval. Tuy nhiên invariant từ 0.7 vẫn giữ:
+
+```text
+AI proposes
+→ Cresco validates
+→ deterministic runtime executes
+→ Elementor persists/renders
+```

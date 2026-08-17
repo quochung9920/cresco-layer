@@ -1,24 +1,30 @@
 # Cresco AI Bundle v3
 
-Cresco Layer 0.21 packages the prepared external-AI context into a local ZIP so an external model receives the task, Elementor runtime knowledge, design intelligence, professional design reasoning, output contract and visual references as one coherent hand-off.
+> **Tài liệu lịch sử:** mô tả AI Bundle ở giai đoạn Cresco Layer 0.21. External workflow 0.24 hiện dùng `cresco-ai-bundle/v4`; xem `EXTERNAL-AI-WORKFLOW.md` và `SCHEMA-REFERENCE.md` cho contract mới nhất.
 
-Schema: `cresco-ai-bundle/v3`
+Cresco Layer 0.21 đóng gói context đã chuẩn bị cho AI bên ngoài thành một ZIP local để model nhận đồng thời task, kiến thức runtime Elementor, design intelligence, professional design reasoning, output contract và visual reference trong một hand-off thống nhất.
 
-Default files:
+Schema của giai đoạn này:
 
-- `01-TASK.md` — concise goal, target, placement, product/page design brief, widget/ID/output rules, decision order and quality priorities.
-- `02-context.json` — complete prepared `cresco-ai-context/v3`.
-- `03-widget-guide.json` — Widget Intelligence, Construction Plan, Semantic Bindings, Structure Grammar, semantic design-intent vocabulary and control examples.
-- `04-output-contract.json` — AI response contract, preferring `cresco-ai-mutation/v3`.
-- `05-design-intelligence.json` — design dials, professional UI/UX guidance, Active Kit design system, responsive context and mutation boundary.
-- `06-design-reasoning.json` — product/page reasoning profile, visual hierarchy, composition strategy, reference-image translation and machine-readable quality gates.
-- `manifest.json` — bundle metadata and the actual file list.
-- `current-desktop.png` — optional best-effort raster capture of the selected target in Elementor preview.
-- `reference-<filename>` — optional reference image selected in the Cresco AI panel.
+```text
+cresco-ai-bundle/v3
+```
+
+## Các file mặc định
+
+- `01-TASK.md` — mục tiêu, target, placement, brief sản phẩm/trang, rule widget/ID/output, decision order và quality priorities.
+- `02-context.json` — `cresco-ai-context/v3` đã chuẩn bị đầy đủ.
+- `03-widget-guide.json` — Widget Intelligence, Construction Plan, Semantic Bindings, Structure Grammar, vocabulary design intent và ví dụ control.
+- `04-output-contract.json` — contract response, ưu tiên `cresco-ai-mutation/v3`.
+- `05-design-intelligence.json` — design dials, hướng dẫn UI/UX, Active Kit, responsive context và mutation boundary.
+- `06-design-reasoning.json` — reasoning theo product/page, hierarchy, composition, reference-image translation và machine-readable quality gates.
+- `manifest.json` — metadata bundle và danh sách file thực tế.
+- `current-desktop.png` — optional, best-effort raster của target trong Elementor preview.
+- `reference-<filename>` — optional reference image người dùng chọn.
 
 ## Semantic design workflow
 
-The external model should prefer design intent over Elementor implementation details:
+AI bên ngoài nên ưu tiên **design intent** trước implementation detail của Elementor:
 
 ```text
 task + reference
@@ -32,37 +38,75 @@ task + reference
   -> internal patch/v1
 ```
 
-Version 2 and legacy result/patch formats remain accepted, but v3 semantic mutation is preferred for new design work.
+Mutation v2 và legacy result/patch vẫn được chấp nhận để tương thích, nhưng v3 là format ưu tiên cho design work mới ở giai đoạn này.
 
-## Design intelligence and reasoning
+## Design Intelligence và Design Reasoning
 
-The bundle carries both:
+Bundle mang hai lớp:
 
-- `cresco-design-intelligence/v1` — task-derived design dials, spacing intent and ordered professional quality priorities;
-- `cresco-design-reasoning/v1` — product/page-specific objective, hierarchy, composition, semantic design vocabulary, reference translation and quality gates.
+- `cresco-design-intelligence/v1` — design dials theo task, spacing intent và thứ tự ưu tiên chất lượng.
+- `cresco-design-reasoning/v1` — objective theo product/page, hierarchy, composition, semantic design vocabulary, reference translation và quality gates.
 
-Both layers combine the user's task with the current Elementor design system. Active Kit remains source of truth; Cresco does not create a parallel token system.
+Cả hai đều kết hợp user task với design system hiện tại của Elementor. **Active Kit vẫn là source of truth**, Cresco không tạo token system song song.
 
-The workflow is informed by the MIT-licensed `nextlevelbuilder/ui-ux-pro-max-skill` project, with provenance recorded in the exported context. Cresco has no runtime dependency on that repository and does not vendor its large searchable datasets or Python tooling.
+Workflow tham khảo các ý tưởng cấp cao từ dự án MIT `nextlevelbuilder/ui-ux-pro-max-skill`; Cresco ghi provenance trong exported context nhưng **không có runtime dependency** và không vendor dataset/tool Python lớn của dự án đó.
 
-## Reference-image translation
+## Chuyển reference image thành design intent
 
-A reference image is treated as design evidence, not as raw Elementor instructions. The model is asked to extract hierarchy, composition, proportions, spacing rhythm, typography character, color relationships, surface depth and component patterns, then adapt those qualities through the current Active Kit, Widget Intelligence and Exact Runtime.
+Reference image là **design evidence**, không phải raw Elementor instruction. Model được yêu cầu phân tích:
 
-Critical accessibility, behavior-preservation and responsive rules outrank decorative similarity to the reference.
+- hierarchy;
+- composition;
+- proportions;
+- spacing rhythm;
+- typography character;
+- color relationships;
+- surface depth;
+- component patterns.
+
+Sau đó model phải chuyển các đặc tính này qua Active Kit, Widget Intelligence và Exact Runtime hiện tại.
+
+Accessibility, behavior preservation và responsive correctness luôn ưu tiên hơn decorative similarity.
 
 ## Raster capture
 
-Raster capture is deliberately best-effort rather than fabricated. Cresco resolves the selected target in Elementor's same-origin preview iframe, clones the subtree with computed styles, serializes it through SVG `foreignObject`, then paints that SVG to a canvas and exports PNG.
+Raster chỉ là best-effort, không được fabricate.
 
-The capture may be unavailable when the browser cannot serialize/rasterize the subtree safely, for example because of cross-origin assets, unsupported browser rendering behavior, very large target geometry or a missing preview node. The ZIP still exports in that case and the manifest records `raster.status = "unavailable"`.
+Luồng:
 
-The structured `visualSnapshot` and `layoutGraph` remain authoritative context when no raster is available.
+```text
+resolve target trong same-origin preview iframe
+→ clone subtree + computed styles
+→ serialize bằng SVG foreignObject
+→ paint lên canvas
+→ export PNG
+```
+
+Capture có thể không khả dụng vì:
+
+- cross-origin assets;
+- browser không hỗ trợ/không serialize được;
+- target geometry quá lớn;
+- preview node không tồn tại.
+
+ZIP vẫn hợp lệ nếu raster không có; manifest ghi:
+
+```text
+raster.status = "unavailable"
+```
+
+`visualSnapshot` và `layoutGraph` vẫn là structured context chính.
 
 ## ZIP implementation
 
-The bundle writer uses a minimal local uncompressed ZIP implementation with CRC32 and does not load a third-party archive library. This keeps the editor workflow self-contained and avoids adding a remote dependency.
+Bundle writer dùng ZIP local tối giản, không nén, có CRC32 và không tải thư viện archive bên thứ ba. Mục tiêu là editor workflow self-contained và không có remote runtime dependency.
 
-## External AI guidance
+## Hướng dẫn cho AI bên ngoài
 
-The external model should read files in numeric order, especially `06-design-reasoning.json` before finalizing composition. It must use only runtime-proven widgets/controls, prefer `cresco-ai-mutation/v3`, preserve protected/global/dynamic bindings, and return only the requested semantic delta. Final Elementor IDs for new nodes are owned by Cresco.
+Model nên đọc file theo thứ tự số, đặc biệt `06-design-reasoning.json` trước khi chốt composition. Model phải:
+
+- chỉ dùng widget/control đã được runtime chứng minh;
+- ưu tiên `cresco-ai-mutation/v3`;
+- preserve protected/global/dynamic bindings;
+- chỉ trả semantic delta được yêu cầu;
+- không tự cấp final Elementor ID cho node mới — Cresco chịu trách nhiệm phần này.

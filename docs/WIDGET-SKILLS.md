@@ -1,6 +1,6 @@
 # Cresco Runtime Widget Skills
 
-Cresco Layer 0.6 adds a deterministic skill runtime for editing the currently selected Elementor widget/container without putting a chatbot or LLM behind the editor.
+Cresco Layer 0.6 bổ sung deterministic skill runtime để chỉnh selected Elementor widget/container **không cần đặt chatbot/LLM phía sau editor**.
 
 ## Product contract
 
@@ -9,34 +9,45 @@ Selected Elementor element
   -> active Elementor runtime metadata
   -> Cresco Skill Compiler
   -> element-specific skill registry
-  -> deterministic command or explicit skill parameters
+  -> deterministic command hoặc explicit skill params
   -> native Elementor setting operation
   -> Elementor live settings API + history
 ```
 
-The runtime registry is the source of truth. A skill is executable only when the active Elementor installation exposes the corresponding control/Atomic prop. Cresco never invents a setting name merely because an Elementor version or addon is expected to support it.
+Runtime registry là source of truth. Một skill chỉ executable khi active Elementor installation expose control/Atomic prop tương ứng.
+
+Cresco không invent setting chỉ vì một Elementor version/addon “thường có” setting đó.
 
 ## Coverage model
 
-The skill runtime learns from every widget/element registered in the active Elementor managers, including where available:
+Skill runtime học từ registered widget/element managers hiện tại, bao gồm khi có:
 
-- Elementor Free widgets and containers;
+- Elementor Free widgets/containers;
 - Elementor Pro widgets/modules;
-- Atomic/V4 elements and props;
-- WordPress widgets exposed through Elementor;
+- Atomic/V4 elements + props;
+- WordPress widgets qua Elementor;
 - Cresco widgets;
-- third-party addon widgets that register through Elementor's runtime control APIs.
+- third-party addon widgets đăng ký qua Elementor runtime control APIs.
 
-Classic controls are compiled from `get_controls()`. Atomic/V4 editability is compiled from normalized `get_atomic_controls()` + `get_props_schema()` bindings. Persisted settings are read from the selected document instance, not from registry prototypes.
+Classic controls compile từ `get_controls()`.
 
-## What one compiled skill knows
+Atomic/V4 editability compile từ normalized:
 
-Each runtime control is represented as a skill record containing the metadata Cresco can prove from Elementor, such as:
+```text
+get_atomic_controls()
++ get_props_schema()
+```
+
+Persisted settings phải đọc từ selected document instance, không lấy current values từ registry prototype.
+
+## Một compiled skill biết gì?
+
+Skill record có thể chứa:
 
 - exact control/prop binding;
-- type, label and description;
+- type/label/description;
 - source (`classic-control`, `atomic-control`, Atomic prop schema);
-- current desktop and responsive values;
+- desktop/responsive current values;
 - default value;
 - active responsive devices;
 - allowed units;
@@ -44,57 +55,61 @@ Each runtime control is represented as a skill record containing the metadata Cr
 - min/max/range/step;
 - Dynamic Tag capability;
 - frontend/render metadata;
-- selectors and selector dictionaries;
+- selectors/selector dictionaries;
 - control conditions/dependencies;
 - group-control prefix/type;
-- Atomic prop schema when applicable;
-- semantic role/category inferred from the real setting key;
-- risk and execution mode.
+- Atomic prop schema;
+- semantic role/category;
+- risk + execution mode.
 
 ## Expert knowledge layer
 
-`ExpertProfiles` augments the runtime facts with domain guidance. It does not create controls. Current expert families include:
+`ExpertProfiles` bổ sung domain guidance nhưng **không tạo control**.
 
-- containers/flex/grid/layout;
-- headings and text;
+Các family có thể gồm:
+
+- container/flex/grid/layout;
+- headings/text;
 - buttons/actions;
-- images/media and video;
-- forms, fields and actions-after-submit;
-- navigation/menu/dropdown behavior;
-- posts/query/loop/taxonomy/product widgets;
+- image/media/video;
+- forms/fields/actions-after-submit;
+- navigation/menu/dropdown;
+- posts/query/loop/taxonomy/product;
 - slides/carousels;
-- tabs/accordion/nested disclosures;
-- counter/progress/countdown/ratings;
+- tabs/accordion/nested disclosure;
+- counter/progress/countdown/rating;
 - social widgets;
-- WooCommerce/commerce widgets;
-- HTML/code/shortcode widgets;
-- Atomic/V4 elements.
+- WooCommerce/commerce;
+- HTML/code/shortcode;
+- Atomic/V4.
 
-This split is intentional: expert knowledge explains semantics, while runtime metadata proves what the installed widget can actually do.
+Expert knowledge giải thích semantics; runtime metadata chứng minh capability.
 
-## Skill modes and risk
+## Skill mode và risk
 
-Every compiled control is classified independently.
+### Execution mode
 
-- `direct`: scalar/native controls such as color, dimensions, slider, select and switcher.
-- `expert`: structured or potentially sensitive configuration such as repeater/gallery/code data. The palette exposes the exact runtime binding and requires an explicit structured value.
-- `read-only`: Elementor UI controls such as headings/sections that do not carry an editable value.
+- `direct` — scalar/native control như color, dimensions, slider, select, switcher.
+- `expert` — structured/sensitive config như repeater/gallery/code; cần explicit structured value.
+- `read-only` — Elementor UI control không mang editable value.
 
-Risk labels are separate from execution mode:
+### Risk
 
-- `safe`: ordinary presentation/content settings.
-- `conditional`: a control depends on another Elementor setting.
-- `structural`: repeater/gallery/structure data.
-- `expert`: code/HTML/custom CSS-style controls.
-- `external`: email, redirect, webhook, payment or credential-adjacent controls.
+- `safe` — presentation/content thông thường.
+- `conditional` — phụ thuộc setting khác.
+- `structural` — repeater/gallery/structure data.
+- `expert` — code/HTML/custom CSS-like.
+- `external` — email/redirect/webhook/payment/credential-adjacent.
 
-Secret-like setting keys are blocked from generic skill execution.
+Secret-like setting key phải bị block khỏi generic skill execution.
 
-## Conditions and prerequisites
+## Conditions và prerequisite
 
-A control can be present but inactive. The compiler preserves Elementor conditions and can enable a narrow set of safe, provable prerequisites when both controls exist in the selected widget's runtime registry.
+Control có thể tồn tại nhưng chưa active do condition.
 
-Example: setting a native `background_color` may require the widget's native `background_background` control to be `classic`. Cresco may emit:
+Compiler giữ condition và chỉ tự enable một số prerequisite **safe + provable** khi cả hai control có trong selected widget runtime registry.
+
+Ví dụ background color có thể cần background type:
 
 ```json
 [
@@ -111,11 +126,16 @@ Example: setting a native `background_color` may require the widget's native `ba
 ]
 ```
 
-Cresco does not synthesize a prerequisite if the active widget does not expose that setting.
+Không synthesize prerequisite nếu runtime widget không expose setting đó.
 
 ## Responsive skills
 
-Responsive variants come from the active Elementor breakpoints and each control's runtime responsive flag. For example, a responsive `padding` control resolves to native settings such as:
+Responsive variants đến từ:
+
+- active Elementor breakpoints;
+- runtime responsive flag của control.
+
+Ví dụ responsive `padding`:
 
 ```text
 padding
@@ -123,13 +143,13 @@ padding_tablet
 padding_mobile
 ```
 
-Only active/proven devices are offered. A non-responsive control cannot be forced into a responsive suffix by a command.
+Chỉ device active/proven được expose. Non-responsive control không được ép thành responsive suffix.
 
 ## Deterministic command bar
 
-The command bar is a convenience parser, not a chatbot. It maps a bounded vocabulary to semantic roles that must already exist in the selected widget's compiled registry.
+Command bar là parser giới hạn, **không phải chatbot**.
 
-Examples:
+Ví dụ:
 
 ```text
 padding 24px
@@ -146,32 +166,32 @@ hide mobile
 show mobile
 ```
 
-If the parser cannot map a command to a proven skill, it fails instead of guessing.
+Parser chỉ map command vào semantic role đã tồn tại trong compiled registry. Không match được skill → fail, không đoán.
 
 ## Elementor editor integration
 
-`assets/skills.js` adds a **Cresco Skills** launcher and side palette. It:
+`assets/skills.js` từng/hiện cung cấp Cresco Skills palette tùy integration mode. Nguyên tắc runtime:
 
-1. tracks the currently selected Elementor element;
-2. loads that element's compiled skill profile;
-3. shows only skills derived from its actual controls/props;
-4. accepts explicit parameters or deterministic commands;
-5. sends live unsaved settings to the resolver so conditions/previews use current editor state;
-6. rejects any returned operation that targets another element;
-7. applies only native live setting operations through `document/elements/settings`;
-8. wraps changes in Elementor history so Undo/Redo remains available.
+1. theo dõi selected element;
+2. load compiled skill profile của element đó;
+3. chỉ hiển thị skill derived từ actual controls/props;
+4. nhận explicit params hoặc deterministic commands;
+5. gửi live unsaved settings khi resolve condition/preview;
+6. reject operation target element khác;
+7. apply native settings qua `document/elements/settings`;
+8. wrap bằng Elementor history để Undo/Redo dùng được.
 
-Structural insertion/removal/move operations remain outside this widget-only skill palette and continue to use Cresco's reviewed scoped patch workflow.
+Structural insert/remove/move không thuộc widget-only skill palette; chúng đi qua scoped patch workflow.
 
 ## REST API
 
-Get the skills for one selected element:
+Lấy skill của element:
 
 ```text
 GET /wp-json/cresco-layer/v1/documents/{postId}/skills/{elementId}
 ```
 
-Resolve an explicit skill:
+Resolve explicit skill:
 
 ```json
 POST /wp-json/cresco-layer/v1/documents/{postId}/skills/{elementId}/resolve
@@ -189,7 +209,7 @@ POST /wp-json/cresco-layer/v1/documents/{postId}/skills/{elementId}/resolve
 }
 ```
 
-Resolve a deterministic command:
+Resolve deterministic command:
 
 ```json
 {
@@ -198,15 +218,15 @@ Resolve a deterministic command:
 }
 ```
 
-The resolver returns `cresco-layer-skill-resolution/v1` with native operations and a before/after preview. It does not call an AI provider.
+Resolver trả `cresco-layer-skill-resolution/v1` với native operations + before/after preview. Không cần gọi AI provider.
 
 ## Invariants
 
-- No chatbot/LLM is required or embedded by the widget skill runtime.
-- Never invent Elementor setting keys.
-- Never add a responsive suffix to a non-responsive control.
-- Validate options, units and ranges from runtime metadata.
-- Preserve Dynamic Tag/global/Atomic context unless explicitly changed.
-- Keep one skill execution inside the currently selected element.
-- Use Elementor live settings/history in the editor.
-- Keep Elementor responsible for final rendering, document persistence and Update/Publish.
+- Widget skill runtime không cần/không embed chatbot hoặc LLM.
+- Không invent Elementor setting key.
+- Không thêm responsive suffix cho non-responsive control.
+- Validate option/unit/range bằng runtime metadata.
+- Preserve Dynamic Tag/global/Atomic context nếu không explicit change.
+- Một skill execution chỉ nằm trong selected element.
+- Dùng Elementor live settings/history trong editor.
+- Elementor chịu trách nhiệm final render, persistence và Update/Publish.

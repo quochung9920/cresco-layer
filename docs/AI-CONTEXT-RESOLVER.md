@@ -1,36 +1,44 @@
 # AI Context Resolver v1
 
-Cresco Layer 0.5.0 uses `cresco-context-resolver/v1` to turn the full Elementor runtime knowledge available on a site into a bounded, task-specific `cresco-layer-ai-package/v2`.
+> **Tài liệu lịch sử:** mô tả kiến trúc resolver ở Cresco Layer 0.5.0 với `cresco-context-resolver/v1`. Implementation 0.24.3 hiện đã dùng `cresco-context-resolver/v3` và bounded detail budget; xem `PROJECT_RULES.md`, `EXPORT-RESILIENCE.md` và code hiện tại khi cần behavior mới nhất.
 
-## Why the resolver exists
+Cresco Layer 0.5.0 dùng `cresco-context-resolver/v1` để biến kiến thức runtime Elementor rất lớn thành `cresco-layer-ai-package/v2` có giới hạn và phù hợp task.
 
-The Full Elementor Runtime Snapshot is a diagnostic/knowledge-base artifact. It may contain hundreds of registered widget/element types, every serializable control, global options, templates and runtime records. Sending the entire snapshot for every AI edit is wasteful and can make the model less precise.
+## Vì sao cần Context Resolver?
 
-Normal AI export therefore uses the snapshot/runtime as a source of truth but exports only the detailed capabilities that matter to the current editing task.
+Full Elementor Runtime Snapshot là artifact phục vụ diagnostics/knowledge-base. Nó có thể chứa:
 
-## Profiles
+- hàng trăm widget/element type;
+- mọi serializable control;
+- global options;
+- templates;
+- runtime records.
 
-### `smart` (default)
+Gửi toàn bộ snapshot vào mỗi AI edit vừa tốn tài nguyên vừa làm model khó tập trung. Vì vậy normal export dùng runtime/snapshot làm source of truth nhưng chỉ mở rộng detailed capability cần cho task hiện tại.
 
-The default export profile includes:
+## Các profile lịch sử
 
-- the exact editable Elementor element data and checksum-protected scope;
-- parent/sibling context as read-only data for scoped exports;
-- detailed controls for widget/element types present in the editable scope;
-- detailed controls for widget/element types present in the read-only context;
-- a bounded set of common insertion candidates for document/subtree editing;
-- a compact `registryIndex` containing every registered widget and element type without expanding all their controls;
-- active Kit/Site Settings, global colors/fonts through the existing design-system payload, active breakpoints and Dynamic Tags;
+### `smart` — mặc định
+
+`smart` gồm:
+
+- Elementor data chính xác của editable element/scope;
+- parent/sibling context dạng read-only cho scoped export;
+- detailed controls của type xuất hiện trong editable scope;
+- detailed controls của type xuất hiện trong read-only context;
+- bounded set common insertion candidates cho document/subtree;
+- compact `registryIndex` của mọi registered widget/element mà không mở toàn bộ control;
+- active Kit/Site Settings, Global Colors/Fonts, active breakpoints, Dynamic Tags;
 - dependency-aware Elementor Pro runtime information;
-- `capabilityCoverage` so the AI knows which sources are trusted, partial or unavailable.
+- `capabilityCoverage` để AI biết nguồn nào trusted/partial/unavailable.
 
-This keeps normal exports much smaller than embedding the full runtime catalog.
+Mục tiêu là package nhỏ hơn rất nhiều so với full runtime catalog.
 
 ### `full`
 
-`context=full` expands detailed capability metadata for every currently registered widget and element. This is an escape hatch for unusual tasks where the AI must be free to insert or reason about any registered type.
+Trong thiết kế 0.5.0, `context=full` mở detailed capability metadata cho mọi registered widget/element. Full Runtime Snapshot vẫn là artifact riêng, không nhúng toàn bộ raw diagnostic data vào mọi AI edit.
 
-The full runtime snapshot remains a separate artifact even in this profile; global raw WordPress/Elementor diagnostic data is not injected into every AI edit request.
+> Ở 0.24.3, ý nghĩa vận hành đã thay đổi: Full giữ **full registry awareness** nhưng detailed hydration được giới hạn bằng resource budget; Exact Runtime bổ sung capability còn thiếu. Không dùng mô tả lịch sử này để suy ra behavior hiện tại.
 
 ## REST export
 
@@ -39,71 +47,86 @@ GET /wp-json/cresco-layer/v1/documents/{postId}/export?scope=widget&selected={el
 GET /wp-json/cresco-layer/v1/documents/{postId}/export?scope=subtree&selected={elementId}&context=full
 ```
 
-`context=smart` is the default when the parameter is omitted, so existing editor export actions automatically benefit from the resolver without UI changes.
+Nếu bỏ `context`, `smart` là default trong thiết kế này.
 
-## AI package contract
+## Contract trong AI package
 
-The package keeps the existing `cresco-layer-ai-package/v2` schema and adds context-resolution metadata rather than replacing the transport contract.
+Transport schema vẫn là:
 
-Important fields:
+```text
+cresco-layer-ai-package/v2
+```
 
-- `manifest.contextProfile`: `smart` or `full`;
-- `manifest.contextResolver`: resolver version;
-- `registryIndex`: all registered type summaries;
-- `widgetCatalog` / `elementCatalog`: detailed controls selected for the current task;
-- `relevantCapabilities.roles`: why each detailed capability was included (`editable`, `read-only-context`, `insertion-candidate`, or `full-profile`);
-- `dynamicTags`: registered runtime Dynamic Tags;
-- `capabilityCoverage`: trust state for controls, Active Kit, breakpoints, Dynamic Tags and Pro runtime modules;
-- `contextResolver.stats`: registered-versus-expanded counts and scan error count;
-- `contextResolver.runtime.dependencies`: dependency signals and licensed-but-inactive Pro capabilities.
+Resolver thêm metadata thay vì đổi transport contract.
 
-The `designSystem` field remains the Active Kit settings array for backward compatibility with existing AI package consumers.
+Các field quan trọng:
+
+- `manifest.contextProfile` — `smart` hoặc `full`.
+- `manifest.contextResolver` — version resolver.
+- `registryIndex` — summary toàn bộ registered type.
+- `widgetCatalog` / `elementCatalog` — detailed controls được chọn.
+- `relevantCapabilities.roles` — lý do capability được đưa vào: `editable`, `read-only-context`, `insertion-candidate`, `full-profile`.
+- `dynamicTags` — registered Dynamic Tags.
+- `capabilityCoverage` — trạng thái controls, Active Kit, breakpoint, Dynamic Tags, Pro runtime modules.
+- `contextResolver.stats` — số registered/expanded và scan error.
+- `contextResolver.runtime.dependencies` — dependency signal và licensed-but-inactive Pro capability.
+
+`designSystem` vẫn giữ Active Kit settings array để tương thích consumer cũ.
 
 ## Dynamic Tags discovery
 
-Elementor's Dynamic Tags manager returns registry records shaped around a registered `instance` plus its class. Cresco 0.5.0 reads that registry shape directly instead of treating each registry record as the tag object itself. Calling `get_tags()` also lets Elementor fire its normal Dynamic Tags registration hook when necessary.
+Elementor Dynamic Tags manager lưu registry record quanh registered `instance` và class. Cresco 0.5.0 đọc đúng registry shape này thay vì coi record là tag object.
 
-If Elementor Pro is active but the registry is still empty after registration is requested, Cresco marks Dynamic Tags coverage as `partial` instead of silently reporting an empty trusted catalog.
+`get_tags()` cũng cho Elementor cơ hội chạy registration hook bình thường. Nếu Elementor Pro active nhưng registry vẫn rỗng, coverage được đánh dấu `partial` thay vì báo trusted empty catalog.
 
 ## Elementor Pro module discovery
 
-Elementor/Elementor Pro module managers expose module names separately from the module getter. Cresco now enumerates `get_modules_names()` and resolves each module with `get_modules($name)`. It never calls `get_modules()` without the required module name.
+Module manager expose tên module riêng với getter. Cresco enumerate:
 
-This fixes the runtime snapshot failure previously caused by `ArgumentCountError` on Elementor Pro 4.x.
+```text
+get_modules_names()
+→ get_modules($name)
+```
 
-## Dependency-aware capabilities
+Không gọi `get_modules()` thiếu tên module. Điều này tránh `ArgumentCountError` trên Elementor Pro 4.x.
 
-A Pro license can advertise capabilities whose external dependency is not active on the current WordPress site. Cresco reports these separately so the AI does not confuse licensed potential with live runtime availability.
+## Dependency-aware capability
 
-Current dependency signals include WooCommerce, ACF, Pods and Toolset. For example, WooCommerce-related Pro features may be licensed while WooCommerce is inactive; such capabilities are reported as `dependency-inactive` rather than being invented in the live widget catalog.
+Một Pro license có thể quảng bá feature nhưng dependency bên ngoài chưa active. Cresco phân biệt licensed potential với live runtime availability.
 
-## AI safety rules
+Dependency signal lịch sử gồm:
 
-The package instructions explicitly require the AI to:
+- WooCommerce;
+- ACF;
+- Pods;
+- Toolset.
 
-- never invent an Elementor setting name;
-- modify settings only when a detailed capability entry backs the setting;
-- treat `registryIndex` as discovery metadata, not permission to invent controls;
-- request/use `full` context when detailed controls for an unusual type are required;
-- avoid relying on any source marked `partial` or `unavailable`;
-- preserve IDs, unknown Elementor fields, Atomic/V4 data, Dynamic Tags and global style references unless intentionally changing them;
-- return only `cresco-layer-patch/v1` JSON.
+Ví dụ WooCommerce feature có license nhưng WooCommerce inactive → báo `dependency-inactive`, không invent widget live.
 
-Cresco's existing schema validation, scope validation, semantic control/value validation, preview, apply transaction and read-back verification remain authoritative after the AI returns a patch.
+## Rule an toàn cho AI
 
-## Snapshot relationship
+Package yêu cầu AI:
 
-The Full Runtime Snapshot and AI Context Package have separate responsibilities:
+- không invent Elementor setting name;
+- chỉ sửa setting khi detailed capability chứng minh setting đó;
+- coi `registryIndex` là discovery metadata, không phải quyền invent control;
+- không dựa vào nguồn `partial` hoặc `unavailable` như dữ liệu chắc chắn;
+- preserve IDs, unknown fields, Atomic/V4 data, Dynamic Tags và global references nếu không chủ đích thay;
+- trả output theo contract được package yêu cầu.
+
+Cresco vẫn là authority cuối qua schema validation, scope validation, runtime/semantic validation, preview, apply transaction và read-back verification.
+
+## Quan hệ với Full Runtime Snapshot
 
 ```text
 Elementor runtime
-  -> Full Runtime Snapshot / registries (knowledge source)
+  -> Full Runtime Snapshot / registries
   -> Context Resolver
   -> task-specific AI package
   -> AI
-  -> cresco-layer-patch/v1
+  -> result/patch
   -> validation + preview + apply + verification
   -> Elementor
 ```
 
-The snapshot should be used for diagnostics and full-site inspection. The context-resolved AI package should be used for normal external AI analysis/editing.
+Snapshot dùng cho diagnostics/full-site inspection. Context-resolved package dùng cho AI editing bình thường.

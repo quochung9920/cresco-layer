@@ -1,32 +1,44 @@
-# Cresco Layer Accuracy Core 0.9
+# Lõi độ chính xác Cresco Layer 0.9
 
-Cresco Layer 0.9 changes Local AI from a broad control-list planner into a task-retrieved, evidence-checked Elementor planning pipeline.
+Cresco Layer 0.9 chuyển Local AI từ một bộ planner nhận danh sách control rộng sang pipeline **truy xuất skill theo task + kiểm chứng bằng evidence** dành cho Elementor.
 
 ## Pipeline
 
 ```text
-Selected Elementor element
+Elementor element đang chọn
   -> runtime skill profile
   -> Semantic Skill Identity V2
-  -> task-aware skill retrieval (normally 18 candidates)
+  -> truy xuất skill theo task (thường tối đa 18 candidate)
   -> Context Graph V2 + effective responsive state
-  -> bounded browser render observation
+  -> browser render observation có giới hạn
   -> machine-readable facts
   -> Local AI diagnosis + fact citations
   -> EvidenceValidator
-  -> exact WidgetSkillRuntime parameter validation
+  -> WidgetSkillRuntime validate parameter chính xác
   -> semantic confidence score
   -> preview
   -> native Elementor transaction
   -> model read-back + render observation verification
-  -> rollback when model read-back fails
+  -> rollback nếu model read-back thất bại
 ```
 
 ## Semantic Skill Identity V2
 
-Native Elementor control IDs remain the only execution identifiers. Cresco adds non-executable semantic metadata such as `semanticId`, `semanticBase`, `targetPart`, `property`, `state`, `purpose`, and `displayLabel` so similarly named controls can be distinguished without inventing a native key.
+Native Elementor control ID vẫn là **execution identifier duy nhất**. Cresco chỉ bổ sung semantic metadata không thực thi như:
 
-Example:
+```text
+semanticId
+semanticBase
+targetPart
+property
+state
+purpose
+displayLabel
+```
+
+Mục tiêu là phân biệt các control tên gần giống nhau mà không invent native key.
+
+Ví dụ:
 
 ```text
 control.flex_direction
@@ -34,53 +46,86 @@ control.flex_direction
   displayLabel: Container · Direction (Flex Direction)
 ```
 
-## Task-aware retrieval
+## Truy xuất skill theo task
 
-Local AI no longer receives every executable control for the widget. `SkillRetriever` filters higher-risk capabilities and ranks the remaining native skills against the user task, expert profile, responsive intent, target part and semantic role. The default Local AI context contains at most 18 task-relevant candidates before context budgeting.
+Local AI không còn nhận toàn bộ executable control của widget. `SkillRetriever`:
 
-## Machine-verifiable evidence
+- loại capability rủi ro cao;
+- xếp hạng native skill theo user task;
+- xét expert profile;
+- responsive intent;
+- target part;
+- semantic role.
 
-Planning schema `cresco-layer-local-ai-plan/v3` requires each evidence item to cite an exact fact from `cresco-layer-semantic-context/v2`:
+Context Local AI mặc định chứa tối đa **18 candidate phù hợp task** trước bước context budgeting.
+
+## Evidence có thể kiểm bằng máy
+
+Planning schema `cresco-layer-local-ai-plan/v3` yêu cầu mỗi evidence item trỏ tới một fact chính xác trong `cresco-layer-semantic-context/v2`.
 
 ```json
 {
   "factId": "skill.s01.mobile.effective",
   "operator": "eq",
   "value": "8px",
-  "statement": "Mobile padding is currently 8px."
+  "statement": "Mobile padding hiện là 8px."
 }
 ```
 
-Cresco evaluates the claim itself. A missing fact, unsupported operator or false comparison blocks execution.
+Cresco tự đánh giá claim. Các trường hợp sau chặn execution:
+
+- fact không tồn tại;
+- operator không hỗ trợ;
+- comparison sai.
 
 ## Semantic confidence
 
-The Local AI model's self-reported confidence is only one component. Cresco combines:
+Confidence do model tự báo chỉ là một thành phần. Cresco kết hợp:
 
 - AI self-report;
 - evidence validity;
-- task-to-skill retrieval match;
+- mức khớp task → skill retrieval;
 - context completeness;
 - exact runtime validation.
 
-Only the combined score is compared with the configured minimum confidence.
+Chỉ **combined score** mới được so với minimum confidence đã cấu hình.
 
 ## Context Graph V2
 
-The context includes selected element state, parent/sibling/child summaries, derived width/overflow relationships, Global/Dynamic binding sources, and an optional browser render observation. DOM/computed style data is a sensor only; Elementor model/runtime metadata remains the source of truth.
+Context gồm:
 
-## Post-apply verification
+- state của element đang chọn;
+- tóm tắt parent/sibling/child;
+- quan hệ width/overflow suy ra;
+- nguồn Global/Dynamic binding;
+- optional browser render observation.
 
-After a validated plan is applied through `document/elements/settings`, Cresco reads the live Elementor settings back. If a requested native setting did not take the expected value, the touched settings are rolled back. For visual roles, Cresco also compares bounded before/after render observations and warns when the model changed but no measurable selected-element render delta was observed.
+DOM/computed style chỉ là **sensor**. Elementor model/runtime metadata vẫn là source of truth.
+
+## Verification sau Apply
+
+Sau khi plan hợp lệ được apply qua `document/elements/settings`, Cresco đọc lại live Elementor settings.
+
+Nếu native setting được yêu cầu không nhận đúng giá trị mong đợi:
+
+```text
+apply
+→ read-back mismatch
+→ rollback touched settings
+```
+
+Với visual role, Cresco còn so sánh before/after render observation có giới hạn. Nếu model state đã đổi nhưng không có measurable render delta trên selected element, Cresco cảnh báo thay vì giả định thay đổi đã có hiệu lực.
 
 ## Trust boundary
 
-Local AI still cannot:
+Local AI vẫn không được:
 
 - invent Elementor settings;
-- execute arbitrary CSS or JavaScript;
-- write the Elementor document directly;
-- modify siblings/children outside the selected-element scope;
-- execute expert/structural/external skills;
-- detach Global or Dynamic references through generic AI planning;
-- bypass evidence, runtime or post-apply validation.
+- thực thi arbitrary CSS/JavaScript;
+- ghi trực tiếp Elementor document;
+- sửa sibling/child ngoài selected-element scope;
+- thực thi expert/structural/external skills;
+- tự tách Global hoặc Dynamic references bằng generic AI planning;
+- bypass evidence, runtime hoặc post-apply validation.
+
+Nguyên tắc chính: **AI chẩn đoán và đề xuất; runtime + validator + Elementor quyết định điều gì thực sự được phép thực thi.**

@@ -1,25 +1,57 @@
 # Widget Intelligence
 
-Cresco Layer 0.18 adds `cresco-widget-intelligence/v1` to external AI context. Its job is to answer a different question from Exact Runtime:
+Cresco Layer 0.18 bổ sung `cresco-widget-intelligence/v1` vào external AI context.
 
-- Exact Runtime: **what controls does this installed widget actually expose?**
-- Widget Intelligence: **which installed widget is semantically appropriate for this part of the interface?**
+Nó trả lời một câu hỏi khác với Exact Runtime:
 
-Both are required. Semantic advice may never create a capability that the active Elementor runtime does not prove.
+- **Exact Runtime:** widget đã cài này thật sự expose control nào?
+- **Widget Intelligence:** widget đã cài nào phù hợp về mặt semantic cho phần giao diện đang cần tạo?
+
+Cả hai đều cần thiết. Semantic recommendation không được tạo capability mà active Elementor runtime không chứng minh.
 
 ## Runtime-first selection
 
-The intelligence layer builds an index from `runtime.widgets` and `runtime.elements`. Role candidates are then filtered against that index.
+Intelligence layer xây index từ:
 
-For example, a headline may prefer `heading`, and a CTA may prefer `button`, but those recommendations are emitted only when those types exist in the current runtime. Alternatives are likewise runtime-proven.
+```text
+runtime.widgets
+runtime.elements
+```
 
-Third-party Elementor add-ons can participate when their registered type is present in runtime metadata. A Pro-only widget is not recommended on an installation where it is absent.
+Sau đó candidate theo semantic role chỉ được giữ nếu type tồn tại trong index đó.
 
-## Common semantic families
+Ví dụ:
 
-Current deterministic families cover layout, headings, text, buttons, icons, lists, images/media, forms, navigation, query/loop widgets, carousels, disclosure widgets, video, commerce and code/HTML fallbacks.
+```text
+headline → ưu tiên heading
+CTA      → ưu tiên button
+```
 
-Example role record:
+nhưng chỉ khi các type này có trong current runtime.
+
+Third-party Elementor addon cũng có thể tham gia nếu registered type xuất hiện trong runtime metadata. Pro-only widget không được recommend khi installation hiện tại không đăng ký nó.
+
+## Các semantic family phổ biến
+
+Deterministic families có thể bao gồm:
+
+- layout;
+- heading;
+- text;
+- button;
+- icon;
+- list;
+- image/media;
+- form;
+- navigation;
+- query/loop;
+- carousel;
+- disclosure;
+- video;
+- commerce;
+- code/HTML fallback.
+
+Ví dụ role record:
 
 ```json
 {
@@ -33,34 +65,74 @@ Example role record:
 }
 ```
 
-## Relationship to semantic scene
+## Quan hệ với Semantic Scene
 
-`semanticScene` analyzes the existing selected subtree and assigns deterministic role hints with confidence. `constructionPlan` uses task wording plus Widget Intelligence to suggest a runtime-supported structure for common new UI patterns.
+`semanticScene` phân tích selected subtree hiện tại và gán role hint deterministic + confidence.
 
-The external model should therefore reason in this order:
+`constructionPlan` kết hợp task wording + Widget Intelligence để đề xuất structure có runtime support.
+
+Thứ tự reasoning nên là:
 
 ```text
 user task / reference
   -> existing semantic scene
   -> desired semantic roles
-  -> widget intelligence recommendation
-  -> exact runtime controls
+  -> Widget Intelligence recommendation
+  -> Exact Runtime controls
   -> Active Kit / responsive rules
   -> semantic mutation
 ```
 
 ## Server enforcement
 
-Recommendations are not merely prompt text. When `cresco-ai-mutation/v2` introduces or rebuilds a node, `AIMutationCompiler` verifies its `widgetIntent`/element type against the active `CapabilityScanner` catalog. An invented type is rejected before an internal patch is produced.
+Recommendation không chỉ là prompt text.
 
-This closes a class of failures where a model understands the visual role but emits a widget name unavailable on the actual site.
+Khi mutation tạo/rebuild node, compiler phải validate `widgetIntent`/element type với active `CapabilityScanner` catalog.
+
+Nếu AI invent widget type không có trong runtime:
+
+```text
+reject before internal patch
+```
+
+Điều này chặn lỗi “model hiểu đúng vai trò UI nhưng chọn widget không tồn tại trên site”.
 
 ## Protected families
 
-Some widget families mix presentation with behavioral/external configuration. The exported mutation boundary identifies settings that should remain unchanged during ordinary visual work, including form submission destinations, webhooks, query/template sources, navigation sources, transactional settings and code-like content.
+Một số widget kết hợp presentation với behavioral/external configuration.
 
-A visual request should still style those widgets through native controls; it should not silently change what they submit, query, execute or purchase.
+Ví dụ setting cần preserve trong visual task:
+
+- form submission destination;
+- webhook;
+- query/template source;
+- navigation source;
+- transactional/payment setting;
+- code-like content.
+
+Visual request vẫn có thể style widget qua native controls nhưng không được âm thầm đổi nó submit/query/execute/purchase cái gì.
 
 ## Custom CSS
 
-Widget Intelligence does not make Custom CSS a preferred widget/control path. If a semantic role maps to a native widget and the runtime exposes the required control, external AI should use that control. Custom CSS remains a fallback for behavior that cannot be expressed through proven native controls and remains subject to `SemanticPatchGuard` analysis.
+Widget Intelligence không làm Custom CSS thành preferred path.
+
+Nếu:
+
+```text
+semantic role → native widget tồn tại
+AND runtime có native control phù hợp
+```
+
+thì AI phải dùng native path.
+
+`custom_css` chỉ là fallback cho effect runtime controls không biểu đạt được và vẫn phải qua `SemanticPatchGuard`.
+
+## Nguyên tắc cốt lõi
+
+```text
+semantic suitability
+∩ runtime availability
+= candidate hợp lệ
+```
+
+Một widget “có vẻ đúng về ý nghĩa” nhưng không registered trong Elementor runtime hiện tại không phải candidate hợp lệ.

@@ -1,7 +1,87 @@
 # Exact Runtime AI Export
 
-Elementor editor exports now offer an **Exact Runtime** context mode for redesign tasks. The mode keeps the normal scoped Cresco AI package, then enriches it from Cresco's live lazy Elementor catalog before it is copied or downloaded.
+Exact Runtime là chế độ enrich AI export bằng capability thực tế của Elementor runtime đang mở trong editor.
 
-Exact Runtime includes detailed live capability entries for the editable/context types plus a bounded construction set of common layout, content, media, button and form types that are actually registered in the current Elementor runtime. Each entry comes from the runtime catalog with raw metadata enabled, including exact setting keys, defaults, responsive flags, units, ranges, options, conditions, selectors and Atomic bindings/prop schema when Elementor exposes them.
+Mục tiêu: AI không chỉ biết “đây là widget heading/button/container”, mà còn biết **control nào thật sự tồn tại trong installation hiện tại**.
 
-The package adds `runtimeCapabilities`, `capabilityLock` and `siteDesignContext`. The lock forbids invented control keys or responsive suffixes and tells the AI to use `custom_css` only when no current native control can express the required property. Exact Runtime fails closed if a registered required capability cannot be loaded. Smart mode remains available for smaller edit-only packages.
+## Exact Runtime bổ sung gì?
+
+Export scoped bình thường được enrich bằng detailed capability của:
+
+- editable/context types;
+- construction set có giới hạn;
+- các type được runtime chứng minh là đang đăng ký.
+
+Metadata có thể gồm:
+
+```text
+exact setting keys
+defaults
+responsive flags
+allowed units
+ranges
+options
+conditions
+selectors
+Atomic bindings / prop schema
+```
+
+Exact Runtime không invent metadata từ trí nhớ hoặc từ một Elementor version khác.
+
+## Các vùng dữ liệu chính
+
+Package có thể được bổ sung:
+
+```text
+runtimeCapabilities
+capabilityLock
+siteDesignContext
+```
+
+### `runtimeCapabilities`
+
+Detailed runtime entries đã được chứng minh.
+
+### `capabilityLock`
+
+Khóa các nguyên tắc:
+
+- không invent control key;
+- không invent responsive suffix;
+- không dùng unit/option/range ngoài runtime metadata;
+- `custom_css` chỉ là fallback khi native control không đủ.
+
+### `siteDesignContext`
+
+Tóm tắt Active Kit/global design context để AI reuse design language hiện tại.
+
+## Fail-closed
+
+Nếu capability **bắt buộc** của selected target/context đã registered nhưng không thể load đáng tin cậy, Exact Runtime phải fail-closed thay vì cho AI đoán.
+
+Capability optional phục vụ construction có thể fail-soft khi contract hiện tại cho phép và phải được ghi rõ trong coverage/diagnostics.
+
+## Resource safety từ 0.24.3
+
+Implementation hiện tại không nên tải lại mọi detail đã có.
+
+Pipeline mong muốn:
+
+```text
+server bounded context
+→ reuse detailed capability server đã trả
+→ xác định capability còn thiếu
+→ fetch phần thiếu với worker/fetch budget
+→ fail-closed required capability
+→ fail-soft optional capability
+```
+
+Điều này giảm double-enrich, số REST request và nguy cơ PHP/browser bị quá tải.
+
+## Vai trò
+
+Exact Runtime trả lời câu hỏi:
+
+> “Với Elementor/Core/Pro/addon đang chạy **ngay lúc này**, AI thực sự được phép dùng những control nào?”
+
+Nó không thay Site Settings, không thay Widget Intelligence và không tự apply thay đổi. Nó là nguồn bằng chứng runtime cho các compiler/validator tiếp theo.

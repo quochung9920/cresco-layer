@@ -1,50 +1,96 @@
-# Editor AI workflow
+# Workflow AI trong Elementor Editor
 
-Cresco Layer 0.5.1 keeps the scoped `cresco-layer-ai-package/v2` → `cresco-layer-patch/v1` exchange, but makes the Elementor editor workflow usable without handling JSON manually in the normal case.
+> **Tài liệu lịch sử:** file này mô tả UX giai đoạn Cresco Layer 0.5.1 với nút **Edit with AI**. Từ 0.24, UX chính đã chuyển sang **Cresco Export / Import** và external file exchange. Xem `EXTERNAL-AI-WORKFLOW.md` cho workflow hiện tại.
 
-## Edit with AI
+Cresco Layer 0.5.1 giữ exchange contract:
 
-The editor toolbar now exposes one primary **Edit with AI** action. The user chooses the smallest editable scope that matches the task:
+```text
+cresco-layer-ai-package/v2
+→ cresco-layer-patch/v1
+```
 
-- **This element only** → `widget` scope. Edit only the selected widget/container settings. Existing children are preserved.
-- **This section + children** → `subtree` scope. Edit the selected container and descendants.
-- **Selected elements** → `selection` scope. Edit only the explicitly collected elements; their descendants are not automatically editable.
+nhưng giúp người dùng thao tác ngay trong Elementor mà không phải xử lý JSON thủ công ở normal case.
 
-Use the smallest scope possible. A completed page does not need to be exported as a full document just to restyle one button or redesign one content block.
+## Edit with AI — UX lịch sử
+
+Toolbar từng có action **Edit with AI** với các scope:
+
+- **This element only** → `widget`: chỉ settings của selected element; children được preserve.
+- **This section + children** → `subtree`: root + descendants.
+- **Selected elements** → `selection`: chỉ các element được chọn rõ; descendants không tự editable.
+
+Nguyên tắc vẫn còn giá trị: **chọn scope nhỏ nhất đủ cho task**. Không export toàn page chỉ để đổi một button.
 
 ## AI selection
 
-A non-contiguous AI selection is kept in the editor bridge. Elements can be added or removed from the selection from the Elementor context menu with **Cresco · Add/remove AI selection**. The floating selection counter shows the current number of selected elements.
+Non-contiguous selection từng được giữ trong editor bridge. Context menu có thể add/remove element khỏi AI selection, sau đó backend nhận `selection` scope cùng comma-separated IDs.
 
-Selection exports use the existing backend `selection` scope and send the comma-separated element IDs to the document export endpoint.
+Backend `selection` contract vẫn có thể tồn tại cho workflow nâng cao dù external panel 0.24 tập trung vào widget/subtree/document.
 
-## Clear input/output filenames
+## Tên file input/output
 
-Editor exports use an input-specific filename:
+Editor export lịch sử dùng tên:
 
-`cresco-ai-input-post<postId>-<target>-<scope>.json`
+```text
+cresco-ai-input-post<postId>-<target>-<scope>.json
+```
 
-The file is the input package that should be sent to an AI. It is not the file imported back into Cresco.
+File này là **AI input package**, không phải file import trở lại Cresco.
 
 ## Import AI result
 
-**Import AI** accepts the AI result as a local `.json` file through drag-and-drop or a file picker. Manual paste remains available as a fallback.
+Import UI nhận `.json` qua drag-and-drop/file picker; paste là fallback.
 
-Before validation the editor identifies common mistakes locally:
+Các lỗi phổ biến được nhận diện trước REST request:
 
-- `cresco-layer-patch/v1` → accepted as an AI result;
-- `cresco-layer-ai-package/v2` → rejected as an AI input package;
-- Elementor clipboard/export data with `type: elementor` → rejected with a targeted explanation;
-- invalid or unknown JSON → rejected before a REST request is sent.
+- `cresco-layer-patch/v1` → có thể là AI result hợp lệ.
+- `cresco-layer-ai-package/v2` → đây là input package, không phải result.
+- Elementor clipboard/export với `type: elementor` → không phải Cresco result.
+- invalid/unknown JSON → reject trước server request.
 
-For widget/subtree patches, Cresco compares the patch root against the element currently selected in Elementor. A mismatch is shown persistently and validation stays disabled until the correct target is selected.
+Với scoped result, UI có thể so `target.id`/scope với current selected element và chặn mismatch trước Preview.
 
-## Validation and preview
+## Validation và Preview
 
-After local file/schema/target checks, **Validate & Preview** still uses the existing server-side patch validator, semantic guard, scope checksum validation and PatchApplier preview. The preview summarizes operation counts, scope, target, native-control operations, structural operations and semantic warnings.
+Sau local checks, server vẫn chịu trách nhiệm:
 
-Validation failures are kept in the modal instead of existing only as a transient toast. The user can copy diagnostics for support or AI-assisted repair.
+```text
+schema/normalization
+→ runtime validation
+→ semantic guard
+→ scope validation
+→ preview diff
+```
+
+Validation error nên hiển thị persistent trong UI và hỗ trợ copy diagnostics thay vì chỉ dùng transient toast.
 
 ## Apply
 
-**Apply reviewed patch** continues to save through Elementor's document APIs and does not publish the page. Cresco then syncs supported operations into the open Elementor canvas and reports when a reopen is required.
+Apply phải:
+
+- dùng Elementor document API;
+- không tự publish;
+- giữ history/undo semantics khi integration cho phép;
+- sync/reload editor để người dùng thấy persisted working state;
+- report khi cần reopen editor.
+
+## Quan hệ với workflow 0.24
+
+UX mới đã thay phần “Edit with AI” bằng:
+
+```text
+Elementor
+→ Export for ChatGPT
+→ external AI chat
+→ Import AI Result
+→ Preview
+→ Apply
+```
+
+Nhưng các bài học của file này vẫn giữ nguyên:
+
+- scope phải rõ;
+- input package và output result phải phân biệt;
+- target mismatch phải chặn sớm;
+- server validation là authority;
+- Apply không phải Publish.

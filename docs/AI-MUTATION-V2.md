@@ -1,16 +1,18 @@
 # `cresco-ai-mutation/v2`
 
-`cresco-ai-mutation/v2` is the preferred external-AI response contract in Cresco Layer 0.18. It keeps the AI focused on semantic intent while Cresco compiles that intent into the internal scoped `cresco-layer-patch/v1` format.
+`cresco-ai-mutation/v2` là external-AI response contract ưu tiên trong Cresco Layer 0.18. Contract này giữ AI tập trung vào **semantic intent**, còn Cresco compile intent thành internal scoped `cresco-layer-patch/v1`.
 
-## Core principles
+> Ở workflow external mới hơn, `cresco-ai-mutation/v3` được ưu tiên cho element/subtree design work; v2 vẫn được giữ để tương thích và là tầng trung gian quan trọng trong compiler.
 
-- Existing Elementor IDs are authoritative.
-- Final IDs for new nodes are allocated by Cresco.
-- `widgetIntent` must name a type proven by the active Elementor runtime.
-- Exact Elementor `settings` are still validated by `SemanticPatchGuard`.
-- Visual edits may not silently modify protected behavioral/external settings.
-- Add operations cannot escape the selected editable scope.
-- Full rebuild remains explicit and target-local.
+## Nguyên tắc cốt lõi
+
+- Existing Elementor IDs là authoritative.
+- Final ID của node mới do Cresco cấp.
+- `widgetIntent` phải trỏ tới type đã được active Elementor runtime chứng minh.
+- Exact Elementor `settings` vẫn qua `SemanticPatchGuard`.
+- Visual edit không được âm thầm sửa protected behavioral/external settings.
+- Add operation không được thoát selected editable scope.
+- Full rebuild phải explicit và chỉ trong target.
 
 ## Add
 
@@ -40,9 +42,16 @@
 }
 ```
 
-Supported Add placement modes in 0.18 are `inside-start` and `inside-end`. If the exported placement context marks `before-target` or `after-target` as `requiresWiderScope`, select/export the parent Container rather than writing outside the scope.
+Placement mode hỗ trợ ở 0.18:
 
-Nested nodes are represented through `children` (or `elements` for compatibility):
+```text
+inside-start
+inside-end
+```
+
+Nếu exported placement context đánh dấu `before-target`/`after-target` là `requiresWiderScope`, phải export/select parent Container thay vì ghi ra ngoài scope.
+
+Nested nodes dùng `children` hoặc `elements` để tương thích:
 
 ```json
 {
@@ -64,7 +73,7 @@ Nested nodes are represented through `children` (or `elements` for compatibility
 
 ## Edit
 
-Edits use exact existing element IDs and exact runtime setting keys:
+Edit dùng exact existing element ID và exact runtime setting key.
 
 ```json
 {
@@ -93,7 +102,7 @@ Edits use exact existing element IDs and exact runtime setting keys:
 }
 ```
 
-Remove one setting with:
+Remove một setting:
 
 ```json
 {
@@ -103,13 +112,19 @@ Remove one setting with:
 }
 ```
 
-Do not invent responsive suffixes. Use only `emittableKeys` exported for the actual control/runtime.
+Không invent responsive suffix. Chỉ dùng `emittableKeys` đã export cho control/runtime thật.
 
 ## Protected behavioral edits
 
-Generic visual mutations reject setting names associated with external/behavioral configuration, including common form webhooks/email routing, redirects, payments, query/template sources and code-like controls.
+Generic visual mutation reject setting liên quan external/behavioral configuration như:
 
-Only an explicit user request may opt into those changes with:
+- form webhook/email routing;
+- redirects;
+- payments;
+- query/template sources;
+- code-like controls.
+
+Chỉ explicit user request mới có thể opt-in:
 
 ```json
 {
@@ -117,7 +132,7 @@ Only an explicit user request may opt into those changes with:
 }
 ```
 
-This flag does not bypass runtime or semantic validation.
+Flag này **không bypass runtime hoặc semantic validation**.
 
 ## Move
 
@@ -137,7 +152,7 @@ This flag does not bypass runtime or semantic validation.
 }
 ```
 
-Both the moved element and destination parent must be inside the exported editable scope.
+Element được move và destination parent đều phải nằm trong exported editable scope.
 
 ## Remove
 
@@ -153,7 +168,7 @@ Both the moved element and destination parent must be inside the exported editab
 }
 ```
 
-The selected root itself cannot be deleted through this narrow semantic contract.
+Selected root không được xóa qua narrow semantic contract này.
 
 ## Rebuild
 
@@ -175,23 +190,25 @@ The selected root itself cannot be deleted through this narrow semantic contract
 }
 ```
 
-Rebuild requires exactly one root. The root Elementor `elType` must match the live selected target; a widget rebuild must also retain that widget type. Select a Container for structural redesigns.
+Rebuild yêu cầu đúng một root. Root `elType` phải khớp live selected target; nếu target là widget thì widget type cũng phải giữ. Với structural redesign, nên chọn Container.
 
 ## Content shortcuts
 
-The compiler supports a small semantic content layer while exact `settings` remain available:
+Compiler có semantic content layer nhỏ, trong khi exact `settings` vẫn dùng được.
 
-- heading-like widget: `content.text` -> `title`, `content.semanticLevel` -> `header_size`
-- text-editor-like widget: `content.html` or `content.text` -> `editor`
-- button-like widget: `content.text` -> `text`, `content.url` -> `link`
-- image-like widget: `content.image` -> `image`
-- icon-like widget: `content.icon` -> `selected_icon`
+Ví dụ:
 
-Explicit `settings` take precedence over these content shortcuts and are still checked against the active Elementor capability catalog.
+- heading-like: `content.text` → `title`, `content.semanticLevel` → `header_size`.
+- text-editor-like: `content.html` / `content.text` → `editor`.
+- button-like: `content.text` → `text`, `content.url` → `link`.
+- image-like: `content.image` → `image`.
+- icon-like: `content.icon` → `selected_icon`.
 
-## ID policy
+Explicit `settings` có ưu tiên cao hơn shortcut và vẫn phải khớp active runtime catalog.
 
-For new nodes, prefer temporary references:
+## Chính sách ID
+
+Với node mới, ưu tiên temporary reference:
 
 ```json
 {
@@ -200,19 +217,19 @@ For new nodes, prefer temporary references:
 }
 ```
 
-References must be unique within the answer. Cresco allocates final collision-free Elementor IDs against the current working document and removes `ref` before persistence. A repeated temporary ref fails closed rather than merging two nodes.
+Ref phải unique trong một answer. Cresco cấp final collision-free Elementor IDs từ current working document và xóa `ref` trước persistence. Duplicate ref → fail-closed, không merge hai node.
 
-## Compilation and validation
+## Compilation và validation
 
 ```text
 cresco-ai-mutation/v2
   -> AIMutationCompiler
   -> ElementorIdGenerator
-  -> MutationNormalizer (deterministic safe repairs only)
+  -> MutationNormalizer
   -> cresco-layer-patch/v1
   -> PatchValidator
   -> SemanticPatchGuard
   -> Preview / Apply / Verify
 ```
 
-The semantic contract is not a validation bypass. If a control, widget, unit, option, responsive key or value is not supported by the live runtime, the mutation is rejected.
+Semantic contract không phải validation bypass. Nếu widget/control/unit/option/responsive key/value không được live runtime hỗ trợ, mutation phải bị reject.

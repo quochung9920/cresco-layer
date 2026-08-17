@@ -1,10 +1,20 @@
 # Cresco Layer External AI Intelligence
 
-Cresco Layer 0.20 extends the 0.18/0.19 external-AI foundation with a **Semantic Design Compiler**, professional design intelligence and rendered verification. Elementor remains the source of truth. Cresco does not become a page builder and does not maintain a parallel design system.
+> **Tài liệu lịch sử:** mô tả foundation ở giai đoạn 0.20. External workflow 0.24 đã nâng bundle/policy/UX, nhưng các nguyên tắc Semantic Design Compiler, runtime legality và rendered verification vẫn còn giá trị.
 
-## Goal
+Cresco Layer 0.20 mở rộng external-AI foundation bằng:
 
-The external model should reason about **design intent**, not memorize Elementor internals. Cresco exports enough information for the model to understand the existing interface, then resolves the model's semantic design request into controls proven by the active Elementor installation.
+- **Semantic Design Compiler**;
+- professional Design Intelligence;
+- rendered verification.
+
+Elementor vẫn là source of truth. Cresco không trở thành page builder và không giữ design system song song.
+
+## Mục tiêu
+
+External model nên reasoning bằng **design intent**, không cần ghi nhớ Elementor internals.
+
+Cresco chịu trách nhiệm export đủ context và lower semantic intent về controls được active runtime chứng minh.
 
 ```text
 Elementor working document
@@ -12,83 +22,122 @@ Elementor working document
   -> task-aware runtime widget discovery
   -> Widget Intelligence + Semantic Scene + Placement/Mutation Boundary
   -> Design Intelligence + Structure Grammar + Semantic Bindings
-  -> external AI returns cresco-ai-mutation/v3 (preferred)
-  -> SemanticDesignCompiler lowers semantic layout/style/responsive intent
+  -> external AI returns cresco-ai-mutation/v3
+  -> SemanticDesignCompiler
   -> cresco-ai-mutation/v2
   -> AIMutationCompiler
   -> Cresco ID allocation + deterministic normalization
   -> internal cresco-layer-patch/v1
   -> SemanticPatchGuard
-  -> preview / apply / persistence verification
-  -> optional rendered verification
+  -> Preview / Apply / persistence verification
+  -> rendered verification
 ```
 
-## Existing intelligence retained
+## Các lớp intelligence giữ nguyên
 
-The top-level context remains `cresco-ai-context/v3` for compatibility. It continues to expose task-aware runtime discovery, Widget Intelligence, Semantic Scene, Construction Plan, Placement Context, Mutation Boundary, control examples, runtime selection, Active Kit/design-system context, responsive foundation and runtime-proven semantic content bindings.
+Top-level context vẫn có thể dùng `cresco-ai-context/v3` và expose:
 
-Final Elementor IDs for new nodes remain Cresco-owned. Existing IDs remain authoritative. Custom CSS remains last resort. Global references and Dynamic Tags remain preserve-by-default.
+- task-aware runtime discovery;
+- Widget Intelligence;
+- Semantic Scene;
+- Construction Plan;
+- Placement Context;
+- Mutation Boundary;
+- control examples;
+- Active Kit/design system;
+- responsive foundation;
+- semantic content bindings.
 
-## Design Intelligence in 0.20
+Final ID của node mới do Cresco sở hữu. Existing ID là authoritative. Global references/Dynamic Tags preserve-by-default. Custom CSS là last resort.
 
-Schema: `cresco-design-intelligence/v1`.
+## Design Intelligence
 
-The export now adds a professional UI/UX guidance layer with product archetype, style keywords, design dials, a semantic spacing scale, quality priorities and anti-patterns. The optional dials are:
+Schema:
 
-- variance — minimal/structured to bold/asymmetric;
-- motion — subtle to expressive;
-- density — spacious to dense.
+```text
+cresco-design-intelligence/v1
+```
 
-The principles are informed by the public MIT-licensed `nextlevelbuilder/ui-ux-pro-max-skill` project at revision `a38d04c3d5c298c851dbe5e6ee1965ee3de42cb5`. Cresco records that provenance but has no runtime dependency on the repository and does not import its large datasets. Active Elementor Kit values still outrank generic design suggestions.
+Context có thể gồm:
 
-See `docs/DESIGN-INTELLIGENCE.md`.
+- product archetype;
+- style keywords;
+- variance/motion/density dials;
+- semantic spacing scale;
+- quality priorities;
+- anti-patterns.
+
+Nguồn tham khảo cấp cao: `nextlevelbuilder/ui-ux-pro-max-skill` MIT, revision `a38d04c3d5c298c851dbe5e6ee1965ee3de42cb5`. Cresco không có runtime dependency vào repo đó.
+
+Active Kit luôn ưu tiên hơn generic design suggestion.
 
 ## Semantic Design Mutation v3
 
-`cresco-ai-mutation/v3` is now preferred for external design work.
+`cresco-ai-mutation/v3` được ưu tiên cho external design work.
 
-For new UI, nodes may express:
+Node mới có thể mô tả:
 
-- semantic `content`;
-- `layoutIntent`;
-- `styleIntent`;
-- `responsiveIntent`;
-- `accessibilityIntent`;
-- structural `children`;
-- exact runtime `settings` only as an expert escape hatch.
+```text
+content
+layoutIntent
+styleIntent
+responsiveIntent
+accessibilityIntent
+children
+settings  # expert escape hatch
+```
 
-For existing elements, `designChanges` specifies an `elementId` and semantic content/layout/style/responsive/accessibility changes. Cresco reads the live element type and resolves exact runtime controls before producing v2 changes.
+Existing element dùng `designChanges` + `elementId` và semantic intent.
 
-The compiler fails closed if it cannot prove a control, option, unit or responsive suffix. The model does not get permission to invent an Elementor setting simply because a CSS concept exists.
+Compiler phải đọc live type/control metadata trước khi lower xuống v2. Nếu không chứng minh được control/option/unit/responsive suffix, compilation phải dừng.
 
-See `docs/SEMANTIC-DESIGN-COMPILER.md`.
+CSS concept tồn tại không phải bằng chứng Elementor setting tồn tại.
 
 ## Structure Grammar
 
-Schema: `cresco-structure-grammar/v1`.
+Schema:
 
-Structural Elementor element types may own child elements when scope permits. Widgets do not receive arbitrary child nodes through semantic mutation. Nested/disclosure widgets such as Accordion, Tabs, Carousel, Menu or Loop are marked as runtime-managed nested content; their internal storage must come from native controls/repeaters or a dedicated adapter rather than DOM inference.
+```text
+cresco-structure-grammar/v1
+```
 
-## AI Bundle v2
+Quy tắc:
 
-`cresco-ai-bundle/v2` adds a separate `05-design-intelligence.json` and upgrades the widget guide/output contract for mutation v3. The bundle still includes the full Context v3, task brief, optional best-effort `current-desktop.png`, optional reference image and manifest.
+- structural element như Container có thể sở hữu children khi scope cho phép;
+- widget không nhận arbitrary child tree;
+- Accordion/Tabs/Carousel/Menu/Loop và nested widget tương tự có runtime-managed nested content;
+- internal storage của chúng phải đi qua native controls/repeaters hoặc dedicated adapter, không suy ra từ DOM.
 
-See `docs/AI-BUNDLE.md`.
+## Bundle lịch sử
+
+Ở 0.20, AI Bundle v2 bổ sung `05-design-intelligence.json` cùng Context v3, task brief, optional raster/reference image.
+
+External workflow 0.24 hiện dùng `cresco-ai-bundle/v4`; xem `AI-EXPORT-IMPORT.md` và `SCHEMA-REFERENCE.md`.
 
 ## Rendered verification
 
-After a successful semantic mutation apply, the Import panel can run **Verify Render**. Cresco resolves temporary refs to final Elementor IDs and checks measurable rendered geometry/computed-style/accessibility/UX conditions in the Elementor preview iframe.
+Sau apply, verifier có thể đọc preview iframe và so semantic intent với computed geometry/style/accessibility condition.
 
-This is a deterministic verification layer, not a claim of pixel-perfect image comparison. A mismatch does not silently mutate the page; repair remains another reviewed mutation.
+Đây là deterministic verification, **không phải tuyên bố pixel-perfect image comparison**.
 
-See `docs/VISUAL-VERIFICATION.md`.
+Mismatch không được auto-mutate trang âm thầm; repair phải là một reviewed mutation mới.
 
 ## Backward compatibility
 
-0.20 continues to accept:
+Các format cũ vẫn có thể được normalizer hỗ trợ tùy version:
 
-- `cresco-ai-mutation/v2`;
-- `cresco-layer-patch/v1`;
-- `cresco-layer-ai-result/v1`.
+```text
+cresco-ai-mutation/v2
+cresco-layer-patch/v1
+cresco-layer-ai-result/v1
+```
 
-Checksum freshness is not reintroduced. Existing placeholder rejection, delta-first policy, explicit destructive rebuild intent, SemanticPatchGuard, Elementor Document API persistence and post-apply verification remain in force.
+Các invariant không đổi:
+
+- không reintroduce freshness checksum làm AI contract bắt buộc;
+- reject serialization placeholders;
+- delta-first;
+- destructive rebuild phải explicit;
+- `SemanticPatchGuard` là authority trước apply;
+- persist qua Elementor Document API;
+- verify sau apply.

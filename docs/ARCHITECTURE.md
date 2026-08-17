@@ -1,154 +1,250 @@
-# Cresco Layer Architecture
+# Kiến trúc Cresco Layer
 
-## Product boundary
+> **Tài liệu lịch sử:** nội dung gốc mô tả kiến trúc giai đoạn 0.5.x. Các nguyên tắc nền tảng vẫn hữu ích, nhưng một số chi tiết như `cresco-context-resolver/v1`, checksum scope và cách hiểu `context=full` đã thay đổi ở 0.24.3. Khi cần behavior hiện tại, ưu tiên `PROJECT_RULES.md`, `KIEN-TRUC-HE-THONG.md`, `EXPORT-RESILIENCE.md` và code/test trên `main`.
 
-Elementor remains the editor, renderer, responsive engine, history owner and persistence source of truth. Cresco Layer is an intelligence/interchange layer; it does not create a second page document model.
+## Ranh giới sản phẩm
 
-The core workflow is:
+Elementor vẫn là:
+
+- editor;
+- renderer;
+- responsive engine;
+- history owner;
+- persistence source of truth.
+
+Cresco Layer là **intelligence + interchange + validation layer**. Cresco không tạo page document model thứ hai.
+
+Pipeline tổng quát:
 
 ```text
 Elementor working document
-  -> Full runtime knowledge + live registries
+  -> runtime knowledge + live registries
   -> Cresco Context Resolver
-  -> task-specific capability + context export
+  -> scoped capability/context export
   -> external AI / local agent
-  -> validated Cresco patch
+  -> validated Cresco result/patch
   -> preview + scope guard
-  -> Elementor Document::save working data
-  -> user reviews in Elementor
-  -> user Update/Publish
+  -> Elementor Document API
+  -> read-back verification
+  -> user review
+  -> Elementor Update/Publish
 ```
 
 ## AI package v2
 
-`cresco-layer-ai-package/v2` remains the transport contract. Cresco 0.5.0 resolves context before building it.
+Transport contract:
 
-A normal `smart` package contains:
+```text
+cresco-layer-ai-package/v2
+```
 
-- manifest and exact Elementor/Pro versions;
-- document checksum and target-scope checksum;
+Package có thể chứa:
+
+- Elementor/Pro version;
 - raw Elementor element data;
-- editable scope and read-only parent/sibling context;
+- editable scope;
+- read-only parent/sibling context;
 - page settings;
-- active Kit/design-system data;
+- active Kit/design system;
 - active breakpoints;
-- a compact `registryIndex` of every registered widget and element type;
-- detailed control metadata only for types relevant to the editable scope/read-only context plus bounded insertion candidates;
-- control defaults, options, ranges, units, conditions, selectors, responsive/dynamic flags where Elementor exposes them;
-- registered Dynamic Tags metadata;
-- capability coverage/trust information;
-- dependency-aware Elementor Pro runtime signals;
-- editable Elementor template catalog;
-- referenced media metadata;
+- compact `registryIndex` của registered widget/element types;
+- detailed control metadata theo context budget;
+- default/options/ranges/units/conditions/selectors/responsive/dynamic metadata;
+- Dynamic Tags metadata;
+- capability coverage;
+- dependency-aware Pro runtime signals;
+- template/media metadata;
 - audit data;
 - provider-neutral AI instructions.
 
-`context=full` expands detailed capability metadata for every registered type when a task genuinely needs it. Even then, the raw Full Runtime Snapshot remains separate.
+Secrets phải được redact trước khi package rời WordPress.
 
-Secrets are redacted before the package leaves WordPress.
+### Smart và Full
+
+Thiết kế lịch sử:
+
+- `smart` mở detail cho editable/context types và một số insertion candidate.
+- `full` từng mở detail cho mọi registered type.
+
+Implementation 0.24.3 đã thay đổi để tránh request quá nặng:
+
+```text
+Full registry awareness
++ bounded detailed hydration
++ Exact Runtime reuse/fetch phần thiếu
+```
+
+Do đó không dùng mô tả cũ “Full = hydrate mọi control stack” làm giả định runtime hiện tại.
 
 ## AI Context Resolver
 
-`cresco-context-resolver/v1` is the bridge between full runtime knowledge and a task-specific AI package.
+Resolver nối full runtime knowledge với task/scoped AI package.
 
-The default `smart` profile recursively discovers the widget/element types present in the editable Elementor data and read-only context. Document/subtree exports also add a bounded set of common insertion candidates. It loads detailed capabilities only for those types while retaining a summary of every registered type in `registryIndex`.
+Mục tiêu:
 
-The resolver also supplies Active Kit settings, global design-system summaries, active breakpoints, Dynamic Tags, Elementor/Pro module counts and dependency-aware Pro feature signals.
+```text
+runtime rất lớn
+→ giữ toàn bộ type index
+→ chọn detailed capability cần thiết
+→ xuất context nhỏ hơn, chính xác hơn
+```
 
-`capabilityCoverage` is part of the AI contract. The AI is instructed not to infer controls or runtime data from sources marked `partial` or `unavailable`, and it must never invent a setting merely because a type appears in the compact registry index.
+`capabilityCoverage` cho AI biết nguồn nào:
 
-See `docs/AI-CONTEXT-RESOLVER.md` for the profile and package contract.
+```text
+complete
+partial
+unavailable
+```
 
-## Full Elementor runtime snapshot
+AI không được invent control chỉ vì một type xuất hiện trong `registryIndex`.
 
-`cresco-elementor-snapshot/v1` is a separate administrator-only diagnostic/configuration export. It is intentionally not embedded into every AI package because a complete site snapshot can be very large.
+## Full Elementor Runtime Snapshot
 
-The snapshot uses lazy, fault-isolated REST requests. The index advertises sections, registered widgets/elements and Elementor-owned record IDs. The browser downloads each item sequentially and assembles one final JSON file.
+Schema:
 
-Every payload keeps two representations:
+```text
+cresco-elementor-snapshot/v1
+```
 
-- `normalized`: stable data intended for human/AI reasoning;
-- `raw`: the closest safe serializable runtime/post/meta representation exposed by the current Elementor installation.
+Đây là artifact diagnostics/admin riêng, không nhúng vào mọi AI edit.
 
-Snapshot coverage includes environment, Elementor-related global options, features/experiments, breakpoints, the active Kit/Site Settings, Dynamic Tags, Elementor/Pro runtime modules and dependency signals, Classic + Atomic widget/element capabilities, and recognized Elementor-owned records such as documents, templates, Theme Builder templates, popups, custom fonts, custom icons and custom code.
+Snapshot dùng lazy/fault-isolated REST requests và giữ hai representation:
 
-Dynamic Tags are read from Elementor registry records through their registered `instance`. Module discovery enumerates `get_modules_names()` and resolves each module with `get_modules($name)`, matching Elementor 4.x method signatures.
+- `normalized` — ổn định, dễ đọc cho người/AI.
+- `raw` — representation gần nhất với runtime/post/meta nhưng vẫn serializable và an toàn.
 
-A shared `SerializableSanitizer` redacts secrets and reports unsupported runtime objects/resources/callbacks instead of stringifying them. New/unknown Elementor fields are preserved in `raw` whenever they are serializable.
+Coverage có thể bao gồm:
 
-The final browser-built snapshot treats internal `partial`/`failed` scanner coverage as incomplete even when the HTTP request succeeded. Top-level `complete` therefore means all requested buckets completed without hidden partial scanner results.
+- environment;
+- Elementor global options;
+- features/experiments;
+- breakpoints;
+- active Kit;
+- Dynamic Tags;
+- Core/Pro runtime modules;
+- registered widgets/elements;
+- Elementor-owned records như documents/templates/popups/custom fonts/icons/code.
 
-See `docs/ELEMENTOR-SNAPSHOT.md` for the REST contract and coverage semantics.
+`SerializableSanitizer` redact secret và report unsupported runtime values thay vì stringify mù quáng.
 
 ## Scope model
 
-Supported export scopes:
+Các scope chính:
 
-- `document`: page/template plus page settings;
-- `widget`: selected element settings only; descendants are read-only/preserved;
-- `subtree`: selected root plus every descendant;
-- `selection`: multiple explicitly selected roots without implicit descendants.
+```text
+document
+widget
+subtree
+selection
+```
 
-Each non-document package includes a `scopeChecksum`. A patch can survive unrelated page edits while remaining blocked when the exported target changed.
+Ý nghĩa:
+
+- `document` — toàn page/template + page settings.
+- `widget` — selected element settings; descendants mặc định được preserve/read-only.
+- `subtree` — selected root + descendants.
+- `selection` — nhiều selected root rõ ràng, không tự lấy descendants nếu contract không nói.
+
+Scope phải được server enforce, không dựa vào việc AI “tự giác”.
 
 ## Lossless element contract
 
-Raw Elementor data is authoritative. Cresco does not normalize Elementor elements into its own schema.
+Raw Elementor data là authoritative. Cresco không ép element vào một schema riêng làm mất field mới.
 
-Known fields are validated. Unknown safe element fields are preserved so that Atomic data, addon metadata and future Elementor fields are not destroyed during round trips.
+Quy tắc:
 
-`replace-element` enables a complete element round trip. Widget scope forces child preservation; subtree scope allows intentional descendant changes.
+```text
+unknown persisted field hiện có
+→ preserve nếu không sửa
 
-## Capability scanner
+unknown field do AI tự invent
+→ reject nếu runtime không chứng minh
+```
 
-The scanner queries Elementor's registered widget manager and element manager at runtime. This means the AI package describes the actual installation, including registered addon widgets, instead of assuming a fixed Elementor Pro catalog.
+`replace-element` chỉ hợp lệ khi complete replacement thật sự là mục tiêu. Widget scope phải preserve children khi contract yêu cầu.
 
-Control metadata includes the values Cresco can safely serialize from Elementor's control stack: type, label, description, defaults, options, responsive/dynamic flags, units, ranges, selectors, conditions, render type and related metadata.
+## Capability Scanner
 
-Classic Elementor entries use `get_controls()` and derive defaults from control metadata without calling `get_settings()` on registry prototypes. Atomic/V4 entries use `get_atomic_controls()` plus `get_props_schema()` and normalize schema-only properties so editable Atomic data is not lost merely because legacy controls are empty.
+Scanner đọc registered widget/element managers của Elementor runtime thật.
 
-The control catalog describes what an element *can* do, even when the current document omits a setting because Elementor is using the default.
+Metadata có thể gồm:
+
+- type/label/description;
+- defaults;
+- options;
+- responsive/dynamic flags;
+- units/ranges;
+- selectors;
+- conditions;
+- render metadata;
+- Atomic/V4 controls + props schema khi có.
+
+Classic entries dùng `get_controls()`; Atomic/V4 dùng metadata mà runtime expose. Không giả định fixed Elementor Pro catalog.
 
 ## Editor-native exchange
 
-Cresco enqueues an editor-only integration through Elementor's editor script hooks and extends the documented element context menu filter. A selected widget/container can be exported as widget-only or subtree scope without leaving Elementor.
+Cresco tích hợp vào Elementor editor nhưng không thay editor.
 
-Editor exports use the default Smart context profile automatically. The WordPress Cresco admin page additionally exposes an explicit Smart/Full selector for document exports.
+Nguyên tắc:
 
-The editor import dialog sends `expectedScope` in addition to the patch. Server-side code verifies that the AI result targets the selected element before preview/apply.
+- export/import vẫn scoped;
+- target hiện tại phải được resolve đúng;
+- backend vẫn validate `expectedScope`/target trước Preview/Apply;
+- UI editor chỉ là entrypoint; authority cuối nằm ở runtime validation + persistence layer.
 
-## Persistence and publication safety
+Từ 0.24, UX chính là **External AI Exchange** thay vì workflow “Edit with AI” cũ.
 
-Cresco never directly writes Elementor `_elementor_data`. Changes are handed to Elementor Document `save()`.
+## Persistence và publication safety
 
-For published/private documents Cresco uses Elementor working/autosave data when available, so AI Apply is not equivalent to publishing. The user retains final Update/Publish control.
+Cresco không ghi trực tiếp `_elementor_data`.
 
-## Security rules
+```text
+reviewed patch/result
+→ Elementor Document API
+→ working/autosave data
+→ read-back verify
+→ user quyết định Update/Publish
+```
 
-- WordPress edit capability is checked per target post.
-- Full runtime snapshots require `manage_options`.
-- REST requests use WordPress REST nonces.
-- secrets and credentials are redacted from exports and rejected in patches;
-- unsupported runtime objects/resources/callbacks are omitted from full snapshots and reported;
-- active/executable markup is rejected;
-- operation counts and nesting depth are bounded;
-- duplicate IDs and cyclic moves are rejected;
-- scoped patches are server-side sandboxed.
+Apply của Cresco không đồng nghĩa publish.
+
+## Security
+
+- check capability theo target post;
+- full snapshot yêu cầu `manage_options`;
+- REST dùng WordPress nonce;
+- redact credential/secret;
+- reject executable/unsafe markup;
+- operation count/depth phải bounded;
+- reject duplicate ID/cyclic move;
+- server-side scope sandboxing là bắt buộc.
 
 ## Quality invariants
 
-The repository quality gate enforces:
+Quality gate phải bảo vệ ít nhất:
 
-- no direct Elementor document meta persistence;
-- package v2 + scope checksum presence;
-- Context Resolver Smart/Full profiles and compact registry/detailed capability split;
-- Dynamic Tags registry-instance discovery and named module discovery;
-- dependency-aware Pro capability reporting;
-- honest aggregate snapshot coverage;
-- scoped patch guard presence;
-- lossless element replacement support;
-- full runtime snapshot schema/routes/sanitizer presence;
-- Classic + Atomic capability scanner tests;
-- snapshot serializer + snapshot/runtime discovery/context resolver contract tests;
-- editor-native integration registration;
-- PHP/JavaScript syntax checks and standalone scope/validator tests.
+- không direct-write Elementor document meta;
+- package/schema contract còn tồn tại;
+- Context Resolver và registry/capability split còn đúng;
+- runtime discovery không gọi API sai signature;
+- snapshot coverage trung thực;
+- scope guard còn hoạt động;
+- unknown data vẫn lossless;
+- Classic + Atomic capability discovery có regression coverage;
+- editor integration không vô tình biến mất;
+- PHP/JS syntax và standalone validator/scope tests vẫn chạy.
+
+## Quy tắc đọc tài liệu này
+
+Tài liệu này hữu ích để hiểu **tư duy kiến trúc**, nhưng khi chi tiết version-specific mâu thuẫn với code hiện tại:
+
+```text
+code/runtime
+→ current tests
+→ PROJECT_RULES.md
+→ docs 0.24+
+→ tài liệu lịch sử này
+```
+
+đó là thứ tự ưu tiên.

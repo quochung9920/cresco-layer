@@ -1,41 +1,51 @@
 # Cresco Layer AI Context v3
 
-Cresco Layer 0.16.0 introduces an AI-first exchange layer designed for one simple user flow:
+> **Lưu ý phiên bản:** file này mô tả thời điểm AI Context v3 được giới thiệu ở 0.16.0. Context schema vẫn quan trọng, nhưng UX “Create / Edit” trong Elementor đã được thay bằng External AI Exchange ở 0.24. Khi cần workflow hiện tại, xem `EXTERNAL-AI-WORKFLOW.md`.
 
-**Select Elementor element → describe the change → Prepare for AI → send JSON + optional reference image → Import Result → Preview → Apply.**
+Cresco Layer 0.16.0 giới thiệu lớp exchange AI-first với mục tiêu làm quy trình người dùng đơn giản hơn:
 
-The user no longer needs to choose Smart/Exact Runtime in the main workflow, understand patch mechanics, manually manage scope, or inspect Elementor runtime catalogs.
+```text
+chọn Elementor element
+→ mô tả thay đổi
+→ Prepare for AI
+→ gửi JSON + optional reference image
+→ Import Result
+→ Preview
+→ Apply
+```
 
-## Product principles
+Người dùng không cần hiểu patch mechanics, scope internals hay runtime catalog.
 
-1. Elementor remains the source of truth.
-2. Exact Runtime is automatic in the main AI workflow.
-3. Existing Elementor content is read-only source context.
-4. AI mutations are delta-first by default.
-5. Native Elementor controls are preferred over Custom CSS.
-6. Parent Container gap/row-gap/column-gap owns sibling spacing whenever possible.
-7. Full replacement is an explicit rebuild action, not a convenience operation.
-8. Preview and server-side validation remain mandatory before Apply.
+## Nguyên tắc sản phẩm
 
-## Unified Cresco AI panel
+1. Elementor là source of truth.
+2. Exact Runtime được tự động hóa trong main AI workflow.
+3. Existing Elementor content là read-only source context.
+4. AI mutation mặc định delta-first.
+5. Native Elementor controls ưu tiên hơn Custom CSS.
+6. Parent Container `gap`/`row-gap`/`column-gap` nên sở hữu sibling spacing khi có thể.
+7. Full replacement là explicit rebuild action, không phải shortcut.
+8. Preview + server-side validation bắt buộc trước Apply.
 
-The main editor UX is now a single floating **Cresco AI** entry point. The legacy multi-button toolbar is hidden from the normal workflow.
+## UX lịch sử của panel
 
-The panel has two tabs:
+Ở 0.16, panel Cresco AI có hai tab:
 
-- **Create / Edit** — describe the task, choose Auto/Edit/Add/Rebuild, optionally register a reference image, then prepare/copy/download AI context.
-- **Import Result** — paste or drop the AI response, preview its changes, then apply to the current Elementor working document.
+- **Create / Edit** — nhập task, chọn Auto/Edit/Add/Rebuild, optional reference image rồi prepare/copy/download context.
+- **Import Result** — paste/drop AI response, preview rồi apply.
 
-### Change types
+Các mode:
 
-- **Auto**: Cresco tells AI to choose the smallest safe delta.
-- **Edit**: AI should return native setting updates/removals/moves for existing IDs.
-- **Add**: AI should return only new inserted Elementor subtree data.
-- **Rebuild**: the only destructive mode; a full target replacement is allowed only when explicitly selected.
+- **Auto** — chọn smallest safe delta.
+- **Edit** — update/remove/move native settings của existing IDs.
+- **Add** — chỉ insert subtree mới.
+- **Rebuild** — destructive mode; chỉ cho phép full target replacement khi user chọn rõ.
 
-## `cresco-ai-context/v3`
+> Từ 0.24, prompt thiết kế chuyển ra external chat và panel chính chỉ còn Export/Import.
 
-The editor takes the server's scoped package, lets Exact Runtime enrich it with live capabilities, then compiles a new AI-facing package:
+## Schema `cresco-ai-context/v3`
+
+Editor nhận scoped server package, để Exact Runtime enrich, sau đó compile context dành cho AI:
 
 ```json
 {
@@ -57,60 +67,60 @@ The editor takes the server's scoped package, lets Exact Runtime enrich it with 
 }
 ```
 
-The important difference from the older export is information order. AI sees the task and constraints first, then the visual/layout model, then exact control capabilities, then lower-level source/debug context.
+Khác biệt quan trọng so với export cũ là **thứ tự thông tin**: task/constraint trước, visual/layout sau, exact control capability tiếp theo, rồi mới tới source/debug context cấp thấp.
 
 ## AI Brief
 
-Every v3 package starts with a short plain-language briefing containing:
+Mỗi package v3 bắt đầu bằng brief ngắn gồm:
 
 - user goal;
 - selected target;
-- preservation/rebuild policy;
+- preserve/rebuild policy;
 - source element count;
 - context quality;
-- native-control-first and gap-first design rules;
-- the required output contract.
+- native-control-first và gap-first rules;
+- output contract cần trả.
 
-This lets a model understand the task before reading runtime metadata.
+Mục tiêu là để model hiểu nhiệm vụ trước khi đọc runtime metadata.
 
 ## Visual Snapshot
 
-`visualSnapshot` is a structured snapshot from the live Elementor preview. It deliberately does not embed a bitmap or a base64 image inside JSON.
+`visualSnapshot` là structured snapshot từ Elementor preview, không nhúng bitmap/base64 vào JSON.
 
-It contains:
+Có thể gồm:
 
 - live viewport width/height/device-pixel-ratio;
-- selected target bounds;
-- selected target computed CSS values;
-- count of visible Elementor nodes;
+- target bounds;
+- target computed CSS values;
+- số visible Elementor nodes;
 - optional reference-image metadata.
 
-If the task uses a visual reference, the user attaches that same image to the AI chat separately. This keeps the JSON small and avoids huge binary payloads.
+Nếu dùng reference image, user attach ảnh riêng trong AI chat. Điều này giữ JSON nhỏ và token-efficient.
 
 ## Layout Graph
 
-`layoutGraph` combines the persisted Elementor tree with live preview geometry.
+`layoutGraph` kết hợp persisted Elementor tree với live preview geometry.
 
-Each node records:
+Mỗi node có thể ghi:
 
 - `id`;
 - parent ID;
 - sibling index;
-- nesting depth;
-- Elementor `elType` / `widgetType`;
-- inferred Cresco container role where available;
+- depth;
+- `elType` / `widgetType`;
+- inferred container role;
 - child count;
 - important layout/typography settings;
 - rendered bounds;
-- computed display/flex/grid/gap/padding/typography/background/border properties.
+- computed display/flex/grid/gap/padding/typography/background/border.
 
-This gives AI both the semantic Elementor structure and the visual result of that structure.
+AI nhờ đó hiểu cả semantic structure lẫn visual result.
 
 ## Runtime compaction
 
-Exact Runtime remains authoritative. `runtime` is a compact AI-friendly representation of the live runtime capability data rather than a second guessed schema.
+Exact Runtime vẫn là authority. `runtime` chỉ là AI-friendly compact representation của live capability.
 
-For each loaded widget/element it keeps:
+Mỗi widget/element detail có thể giữ:
 
 - exact control key;
 - type;
@@ -121,53 +131,59 @@ For each loaded widget/element it keeps:
 - options;
 - conditions;
 - selectors;
-- Atomic/binding metadata when present;
+- Atomic/binding metadata;
 - detailed capability loaded status.
 
-AI must never invent a key not present here.
+AI không được invent key không có trong runtime context.
 
 ## Context Quality
 
-Every v3 package has `contextQuality` with a score and explicit checks.
+Mỗi v3 package có `contextQuality` với score + checks.
 
-Current scoring verifies:
+Các tín hiệu lịch sử:
 
 - Exact Runtime availability;
-- Active Elementor Kit / design system availability;
-- layout graph presence;
+- Active Elementor Kit/design system;
+- layout graph;
 - live target visual metrics;
-- source tree presence;
-- exchange safety policy presence.
+- source tree;
+- exchange safety policy.
 
-Grades:
+Grade:
 
-- 95–100: Excellent
-- 80–94: Good
-- 65–79: Usable
-- below 65: Incomplete
-
-The panel shows this before the user sends the package to AI.
+```text
+95–100  Excellent
+80–94   Good
+65–79   Usable
+<65     Incomplete
+```
 
 ## Output contract
 
-The v3 package does not ask AI to guess mutation strategy.
+Context không yêu cầu AI tự đoán mutation strategy.
 
-For normal Add/Edit/Auto work the preferred result is still `cresco-layer-patch/v1`, but the package provides explicit small templates:
+Ở giai đoạn 0.16:
 
-- `insert-element` for additions;
-- `update-setting` for existing control edits;
-- `move-element` when relocating existing elements;
-- no echoing of the existing source subtree.
+- Add/Edit/Auto thường dùng delta `cresco-layer-patch/v1` như `insert-element`, `update-setting`, `move-element`.
+- Rebuild explicit có thể dùng `cresco-layer-ai-result/v1` với `intent: "replace-target"`.
 
-For explicit Rebuild mode the package provides a `cresco-layer-ai-result/v1` template with `intent: "replace-target"`.
+External workflow mới hơn ưu tiên schema theo `resultContract` lớp ngoài cùng; xem `SCHEMA-REFERENCE.md`.
 
-The existing safe-exchange guard continues to reject `[TRUNCATED]`, `[REDACTED]` and `__cresco_truncated__` before Preview/Apply.
+Guard vẫn chặn placeholder:
+
+```text
+[TRUNCATED]
+[REDACTED]
+__cresco_truncated__
+```
+
+trước Preview/Apply.
 
 ## Import UX
 
-The new panel sends the AI's raw response to the server normalizer. This is important: the browser no longer requires the user to hand-edit common AI wrappers or Markdown code fences.
+Panel gửi raw AI response tới server normalizer thay vì bắt user tự xóa Markdown fence/wrapper.
 
-The server remains authoritative for:
+Server authority cho:
 
 - schema recognition;
 - target/scope validation;
@@ -179,48 +195,56 @@ The server remains authoritative for:
 - verification;
 - rollback/history.
 
-The panel presents user-facing counts instead of patch jargon:
+UI nên trình bày khái niệm dễ hiểu như:
 
-- added;
-- updated;
-- moved;
-- replaced;
-- removed;
-- warnings;
-- risk message.
+```text
+added
+updated
+moved
+replaced
+removed
+warnings
+risk
+```
 
-After Apply, Elementor preview is refreshed so persisted working data is shown again.
+## Reference image
 
-## Reference images
+Trong thiết kế 0.16, panel ghi metadata reference image vào package; binary image được attach riêng trong AI conversation.
 
-The panel accepts an optional reference-image selection only to record metadata in the package. The image itself is not embedded.
+Flow:
 
-The intended workflow is:
-
-1. choose the reference image in Cresco;
-2. Prepare for AI;
-3. copy/download the JSON;
-4. send JSON and attach the same image in the AI conversation.
-
-This keeps the package portable, readable and token-efficient.
+```text
+chọn reference image
+→ Prepare for AI
+→ copy/download JSON
+→ gửi JSON + attach ảnh trong AI chat
+```
 
 ## Compatibility
 
-The REST backend and safe exchange model from 0.15.1 remain intact. AI Context v3 is compiled in the Elementor editor after Exact Runtime enrichment, so server-side tooling that still consumes the scoped v2 package is not broken.
+AI Context v3 được compile trong Elementor editor sau Exact Runtime enrichment nên server-side consumer của scoped package v2 không bị phá.
 
-Legacy `cresco-layer-patch/v1` results continue to import through the server normalizer.
+Legacy `cresco-layer-patch/v1` vẫn đi qua server normalizer.
 
-## Main files
+## File chính
 
-- `assets/ai-context-v3.js` — AI-first context compiler, layout graph, live visual metrics, capability compaction and quality score.
-- `assets/ai-panel.js` — unified Prepare/Import workflow.
-- `assets/ai-panel.css` — user-facing panel styling.
-- `assets/exact-runtime-export.js` — authoritative live runtime enrichment.
-- `includes/AI/ExchangeSafetyGuard.php` — read-only source / delta mutation policy and placeholder blocking.
-- `includes/Support/Assets.php` — deterministic editor script/style loading order.
+- `assets/ai-context-v3.js` — context compiler, layout graph, live visual metrics, capability compaction, quality score.
+- `assets/ai-panel.js` — panel UX.
+- `assets/ai-panel.css` — panel styling.
+- `assets/exact-runtime-export.js` — live runtime enrichment.
+- `includes/AI/ExchangeSafetyGuard.php` — source-context read-only, delta mutation và placeholder guard.
+- `includes/Support/Assets.php` — script/style load order.
 
 ## Design intent
 
-The user should think in terms of **what they want to build**. Cresco handles Elementor internals.
+Người dùng nên nghĩ bằng **giao diện muốn tạo**. Cresco xử lý Elementor internals.
 
-The AI should think in terms of **visual intent + exact available controls + the smallest required mutation**. It should not reconstruct existing source data, invent Elementor settings, or use Custom CSS when a native control exists.
+AI nên nghĩ bằng:
+
+```text
+visual intent
++ exact available controls
++ smallest required mutation
+```
+
+AI không nên reconstruct existing source data, invent settings hay dùng Custom CSS khi native control đã đủ.
