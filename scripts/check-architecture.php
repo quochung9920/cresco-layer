@@ -32,7 +32,7 @@ $required = [
 		'SerializableSanitizer', 'Never invent a setting name.',
 	],
 	'includes/AI/ContextResolver.php' => [
-		'cresco-context-resolver/v1', "PROFILE_SMART = 'smart'", "PROFILE_FULL = 'full'", 'registryIndex',
+		'cresco-context-resolver/v3', "PROFILE_SMART = 'smart'", "PROFILE_FULL = 'full'", 'registryIndex',
 		'capabilityCoverage', 'insertion-candidate', 'globalDesignSystem', 'dependency_map',
 	],
 	'includes/AI/ElementLocator.php' => [ "'document', 'widget', 'selection', 'subtree'", 'scope_checksum', 'find_context' ],
