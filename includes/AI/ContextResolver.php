@@ -1,6 +1,7 @@
 <?php
 namespace CrescoLayer\AI;
 
+use CrescoLayer\Diagnostics\ExportDiagnostics;
 use CrescoLayer\Elementor\RuntimeDiscovery;
 use Elementor\Plugin as ElementorPlugin;
 
@@ -8,6 +9,8 @@ final class ContextResolver {
 	public const PROFILE_SMART = 'smart';
 	public const PROFILE_FULL = 'full';
 	public const PROFILES = [ self::PROFILE_SMART, self::PROFILE_FULL ];
+	private const DETAIL_BUDGET_WIDGETS = 24;
+	private const DETAIL_BUDGET_ELEMENTS = 12;
 
 	private CapabilityScanner $scanner;
 	private RuntimeDiscovery $runtime;
@@ -19,29 +22,51 @@ final class ContextResolver {
 
 	public function resolve( array $editableElements, array $readOnlyContext = [], string $scope = 'document', string $profile = self::PROFILE_SMART ): array {
 		$profile = in_array( $profile, self::PROFILES, true ) ? $profile : self::PROFILE_SMART;
+		ExportDiagnostics::stage( 'context.catalog-index', [ 'profile' => $profile, 'scope' => $scope ] );
 		$index = $this->scanner->catalog_index();
 		$capabilityErrors = array_values( (array) ( $index['scanErrors'] ?? [] ) );
 		$roles = [ 'widgets' => [], 'elements' => [] ];
 
+		ExportDiagnostics::stage( 'context.collect-types' );
 		$this->collect_types( $editableElements, $roles, 'editable' );
 		$this->collect_types( $readOnlyContext, $roles, 'read-only-context' );
 		$this->filter_registered_roles( $roles, $index, $capabilityErrors );
 
 		if ( self::PROFILE_FULL === $profile ) {
-			foreach ( array_keys( (array) ( $index['widgets'] ?? [] ) ) as $name ) { $roles['widgets'][ (string) $name ] = 'full-profile'; }
-			foreach ( array_keys( (array) ( $index['elements'] ?? [] ) ) as $name ) { $roles['elements'][ (string) $name ] = 'full-profile'; }
+			// Full export keeps the entire runtime registry in registryIndex, but detailed control
+			// metadata is resource-bounded. Existing/editable types always win the budget; the rest
+			// stays index-only so external AI can still see what the runtime supports without forcing
+			// PHP to instantiate every Elementor control stack on every export.
+			foreach ( array_keys( (array) ( $index['widgets'] ?? [] ) ) as $name ) {
+				$name = (string) $name;
+				$roles['widgets'][ $name ] = $this->stronger_role( $roles['widgets'][ $name ] ?? '', 'full-profile' );
+			}
+			foreach ( array_keys( (array) ( $index['elements'] ?? [] ) ) as $name ) {
+				$name = (string) $name;
+				$roles['elements'][ $name ] = $this->stronger_role( $roles['elements'][ $name ] ?? '', 'full-profile' );
+			}
+			$this->add_insertion_candidates( $roles, $index );
 		} elseif ( in_array( $scope, [ 'document', 'subtree' ], true ) ) {
 			$this->add_insertion_candidates( $roles, $index );
 		}
 
+		$budget = $this->apply_detail_budget( $roles, $index, $profile );
+		$expectedCapabilities = count( $roles['widgets'] ) + count( $roles['elements'] );
+		ExportDiagnostics::stage( 'context.capability-details', [
+			'widgets' => count( $roles['widgets'] ),
+			'elements' => count( $roles['elements'] ),
+			'truncated' => (bool) ( $budget['truncated'] ?? false ),
+		] );
 		$widgets = $this->load_entries( 'widget', $roles['widgets'], $capabilityErrors );
 		$elements = $this->load_entries( 'element', $roles['elements'], $capabilityErrors );
-		$expectedCapabilities = count( $roles['widgets'] ) + count( $roles['elements'] );
 		$loadedCapabilities = count( $widgets ) + count( $elements );
 
+		ExportDiagnostics::stage( 'context.site-context' );
 		$siteErrors = [];
 		$breakpoints = $this->breakpoints( $siteErrors );
 		$designSystem = $this->design_system( $siteErrors );
+
+		ExportDiagnostics::stage( 'context.runtime-catalogs' );
 		$dynamicTags = $this->runtime->dynamic_tag_catalog();
 		$modules = $this->runtime->module_catalog();
 		$dependencies = $this->runtime->dependency_map();
@@ -60,9 +85,13 @@ final class ContextResolver {
 			(array) ( $modules['scanErrors'] ?? [] )
 		);
 
+		ExportDiagnostics::stage( 'context.complete', [
+			'loadedCapabilities' => $loadedCapabilities,
+			'errors' => count( $errors ),
+		] );
 		return [
 			'profile' => $profile,
-			'resolver' => 'cresco-context-resolver/v1',
+			'resolver' => 'cresco-context-resolver/v2',
 			'registryIndex' => [
 				'widgets' => $index['widgets'] ?? [],
 				'elements' => $index['elements'] ?? [],
@@ -73,6 +102,7 @@ final class ContextResolver {
 				'elements' => $elements,
 				'roles' => $roles,
 			],
+			'contextBudget' => $budget,
 			'siteContext' => [
 				'breakpoints' => $breakpoints,
 				// Preserve the v2 AI package contract: designSystem is the active Kit settings array.
@@ -104,6 +134,10 @@ final class ContextResolver {
 				'detailedWidgets' => count( $widgets ),
 				'detailedElements' => count( $elements ),
 				'expectedDetailedCapabilities' => $expectedCapabilities,
+				'indexOnlyWidgets' => max( 0, count( (array) ( $index['widgets'] ?? [] ) ) - count( $widgets ) ),
+				'indexOnlyElements' => max( 0, count( (array) ( $index['elements'] ?? [] ) ) - count( $elements ) ),
+				'detailStrategy' => (string) ( $budget['strategy'] ?? 'bounded-detail' ),
+				'budget' => $budget,
 				'dynamicTags' => (int) ( $dynamicTags['count'] ?? 0 ),
 				'errors' => count( $errors ),
 			],
@@ -159,19 +193,63 @@ final class ContextResolver {
 	}
 
 	private function stronger_role( string $existing, string $incoming ): string {
-		$weights = [ 'insertion-candidate' => 1, 'read-only-context' => 2, 'full-profile' => 2, 'editable' => 3 ];
-		return ( $weights[ $incoming ] ?? 0 ) >= ( $weights[ $existing ] ?? 0 ) ? $incoming : $existing;
+		$weights = [ 'full-profile' => 1, 'insertion-candidate' => 1, 'read-only-context' => 2, 'editable' => 3 ];
+		return ( $weights[ $incoming ] ?? 0 ) > ( $weights[ $existing ] ?? 0 ) ? $incoming : ( $existing ?: $incoming );
 	}
 
 	private function add_insertion_candidates( array &$roles, array $index ): void {
-		$widgetCandidates = [ 'heading', 'text-editor', 'button', 'image', 'icon', 'divider', 'spacer', 'shortcode', 'html', 'form', 'e-heading', 'e-paragraph', 'e-button', 'e-image' ];
+		$widgetCandidates = [ 'heading', 'text-editor', 'button', 'image', 'icon', 'icon-list', 'divider', 'spacer', 'shortcode', 'html', 'form', 'e-heading', 'e-paragraph', 'e-button', 'e-image' ];
 		$elementCandidates = [ 'container', 'section', 'column', 'e-div-block', 'e-flexbox', 'e-grid' ];
 		foreach ( $widgetCandidates as $name ) {
-			if ( isset( $index['widgets'][ $name ] ) && ! isset( $roles['widgets'][ $name ] ) ) { $roles['widgets'][ $name ] = 'insertion-candidate'; }
+			if ( isset( $index['widgets'][ $name ] ) ) { $roles['widgets'][ $name ] = $this->stronger_role( $roles['widgets'][ $name ] ?? '', 'insertion-candidate' ); }
 		}
 		foreach ( $elementCandidates as $name ) {
-			if ( isset( $index['elements'][ $name ] ) && ! isset( $roles['elements'][ $name ] ) ) { $roles['elements'][ $name ] = 'insertion-candidate'; }
+			if ( isset( $index['elements'][ $name ] ) ) { $roles['elements'][ $name ] = $this->stronger_role( $roles['elements'][ $name ] ?? '', 'insertion-candidate' ); }
 		}
+	}
+
+	private function apply_detail_budget( array &$roles, array $index, string $profile ): array {
+		$widgetBudget = $this->budget_kind( $roles['widgets'], self::DETAIL_BUDGET_WIDGETS );
+		$elementBudget = $this->budget_kind( $roles['elements'], self::DETAIL_BUDGET_ELEMENTS );
+		$roles['widgets'] = $widgetBudget['roles'];
+		$roles['elements'] = $elementBudget['roles'];
+
+		return [
+			'schema' => 'cresco-context-budget/v1',
+			'strategy' => self::PROFILE_FULL === $profile ? 'registry-full-bounded-detail' : 'smart-bounded-detail',
+			'registryIndexComplete' => true,
+			'targetAndExistingTypesNeverTruncated' => true,
+			'limits' => [ 'widgets' => self::DETAIL_BUDGET_WIDGETS, 'elements' => self::DETAIL_BUDGET_ELEMENTS ],
+			'effectiveLimits' => [ 'widgets' => $widgetBudget['effectiveLimit'], 'elements' => $elementBudget['effectiveLimit'] ],
+			'required' => [ 'widgets' => $widgetBudget['required'], 'elements' => $elementBudget['required'] ],
+			'optionalKept' => [ 'widgets' => $widgetBudget['optionalKept'], 'elements' => $elementBudget['optionalKept'] ],
+			'optionalIndexOnly' => [ 'widgets' => $widgetBudget['removed'], 'elements' => $elementBudget['removed'] ],
+			'truncated' => ! empty( $widgetBudget['removed'] ) || ! empty( $elementBudget['removed'] ),
+			'registered' => [
+				'widgets' => count( (array) ( $index['widgets'] ?? [] ) ),
+				'elements' => count( (array) ( $index['elements'] ?? [] ) ),
+			],
+		];
+	}
+
+	private function budget_kind( array $roles, int $limit ): array {
+		$required = [];
+		$optional = [];
+		foreach ( $roles as $name => $role ) {
+			if ( in_array( $role, [ 'editable', 'read-only-context' ], true ) ) { $required[ $name ] = $role; }
+			else { $optional[ $name ] = $role; }
+		}
+		$effectiveLimit = max( $limit, count( $required ) );
+		$allowance = max( 0, $effectiveLimit - count( $required ) );
+		$keptOptional = array_slice( $optional, 0, $allowance, true );
+		$removed = array_values( array_diff( array_keys( $optional ), array_keys( $keptOptional ) ) );
+		return [
+			'roles' => $required + $keptOptional,
+			'effectiveLimit' => $effectiveLimit,
+			'required' => array_values( array_keys( $required ) ),
+			'optionalKept' => array_values( array_keys( $keptOptional ) ),
+			'removed' => $removed,
+		];
 	}
 
 	private function breakpoints( array &$errors ): array {
