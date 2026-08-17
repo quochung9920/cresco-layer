@@ -22,57 +22,57 @@ final class Assets {
 	}
 
 	public function enqueue_editor_styles(): void {
+		if ( $this->is_safe_mode() ) { return; }
 		$this->enqueue_frontend();
-		wp_enqueue_style( 'cresco-layer-editor', CRESCO_LAYER_URL . 'assets/editor.css', [], CRESCO_LAYER_VERSION );
-		wp_enqueue_style( 'cresco-layer-ai-panel', CRESCO_LAYER_URL . 'assets/ai-panel.css', [ 'cresco-layer-editor' ], CRESCO_LAYER_VERSION );
-		wp_enqueue_style( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.css', [ 'cresco-layer-ai-panel' ], CRESCO_LAYER_VERSION );
+		// Keep startup CSS intentionally small. Legacy editor/skills CSS is loaded only by legacy tools,
+		// while the external exchange launcher and panel are fully covered by ai-panel.css.
+		wp_enqueue_style( 'cresco-layer-ai-panel', CRESCO_LAYER_URL . 'assets/ai-panel.css', [], CRESCO_LAYER_VERSION );
 	}
 
 	public function enqueue_editor_scripts(): void {
-		wp_enqueue_script( 'cresco-layer-clipboard-guard', CRESCO_LAYER_URL . 'assets/clipboard-guard.js', [], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-editor', CRESCO_LAYER_URL . 'assets/editor.js', [ 'cresco-layer-clipboard-guard' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-exact-runtime-export', CRESCO_LAYER_URL . 'assets/exact-runtime-export.js', [ 'cresco-layer-editor' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-fidelity-engine', CRESCO_LAYER_URL . 'assets/fidelity-engine.js', [ 'cresco-layer-exact-runtime-export' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-fidelity-export', CRESCO_LAYER_URL . 'assets/fidelity-export.js', [ 'cresco-layer-fidelity-engine' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-ai-context-v3', CRESCO_LAYER_URL . 'assets/ai-context-v3.js', [ 'cresco-layer-fidelity-export' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-external-ai-intelligence', CRESCO_LAYER_URL . 'assets/external-ai-intelligence.js', [ 'cresco-layer-ai-context-v3' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-design-intelligence', CRESCO_LAYER_URL . 'assets/design-intelligence.js', [ 'cresco-layer-external-ai-intelligence' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-semantic-design-contract', CRESCO_LAYER_URL . 'assets/semantic-design-contract.js', [ 'cresco-layer-design-intelligence' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-design-reasoning', CRESCO_LAYER_URL . 'assets/design-reasoning.js', [ 'cresco-layer-semantic-design-contract' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-ai-context-policy', CRESCO_LAYER_URL . 'assets/ai-context-policy.js', [ 'cresco-layer-design-reasoning' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-ai-bundle', CRESCO_LAYER_URL . 'assets/ai-bundle.js', [ 'cresco-layer-ai-context-policy' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-external-ai-exchange-policy', CRESCO_LAYER_URL . 'assets/external-ai-exchange-policy.js', [ 'cresco-layer-ai-bundle' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-visual-verification', CRESCO_LAYER_URL . 'assets/visual-verification.js', [ 'cresco-layer-external-ai-exchange-policy' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-fidelity-verification', CRESCO_LAYER_URL . 'assets/fidelity-verification.js', [ 'cresco-layer-visual-verification', 'cresco-layer-fidelity-engine' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-ai-panel', CRESCO_LAYER_URL . 'assets/ai-panel.js', [ 'cresco-layer-fidelity-verification' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-external-ai-entrypoints', CRESCO_LAYER_URL . 'assets/external-ai-entrypoints.js', [ 'cresco-layer-ai-panel' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-semantic-design-ui', CRESCO_LAYER_URL . 'assets/semantic-design-ui.js', [ 'cresco-layer-external-ai-entrypoints' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-skills', CRESCO_LAYER_URL . 'assets/skills.js', [ 'cresco-layer-semantic-design-ui' ], CRESCO_LAYER_VERSION, false );
-		wp_enqueue_script( 'cresco-layer-skills-accuracy', CRESCO_LAYER_URL . 'assets/skills-accuracy.js', [ 'cresco-layer-skills' ], CRESCO_LAYER_VERSION, false );
+		if ( $this->is_safe_mode() ) { return; }
+
+		// Safe Bootstrap rule: Elementor must become usable before Cresco loads runtime scanners,
+		// visual capture, AI context builders, fetch wrappers, verification or legacy skills.
+		wp_enqueue_script(
+			'cresco-layer-editor-bootstrap',
+			CRESCO_LAYER_URL . 'assets/editor-bootstrap.js',
+			[],
+			CRESCO_LAYER_VERSION,
+			true
+		);
 
 		if ( $this->editor_script_localized ) { return; }
 		$this->editor_script_localized = true;
 		$local_ai = ( new LocalAISettings() )->editor_summary();
-		wp_localize_script( 'cresco-layer-editor', 'crescoLayerEditor', [
+		wp_localize_script( 'cresco-layer-editor-bootstrap', 'crescoLayerEditor', [
 			'nonce'               => wp_create_nonce( 'wp_rest' ),
 			'restRoot'            => esc_url_raw( rest_url( 'cresco-layer/v1' ) ),
 			'postId'              => $this->editor_post_id(),
 			'adminUrl'            => esc_url_raw( admin_url( 'admin.php?page=cresco-layer' ) ),
+			'assetBaseUrl'        => esc_url_raw( CRESCO_LAYER_URL . 'assets/' ),
 			'version'             => CRESCO_LAYER_VERSION,
 			'elementorVersion'    => defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : null,
 			'elementorProVersion' => defined( 'ELEMENTOR_PRO_VERSION' ) ? ELEMENTOR_PRO_VERSION : null,
 			'localAI'             => $local_ai,
 			'fidelityPolicy'      => FidelityPolicy::config(),
+			'safeMode'            => false,
+			'bootstrap'           => [
+				'mode'                   => 'safe-lazy',
+				'elementorReadyTimeoutMs' => 8000,
+			],
 		] );
 	}
 
 	public function enqueue_admin_clipboard_guard( string $hook ): void {
-		if ( 'elementor_page_cresco-layer' !== $hook && ! $this->is_elementor_editor_request() ) { return; }
-		wp_enqueue_script( 'cresco-layer-clipboard-guard', CRESCO_LAYER_URL . 'assets/clipboard-guard.js', [], CRESCO_LAYER_VERSION, false );
+		// Clipboard guard remains available on the Cresco admin screen, but it no longer joins the
+		// Elementor startup path. The external exchange uses normal file download/upload there.
+		if ( 'elementor_page_cresco-layer' !== $hook ) { return; }
+		wp_enqueue_script( 'cresco-layer-clipboard-guard', CRESCO_LAYER_URL . 'assets/clipboard-guard.js', [], CRESCO_LAYER_VERSION, true );
 	}
 
 	public function enqueue_editor_assets_fallback(): void {
-		if ( ! $this->is_elementor_editor_request() ) { return; }
+		if ( $this->is_safe_mode() || ! $this->is_elementor_editor_request() ) { return; }
 		$this->enqueue_editor_styles();
 		$this->enqueue_editor_scripts();
 	}
@@ -83,6 +83,12 @@ final class Assets {
 		$post   = $this->editor_post_id();
 		if ( ! $post ) { return false; }
 		return 'elementor' === $action || str_starts_with( $page, 'elementor' );
+	}
+
+	private function is_safe_mode(): bool {
+		if ( ! isset( $_GET['cresco_safe'] ) ) { return false; } // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only rescue flag.
+		$value = strtolower( trim( sanitize_text_field( wp_unslash( (string) $_GET['cresco_safe'] ) ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only rescue flag.
+		return in_array( $value, [ '1', 'true', 'yes', 'on' ], true );
 	}
 
 	private function editor_post_id(): int {
