@@ -1,7 +1,7 @@
 # Project Rules
 
 > Repository scope: `quochung9920/cresco-layer` (Cresco Layer WordPress plugin).
-> Audited against `main` at `b213f31aed93295d52c42fed5d33afbe1ab40577`, plugin/package version `0.24.3`, on 2026-08-17.
+> Last verified against the `main` baseline at `e7ec5ed1c88fea357b2e143b2754d73188a47c12`, plugin/package version `0.24.3`, on 2026-08-17.
 >
 > This file is the default engineering policy for future AI Coding Agents and developers. Direct user instructions have higher priority. When a factual statement about current behavior conflicts with the repository, current code + current contract tests are authoritative and this file must be updated in the same change.
 
@@ -740,9 +740,10 @@ For visual/site-facing changes also verify desktop/tablet/mobile, keyboard/focus
 
 Do not silently "fix" these in unrelated tasks; verify and address deliberately:
 
-- Root `README.md` still labels the release as 0.24.0 while plugin/package code is 0.24.3.
 - Some technical docs have older version headers (for example architecture docs describing 0.23) even when concepts remain relevant.
-- `scripts/check-architecture.php` still searches for the legacy `cresco-context-resolver/v1` token while the current `ContextResolver` reports `cresco-context-resolver/v3`; run/align this checker when next touching architecture tests.
+- The admin AI context profile copy still describes Full as detailed controls for every registered type; current 0.24.3 behavior is full registry awareness with bounded detail plus Exact Runtime enrichment. Align that user-facing copy in a targeted admin UX change.
+- `cresco-advanced-icon` and `cresco-smart-image` can combine a link with a decorative/empty accessible name state. Define and browser-test an explicit accessible-link-label UX before changing existing rendered behavior.
+- The external AI panel is keyboard operable through native buttons/radios, but its custom tabs/segmented controls need a dedicated accessibility pass for tab semantics, focus-visible treatment and keyboard interaction.
 - `tmp-cresco-create-test.txt` exists at repository root; ownership/purpose is not confirmed. Do not delete solely because it looks temporary.
 - Active theme, child theme, site `functions.php`, site-wide `lisa-*` source, actual Elementor Global IDs/tokens and current website breakpoints are **Not confirmed in this plugin repository** and must be inspected in the real site/runtime before site-specific changes.
 
