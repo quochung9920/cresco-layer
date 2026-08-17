@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Cresco Layer
- * Description: External-first Elementor AI exchange with runtime-proven controls, lossless scoped import and computed fidelity verification.
- * Version: 0.24.0
+ * Description: External-first Elementor AI exchange with autosave target synchronization, runtime-proven controls, lossless scoped import and computed fidelity verification.
+ * Version: 0.24.1
  * Requires at least: 6.6
  * Requires PHP: 8.1
  * Requires Plugins: elementor
@@ -12,7 +12,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'CRESCO_LAYER_VERSION', '0.24.0' );
+define( 'CRESCO_LAYER_VERSION', '0.24.1' );
 define( 'CRESCO_LAYER_FILE', __FILE__ );
 define( 'CRESCO_LAYER_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CRESCO_LAYER_URL', plugin_dir_url( __FILE__ ) );
