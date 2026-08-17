@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../../assets/ai-panel.js', import.meta.url), 'utf8');
+const styles = fs.readFileSync(new URL('../../assets/ai-panel.css', import.meta.url), 'utf8');
 
 function expect(condition, message) {
   if (!condition) {
@@ -31,5 +32,8 @@ expect(source.includes('data-cresco-ai-legacy-hidden'), 'Legacy toolbar should s
 expect(source.includes('Apply to Elementor'), 'Apply action should remain user-facing.');
 expect(!source.includes('What do you want AI to do?'), 'Embedded prompt UI must not return to the primary workflow.');
 expect(!source.includes('Create / Edit'), 'Embedded create/edit tab must not return to the primary workflow.');
+expect(styles.includes('.cresco-ai-segmented input:focus-visible+span'), 'Segmented radio controls must expose a visible keyboard focus indicator.');
+expect(styles.includes('.cresco-ai-tabs button:focus-visible'), 'External exchange tabs must expose a visible keyboard focus indicator.');
+expect(styles.includes('.cresco-ai-primary:focus-visible') && styles.includes('.cresco-ai-secondary:focus-visible'), 'Primary and secondary panel actions must expose visible keyboard focus.');
 
 console.log('External AI exchange panel contract tests passed.');
