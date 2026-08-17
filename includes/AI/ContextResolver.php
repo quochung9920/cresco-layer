@@ -193,7 +193,7 @@ final class ContextResolver {
 	}
 
 	private function stronger_role( string $existing, string $incoming ): string {
-		$weights = [ 'full-profile' => 1, 'insertion-candidate' => 1, 'read-only-context' => 2, 'editable' => 3 ];
+		$weights = [ 'full-profile' => 1, 'insertion-candidate' => 2, 'read-only-context' => 3, 'editable' => 4 ];
 		return ( $weights[ $incoming ] ?? 0 ) > ( $weights[ $existing ] ?? 0 ) ? $incoming : ( $existing ?: $incoming );
 	}
 
@@ -234,11 +234,14 @@ final class ContextResolver {
 
 	private function budget_kind( array $roles, int $limit ): array {
 		$required = [];
-		$optional = [];
+		$preferredOptional = [];
+		$fallbackOptional = [];
 		foreach ( $roles as $name => $role ) {
 			if ( in_array( $role, [ 'editable', 'read-only-context' ], true ) ) { $required[ $name ] = $role; }
-			else { $optional[ $name ] = $role; }
+			elseif ( 'insertion-candidate' === $role ) { $preferredOptional[ $name ] = $role; }
+			else { $fallbackOptional[ $name ] = $role; }
 		}
+		$optional = $preferredOptional + $fallbackOptional;
 		$effectiveLimit = max( $limit, count( $required ) );
 		$allowance = max( 0, $effectiveLimit - count( $required ) );
 		$keptOptional = array_slice( $optional, 0, $allowance, true );
