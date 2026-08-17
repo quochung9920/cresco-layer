@@ -65,8 +65,10 @@
 					var parsed = null;
 					try { parsed = text ? JSON.parse(text) : null; } catch (e) {}
 					var serverDiagnostic = diagnosticFrom(parsed) || {};
-					var serverId = response.headers.get('x-cresco-request-id') || serverDiagnostic.errorId || requestId;
-					var stage = response.headers.get('x-cresco-diagnostic-stage') || serverDiagnostic.stage || '';
+					var serverId = serverDiagnostic.errorId || response.headers.get('x-cresco-request-id') || requestId;
+					// Prefer the structured server diagnostic. Headers can reflect a later serialization stage
+					// while the body records the actual callback stage that raised the error.
+					var stage = serverDiagnostic.stage || response.headers.get('x-cresco-diagnostic-stage') || '';
 					if (!stage && parsed && parsed.code === 'cresco_exact_runtime_export_failed') stage = 'exact-runtime-enrich';
 					if (!stage) stage = 'http-response';
 					var entry = {
@@ -106,7 +108,7 @@
 	}
 
 	window.CrescoLayerExportDiagnostics = {
-		version: '1.0.0',
+		version: '1.0.1',
 		schema: 'cresco-export-client-diagnostic/v1',
 		getLastError: function () { return history.length ? history[0] : null; },
 		getHistory: function () { return history.slice(); },
