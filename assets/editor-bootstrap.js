@@ -110,6 +110,20 @@
 		});
 	}
 
+	function bindPanelLifecycle() {
+		var box = document.getElementById('cresco-ai-panel');
+		if (box && !box.dataset.crescoSafeLifecycleBound) {
+			box.dataset.crescoSafeLifecycleBound = '1';
+			var close = box.querySelector ? box.querySelector('[data-cresco-ai-close]') : null;
+			if (close) close.addEventListener('click', function () { state.contextTargetId = ''; });
+		}
+		var panelLauncher = document.getElementById('cresco-ai-launcher');
+		if (panelLauncher && !panelLauncher.dataset.crescoSafeLifecycleBound) {
+			panelLauncher.dataset.crescoSafeLifecycleBound = '1';
+			panelLauncher.addEventListener('click', function () { state.contextTargetId = ''; }, true);
+		}
+	}
+
 	function ensureExchange() {
 		if (state.loaded && window.CrescoLayerAIPanel) return Promise.resolve(window.CrescoLayerAIPanel);
 		if (state.loading) return state.loading;
@@ -122,6 +136,7 @@
 			}
 			state.loaded = true;
 			state.status = 'ready';
+			bindPanelLifecycle();
 			var safeLauncher = document.getElementById('cresco-safe-launcher');
 			if (safeLauncher) safeLauncher.hidden = true;
 			return window.CrescoLayerAIPanel;
@@ -181,7 +196,8 @@
 		try { return modelId(view && view.model); } catch (e) { return ''; }
 	}
 
-	function contextGroup() {
+	function contextGroup(view) {
+		var targetId = viewId(view);
 		return {
 			name: 'cresco-layer-ai-exchange',
 			actions: [
@@ -190,30 +206,30 @@
 					icon: 'eicon-export-kit',
 					title: 'Cresco - Export to ChatGPT',
 					isEnabled: function () { return true; },
-					callback: function (view) { open('export', viewId(view)).catch(function () {}); }
+					callback: function () { open('export', targetId).catch(function () {}); }
 				},
 				{
 					name: 'cresco-import-external-ai',
 					icon: 'eicon-import-kit',
 					title: 'Cresco - Import AI Result',
 					isEnabled: function () { return true; },
-					callback: function (view) { open('import', viewId(view)).catch(function () {}); }
+					callback: function () { open('import', targetId).catch(function () {}); }
 				}
 			]
 		};
 	}
 
-	function replaceGroup(groups, type) {
+	function replaceGroup(groups, type, view) {
 		if (!Array.isArray(groups) || type === 'document') return groups;
 		var out = [], inserted = false;
 		groups.forEach(function (item) {
 			if (item && item.name === 'cresco-layer-ai-exchange') {
-				if (!inserted) { out.push(contextGroup()); inserted = true; }
+				if (!inserted) { out.push(contextGroup(view)); inserted = true; }
 				return;
 			}
 			out.push(item);
 		});
-		if (!inserted) out.push(contextGroup());
+		if (!inserted) out.push(contextGroup(view));
 		return out;
 	}
 
@@ -223,9 +239,9 @@
 		state.hooksObject = elementor.hooks;
 		state.hooksInstalled = true;
 		var types = ['widget', 'container', 'section', 'column', 'e-div-block', 'e-flexbox', 'e-grid'];
-		elementor.hooks.addFilter('elements/context-menu/groups', function (groups, type) { return replaceGroup(groups, type); });
+		elementor.hooks.addFilter('elements/context-menu/groups', function (groups, type, view) { return replaceGroup(groups, type, view); });
 		types.forEach(function (type) {
-			elementor.hooks.addFilter('elements/' + type + '/contextMenuGroups', function (groups) { return replaceGroup(groups, type); });
+			elementor.hooks.addFilter('elements/' + type + '/contextMenuGroups', function (groups, view) { return replaceGroup(groups, type, view); });
 		});
 		return true;
 	}
@@ -259,7 +275,7 @@
 	}
 
 	window.CrescoLayerSafeBootstrap = {
-		version: '1.1.0',
+		version: '1.2.0',
 		mode: 'safe-lazy',
 		open: open,
 		ensure: function (group) { return group === 'exchange' ? ensureExchange() : Promise.resolve(); },
