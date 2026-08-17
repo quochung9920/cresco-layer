@@ -20,7 +20,7 @@ function context_resolver_assert( bool $condition, string $message ): void {
 
 context_resolver_assert( str_contains( $resolver, "PROFILE_SMART = 'smart'" ), 'Smart context profile must exist.' );
 context_resolver_assert( str_contains( $resolver, "PROFILE_FULL = 'full'" ), 'Full context escape hatch must exist.' );
-context_resolver_assert( str_contains( $resolver, 'cresco-context-resolver/v1' ), 'Context resolver must expose a versioned identity.' );
+context_resolver_assert( str_contains( $resolver, 'cresco-context-resolver/v3' ), 'Context resolver must expose the current versioned identity.' );
 context_resolver_assert( str_contains( $resolver, 'registryIndex' ), 'Resolver must keep a compact registry index of all registered types.' );
 context_resolver_assert( str_contains( $resolver, 'capabilityCoverage' ), 'Resolver must expose trust/coverage information.' );
 context_resolver_assert( str_contains( $resolver, 'insertion-candidate' ), 'Smart document/subtree exports must add bounded insertion candidates.' );
@@ -32,7 +32,7 @@ context_resolver_assert( str_contains( $builder, 'fullRuntimeSnapshotIsSeparate'
 context_resolver_assert( str_contains( $builder, 'Never invent a setting name.' ), 'AI instructions must forbid invented Elementor settings.' );
 context_resolver_assert( ! str_contains( $builder, '$this->scanner->catalog();' ), 'Normal AI export must not scan the full detailed runtime catalog.' );
 context_resolver_assert( str_contains( $controller, "'context' =>" ), 'REST export must expose context profile selection.' );
-context_resolver_assert( str_contains( $controller, "'aiContextResolver' => 'smart-v1'" ), 'Health endpoint must advertise the smart resolver.' );
+context_resolver_assert( str_contains( $controller, "'aiContextResolver' => 'smart-v1'" ), 'Health endpoint must advertise the smart resolver profile.' );
 context_resolver_assert( str_contains( $adminPage, 'cresco-layer-context-profile' ), 'Admin export must let the user choose Smart or Full context.' );
 context_resolver_assert( str_contains( $adminJs, '&context=' ), 'Admin export request must send the selected context profile.' );
 context_resolver_assert( str_contains( $adminPage, 'isIncomplete(data)' ) && str_contains( $adminPage, 'row.partial' ), 'Full snapshot top-level coverage must include internal partial scanner results, not only HTTP failures.' );
