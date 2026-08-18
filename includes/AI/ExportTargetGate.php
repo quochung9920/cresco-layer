@@ -17,12 +17,15 @@ final class ExportTargetGate {
 	public function __construct( private ExportTargetResolver $resolver ) {}
 
 	public function register_hooks(): void {
-		// Run after route matching + permission checks, but before the actual export callback. This
-		// keeps the hard gate fail-closed without leaking document state to unauthenticated requests.
-		add_filter( 'rest_request_before_callbacks', [ $this, 'guard' ], -100, 3 );
+		// `rest_dispatch_request` runs after the route permission_callback and immediately before the
+		// endpoint callback. This keeps the gate fail-closed without reading document state for a
+		// request that has not passed WordPress REST permissions.
+		add_filter( 'rest_dispatch_request', [ $this, 'guard' ], -100, 4 );
 	}
 
-	public function guard( $result, $handler, WP_REST_Request $request ) {
+	public function guard( $result, WP_REST_Request $request, string $route, array $handler ) {
+		unset( $handler );
+		// Use the concrete request route rather than the registered route pattern passed by WordPress.
 		if ( null !== $result || ! $this->is_export_route( (string) $request->get_route() ) ) { return $result; }
 
 		$post_id = $this->post_id( $request );
@@ -33,6 +36,7 @@ final class ExportTargetGate {
 			'postId' => $post_id,
 			'scope' => $scope,
 			'selected' => implode( ',', $selected ),
+			'routePattern' => $route,
 		] );
 
 		try {
