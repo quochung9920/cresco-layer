@@ -2,16 +2,20 @@
 
 **Cầu nối file-based, lossless và runtime-aware giữa Elementor ↔ ChatGPT/AI bên ngoài.**
 
-Phiên bản hiện tại: **0.24.5 — External AI Only + Editor Rehydrate**.
+Phiên bản hiện tại: **0.24.6 — External AI Only + Target Sync Hard Gate**.
 
 Từ 0.24.4, Cresco Layer **không còn Local AI runtime, provider, model endpoint hay suy luận AI bên trong WordPress/Elementor**. Mọi phần tạo/chỉnh thiết kế bằng AI diễn ra ở ChatGPT hoặc AI bên ngoài thông qua file Cresco export/import. Điều này làm plugin nhẹ hơn, giảm surface lỗi và giữ ranh giới sản phẩm rõ ràng.
 
 Từ 0.24.5, Import AI Result đồng bộ Elementor client trước Preview/Apply và reload toàn bộ Elementor Editor sau khi Apply thành công để browser model rehydrate từ working document/autosave vừa lưu. Điều này tránh trường hợp server đã thêm giao diện nhưng editor canvas vẫn giữ model cũ hoặc autosave cũ ghi đè kết quả Cresco.
 
+Từ 0.24.6, scoped Export có thêm **server-side target hard gate** sau REST permission check và trước `PackageBuilder`. Target mismatch không còn rơi xuống generic 500. Cresco phân biệt `sync-required`, `sync-pending`, `stale-target` và `target-missing`, trả 409/410 phù hợp và không retry Full → Smart vô ích cho lỗi target synchronization.
+
 ## Workflow chính
 
 ```text
 Elementor
+→ Target Sync Preflight
+→ server Target Hard Gate
 → Cresco Export for ChatGPT
 → ZIP/JSON package tự mô tả
 → người dùng upload sang ChatGPT / AI bên ngoài
@@ -35,7 +39,7 @@ Cresco không chạy chatbot/model trong Elementor và không yêu cầu cấu h
 Việc bỏ Local AI không làm thay đổi các subsystem cốt lõi:
 
 - External AI Exchange và bundle ZIP/JSON;
-- Target Sync Preflight + Elementor autosave;
+- Target Sync Preflight + server Target Hard Gate + Elementor autosave;
 - Exact Runtime / runtime control discovery;
 - bounded Full Context và export diagnostics;
 - `cresco-ai-mutation/v3`, `cresco-layer-patch/v1` và import compatibility;
@@ -67,6 +71,22 @@ cresco-chatgpt-package-<target>.json
 ```
 
 Package/bundle mang theo runtime context, Global Styles, breakpoint, control metadata, layout context, result contract và rendered evidence khả dụng để AI bên ngoài không phải đoán cơ chế Elementor.
+
+### Target Sync Hard Gate
+
+Trước scoped export, browser cố gắng xác nhận target trong live Elementor model, force autosave bằng Commands API và kiểm tra server working document. Sau đó server kiểm tra lại một lần nữa ngay trước callback export.
+
+Các trạng thái chính:
+
+```text
+ready          → export tiếp tục
+sync-required  → main có target, working/autosave chưa theo kịp
+sync-pending   → live editor có target, server chưa có ID
+stale-target   → live editor xác nhận target đã biến mất
+target-missing → server không có target và client evidence chưa đủ
+```
+
+`sync-required`, `sync-pending` và `target-missing` trả HTTP 409 khi tới server hard gate; `stale-target` trả HTTP 410. Các lỗi này không kích hoạt context recovery vì thay `full` bằng `smart` không thể sửa target mismatch.
 
 ## Import AI Result
 
@@ -133,7 +153,7 @@ AI quyết định design intent
 
 ## Target Sync và Safe Bootstrap
 
-Trước export, Cresco có thể force Elementor autosave bằng Commands API rồi kiểm tra target ở working/autosave document. Nếu client đi trước server, Cresco chờ có giới hạn hoặc dừng an toàn thay vì export dữ liệu stale.
+Trước export, Cresco force Elementor autosave bằng Commands API rồi kiểm tra target ở working/autosave document. Nếu client đi trước server, Cresco chờ có giới hạn hoặc dừng an toàn thay vì export dữ liệu stale. Nếu browser preflight bị bỏ qua, server hard gate vẫn chặn target chưa ready trước khi `PackageBuilder` chạy.
 
 Import dùng cùng nguyên tắc source-of-truth: đồng bộ client trước Preview/Apply, sau đó full editor reload sau Apply để loại bỏ stale browser model.
 
@@ -142,6 +162,16 @@ Elementor startup chỉ giữ code tối thiểu. Heavy exchange/runtime work đ
 ```text
 &cresco_safe=1
 ```
+
+## Export diagnostics
+
+Lỗi export có `errorId`, stage, HTTP status, memory/runtime context và fatal location khi có thể. Target mismatch mới dùng stage:
+
+```text
+target-sync-gate
+```
+
+Diagnostic của route `/documents/3/export` phải ghi đúng `postId: 3`; resolver dùng route fallback ngay cả khi WordPress chưa populate URL params ở `rest_pre_dispatch`.
 
 ## Deterministic Cresco Skills
 
@@ -175,7 +205,7 @@ Fidelity đọc rendered preview thật trong browser. Không có evidence thì 
 
 ## Tài liệu
 
-Bắt đầu tại `docs/README.md`. Các file quan trọng: `PROJECT_RULES.md`, `docs/EXTERNAL-AI-WORKFLOW.md`, `docs/AI-EXPORT-IMPORT.md`, `docs/EXPORT-RESILIENCE.md`, `docs/FIDELITY-ENGINE.md`, `docs/KIEN-TRUC-HE-THONG.md`, `docs/SITE-SETTINGS.md`, `docs/PHAT-TRIEN-KIEM-THU.md`.
+Bắt đầu tại `docs/README.md`. Các file quan trọng: `PROJECT_RULES.md`, `docs/TARGET-SYNC-PREFLIGHT.md`, `docs/EXTERNAL-AI-WORKFLOW.md`, `docs/AI-EXPORT-IMPORT.md`, `docs/EXPORT-RESILIENCE.md`, `docs/FIDELITY-ENGINE.md`, `docs/KIEN-TRUC-HE-THONG.md`, `docs/SITE-SETTINGS.md`, `docs/PHAT-TRIEN-KIEM-THU.md`.
 
 ## Invariants
 
@@ -190,3 +220,4 @@ Bắt đầu tại `docs/README.md`. Các file quan trọng: `PROJECT_RULES.md`,
 9. Không có rendered evidence không được Fidelity PASS.
 10. Người dùng giữ quyền Update/Publish cuối cùng.
 11. Import server-side thành công phải được full editor rehydrate trước khi người dùng tiếp tục chỉnh sửa.
+12. Scoped export chỉ được đi vào `PackageBuilder` khi server Target Hard Gate xác nhận target ready.
