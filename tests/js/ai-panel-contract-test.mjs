@@ -30,6 +30,12 @@ expect(source.includes('This result targets ') && source.includes('Select that o
 expect(source.includes('Existing UI is preserved by delta operations.'), 'Delta safety feedback is missing.');
 expect(source.includes('data-cresco-ai-legacy-hidden'), 'Legacy toolbar should stay hidden in the primary UX.');
 expect(source.includes('Apply to Elementor'), 'Apply action should remain user-facing.');
+expect(source.includes("document/save/auto") && source.includes('{ force: true }'), 'Import must force Elementor autosave before Preview and Apply so server persistence starts from the current editor state.');
+expect(source.includes('syncEditorWorkingDocument()'), 'Import autosave synchronization helper is missing.');
+expect(source.includes('window.location.reload()'), 'Successful server apply must reload the whole Elementor editor, not only the preview iframe.');
+expect(source.includes('Applied. Reloading...') && source.includes('Saved. Reloading...'), 'Apply UI must expose the editor-rehydrate state.');
+expect(source.includes('if (!completed) setBusy(button, false);'), 'Completed Apply must not be re-enabled by the generic busy-state cleanup.');
+expect(!source.includes('refreshPreview(); var verified'), 'Legacy iframe-only refresh after Apply must not return.');
 expect(!source.includes('What do you want AI to do?'), 'Embedded prompt UI must not return to the primary workflow.');
 expect(!source.includes('Create / Edit'), 'Embedded create/edit tab must not return to the primary workflow.');
 expect(styles.includes('.cresco-ai-segmented input:focus-visible+span'), 'Segmented radio controls must expose a visible keyboard focus indicator.');
