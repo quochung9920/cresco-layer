@@ -9,19 +9,20 @@ use WP_REST_Request;
  * Server-side fail-closed gate for scoped export targets.
  *
  * The browser preflight remains the primary UX, but it must not be the only safety boundary. Any
- * direct/programmatic /export request is checked again immediately before the REST callback so a
- * stale or not-yet-synchronized Elementor target never falls through to PackageBuilder as a 500.
+ * direct/programmatic /export request is checked again after REST permissions pass and immediately
+ * before the route callback so a stale or not-yet-synchronized Elementor target never falls
+ * through to PackageBuilder as a generic 500.
  */
 final class ExportTargetGate {
 	public function __construct( private ExportTargetResolver $resolver ) {}
 
 	public function register_hooks(): void {
-		// ExportDiagnostics begins at -100. Run after diagnostics has opened its scope, but before the
-		// route callback executes.
-		add_filter( 'rest_pre_dispatch', [ $this, 'guard' ], -50, 3 );
+		// Run after route matching + permission checks, but before the actual export callback. This
+		// keeps the hard gate fail-closed without leaking document state to unauthenticated requests.
+		add_filter( 'rest_request_before_callbacks', [ $this, 'guard' ], -100, 3 );
 	}
 
-	public function guard( $result, $server, WP_REST_Request $request ) {
+	public function guard( $result, $handler, WP_REST_Request $request ) {
 		if ( null !== $result || ! $this->is_export_route( (string) $request->get_route() ) ) { return $result; }
 
 		$post_id = $this->post_id( $request );
