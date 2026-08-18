@@ -3,6 +3,7 @@ namespace CrescoLayer;
 
 use CrescoLayer\Admin\AdminPage;
 use CrescoLayer\AI\ExchangeSafetyGuard;
+use CrescoLayer\AI\ExportTargetGate;
 use CrescoLayer\AI\ExportTargetResolver;
 use CrescoLayer\AI\PackageBuilder;
 use CrescoLayer\AI\PatchApplier;
@@ -52,19 +53,22 @@ final class Plugin {
 			add_action( 'admin_notices', [ $requirements, 'render_pro_notice' ] );
 		}
 
-		$auditor    = new Auditor();
-		$builder    = new PackageBuilder( $auditor );
-		$validator  = new PatchValidator();
-		$semantic   = new SemanticPatchGuard();
-		$catalog    = new ConfigurationCatalog();
-		$snapshot   = new RuntimeSnapshotCoordinator();
-		$skills     = new WidgetSkillRuntime( $catalog );
-		$applier    = new PatchApplier( $validator, $auditor );
-		$controller = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $skills, $applier, $auditor );
-		$target_sync = new ExportTargetSyncController( new ExportTargetResolver() );
-		$standard   = new StandardController( $applier );
-		$admin      = new AdminPage();
+		$auditor         = new Auditor();
+		$builder         = new PackageBuilder( $auditor );
+		$validator       = new PatchValidator();
+		$semantic        = new SemanticPatchGuard();
+		$catalog         = new ConfigurationCatalog();
+		$snapshot        = new RuntimeSnapshotCoordinator();
+		$skills          = new WidgetSkillRuntime( $catalog );
+		$applier         = new PatchApplier( $validator, $auditor );
+		$target_resolver = new ExportTargetResolver();
+		$target_gate     = new ExportTargetGate( $target_resolver );
+		$controller      = new Controller( $builder, $validator, $semantic, $catalog, $snapshot, $skills, $applier, $auditor );
+		$target_sync     = new ExportTargetSyncController( $target_resolver );
+		$standard        = new StandardController( $applier );
+		$admin           = new AdminPage();
 
+		$target_gate->register_hooks();
 		add_action( 'rest_api_init', [ $controller, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $target_sync, 'register_routes' ] );
 		add_action( 'rest_api_init', [ $standard, 'register_routes' ] );
