@@ -55,8 +55,31 @@
 	}
 	function setBusy(button, busy, label) {
 		if (!button) return; button.disabled = !!busy;
-		if (busy) { button.dataset.oldText = button.textContent; button.textContent = label || 'Working...'; }
+		if (busy) { if (!button.dataset.oldText) button.dataset.oldText = button.textContent; button.textContent = label || 'Working...'; }
 		else if (button.dataset.oldText) { button.textContent = button.dataset.oldText; delete button.dataset.oldText; }
+	}
+	function syncEditorWorkingDocument() {
+		if (!window.$e || typeof window.$e.run !== 'function') {
+			return Promise.reject(new Error('Elementor autosave is unavailable. Save/Update the page once, then preview or apply the AI result again.'));
+		}
+		var result;
+		try {
+			result = window.$e.run('document/save/auto', { force: true });
+		} catch (error) {
+			return Promise.reject(new Error('Elementor could not synchronize the current editor state before import: ' + (error && error.message ? error.message : String(error))));
+		}
+		return Promise.resolve(result).catch(function (error) {
+			throw new Error('Elementor could not synchronize the current editor state before import: ' + (error && error.message ? error.message : String(error)));
+		});
+	}
+	function reloadEditorAfterApply() {
+		try {
+			if (window.location && typeof window.location.reload === 'function') {
+				window.location.reload();
+				return true;
+			}
+		} catch (e) {}
+		return false;
 	}
 	function selectedScope(box, name) {
 		var checked = box.querySelector('input[name="' + name + '"]:checked'); return checked ? checked.value : 'subtree';
@@ -89,7 +112,7 @@
 						'<label><input type="radio" name="cresco-import-scope" value="widget"><span>Selected element</span></label>' +
 						'<label><input type="radio" name="cresco-import-scope" value="subtree" checked><span>Selected subtree</span></label>' +
 						'<label><input type="radio" name="cresco-import-scope" value="document"><span>Entire page</span></label>' +
-					'</div></div>' +
+					'</div><small>Cresco synchronizes the current Elementor working document before Preview and Apply, then reloads the editor after a successful server save.</small></div>' +
 					'<label class="cresco-ai-import-drop"><input type="file" accept="application/json,.json" data-cresco-ai-import-file hidden><strong>Drop ChatGPT result JSON here</strong><span>or choose the file returned by ChatGPT</span><button type="button" class="cresco-ai-secondary" data-cresco-ai-choose>Choose JSON</button></label>' +
 					'<label class="cresco-ai-field"><span>Raw JSON fallback</span><textarea data-cresco-ai-import rows="8" placeholder="Paste cresco-ai-mutation/v3, v2, cresco-layer-patch/v1 or cresco-layer-ai-result/v1"></textarea></label>' +
 					'<div class="cresco-ai-preview" data-cresco-ai-preview><span>No AI result validated yet.</span></div>' +
@@ -171,9 +194,12 @@
 		if (!raw) { toast('Choose or paste the ChatGPT result JSON first.', 'error'); return; }
 		if (scope !== 'document' && !id) { toast('Select the original Elementor target before previewing this result.', 'error'); return; }
 		if (scope !== 'document' && inferred.id && inferred.id !== id) { toast('This result targets ' + inferred.id + '. Select that original Elementor element before importing.', 'error'); return; }
-		var button = box.querySelector('[data-cresco-ai-preview-button]'), apply = box.querySelector('[data-cresco-ai-apply]'); state.previewedText = ''; state.previewedTarget = ''; state.previewedScope = ''; if (apply) apply.disabled = true; setBusy(button, true, 'Validating...');
-		request('/documents/' + postId() + '/preview', { method: 'POST', body: JSON.stringify(importBody(raw, box)) }).then(function (data) {
-			state.previewedText = raw; state.previewedTarget = scope === 'document' ? '' : id; state.previewedScope = scope; renderPreview(box, data); if (apply) apply.disabled = false; toast('AI result validated. Review the changes before applying.', 'success');
+		var button = box.querySelector('[data-cresco-ai-preview-button]'), apply = box.querySelector('[data-cresco-ai-apply]'); state.previewedText = ''; state.previewedTarget = ''; state.previewedScope = ''; if (apply) apply.disabled = true; setBusy(button, true, 'Synchronizing...');
+		syncEditorWorkingDocument().then(function () {
+			button.textContent = 'Validating...';
+			return request('/documents/' + postId() + '/preview', { method: 'POST', body: JSON.stringify(importBody(raw, box)) });
+		}).then(function (data) {
+			state.previewedText = raw; state.previewedTarget = scope === 'document' ? '' : id; state.previewedScope = scope; renderPreview(box, data); if (apply) apply.disabled = false; toast('AI result validated against the synchronized Elementor working document.', 'success');
 		}).catch(function (error) { renderPreviewError(box, error.message); toast(error.message, 'error'); }).finally(function () { setBusy(button, false); });
 	}
 	function renderPreview(box, data) {
@@ -185,19 +211,27 @@
 			'<small>' + (imported.source ? ('Normalized as ' + esc(imported.source) + '. ') : '') + (destructive ? 'Existing elements will be replaced or removed only inside the approved scope.' : 'Existing UI is preserved by delta operations.') + '</small>';
 	}
 	function renderPreviewError(box, message) { var wrap = box.querySelector('[data-cresco-ai-preview]'); if (!wrap) return; wrap.className = 'cresco-ai-preview is-error'; wrap.innerHTML = '<strong>Cannot apply this result</strong><span>' + esc(message) + '</span>'; }
-	function refreshPreview() {
-		try { if (window.elementor && typeof elementor.reloadPreview === 'function') { elementor.reloadPreview(); return; } } catch (e) {}
-		try { var frame = document.querySelector('#elementor-preview-iframe,iframe[name="elementor-preview-iframe"],iframe[src*="elementor-preview"]'); if (frame && frame.contentWindow) frame.contentWindow.location.reload(); } catch (e2) {}
-	}
 	function applyImport(box) {
 		var area = box.querySelector('[data-cresco-ai-import]'), raw = String(area && area.value || '').trim(), scope = selectedScope(box, 'cresco-import-scope'), id = scope === 'document' ? '' : selectedId();
 		if (!raw || raw !== state.previewedText || id !== state.previewedTarget || scope !== state.previewedScope) { toast('Preview this exact result and scope again before applying.', 'error'); return; }
-		if (!window.confirm('Apply these reviewed external AI changes to the Elementor working document? This does not publish the page.')) return;
-		var button = box.querySelector('[data-cresco-ai-apply]'); setBusy(button, true, 'Applying...');
-		request('/documents/' + postId() + '/apply', { method: 'POST', body: JSON.stringify(importBody(raw, box)) }).then(function (data) {
-			state.previewedText = ''; state.previewedTarget = ''; state.previewedScope = ''; button.disabled = true; refreshPreview(); var verified = !data.verification || data.verification.verified !== false;
-			toast(verified ? 'AI result applied. Elementor preview is refreshing for fidelity verification.' : 'Changes were saved, but verification reported a mismatch. Review the refreshed target.', verified ? 'success' : 'error');
-		}).catch(function (error) { toast(error.message, 'error'); button.disabled = false; }).finally(function () { setBusy(button, false); });
+		if (!window.confirm('Apply these reviewed external AI changes to the synchronized Elementor working document? This does not publish the page.')) return;
+		var button = box.querySelector('[data-cresco-ai-apply]'), completed = false; setBusy(button, true, 'Synchronizing...');
+		syncEditorWorkingDocument().then(function () {
+			button.textContent = 'Applying...';
+			return request('/documents/' + postId() + '/apply', { method: 'POST', body: JSON.stringify(importBody(raw, box)) });
+		}).then(function (data) {
+			completed = true;
+			state.previewedText = ''; state.previewedTarget = ''; state.previewedScope = '';
+			var verified = !data.verification || data.verification.verified !== false;
+			button.disabled = true;
+			button.textContent = verified ? 'Applied. Reloading...' : 'Saved. Reloading...';
+			delete button.dataset.oldText;
+			toast(verified ? 'AI result applied and verified. Reloading Elementor so the editor model matches the saved working document.' : 'Changes were saved, but read-back verification reported a mismatch. Reloading Elementor to show the actual saved state.', verified ? 'success' : 'error');
+			if (!reloadEditorAfterApply()) {
+				button.textContent = 'Applied - reload Elementor';
+				toast('Changes were saved, but Cresco could not reload the editor automatically. Reload Elementor before making more edits.', 'error');
+			}
+		}).catch(function (error) { toast(error.message, 'error'); }).finally(function () { if (!completed) setBusy(button, false); });
 	}
 	function bindPanel(box) {
 		box.querySelector('[data-cresco-ai-close]').addEventListener('click', closePanel);
@@ -220,6 +254,6 @@
 	function hideLegacyToolbar() { var legacy = document.getElementById('cresco-layer-editor-tools'); if (legacy) legacy.setAttribute('data-cresco-ai-legacy-hidden', 'true'); }
 	function boot() { launcher(); panel(); hideLegacyToolbar(); refreshTargets(); ensureExact(); if (window.MutationObserver && document.documentElement) new MutationObserver(function () { hideLegacyToolbar(); }).observe(document.documentElement, { childList: true, subtree: true }); }
 
-	window.CrescoLayerAIPanel = { version: '2.0.0', open: openPanel, close: closePanel, getState: function () { return { prepared: !!state.prepared, preparedTarget: state.preparedTarget, preparedScope: state.preparedScope, previewedTarget: state.previewedTarget, previewedScope: state.previewedScope, referenceImage: referenceMetadata(state.referenceImage) }; } };
+	window.CrescoLayerAIPanel = { version: '2.1.0', open: openPanel, close: closePanel, getState: function () { return { prepared: !!state.prepared, preparedTarget: state.preparedTarget, preparedScope: state.preparedScope, previewedTarget: state.previewedTarget, previewedScope: state.previewedScope, referenceImage: referenceMetadata(state.referenceImage) }; } };
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 }());
