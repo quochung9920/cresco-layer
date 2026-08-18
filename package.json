@@ -1,8 +1,8 @@
 {
   "name": "cresco-layer",
-  "version": "0.24.4",
+  "version": "0.24.5",
   "private": true,
-  "description": "External-only Elementor to ChatGPT file exchange with autosave target synchronization, resilient bounded runtime context, automatic export recovery, precise diagnostics, safe scoped import and computed fidelity verification.",
+  "description": "External-only Elementor to ChatGPT file exchange with autosave target synchronization, resilient bounded runtime context, automatic export recovery, precise diagnostics, safe scoped import, editor rehydration after apply and computed fidelity verification.",
   "scripts": {
     "lint:php": "node scripts/lint-php.mjs",
     "lint:js": "node --check assets/admin.js && node --check assets/editor-bootstrap.js && node --check assets/export-target-sync.js && node --check assets/export-error-diagnostics.js && node --check assets/editor.js && node --check assets/clipboard-guard.js && node --check assets/exact-runtime-export.js && node --check assets/fidelity-engine.js && node --check assets/fidelity-export.js && node --check assets/ai-context-v3.js && node --check assets/external-ai-intelligence.js && node --check assets/design-intelligence.js && node --check assets/semantic-design-contract.js && node --check assets/design-reasoning.js && node --check assets/ai-context-policy.js && node --check assets/ai-bundle.js && node --check assets/external-ai-exchange-policy.js && node --check assets/visual-verification.js && node --check assets/fidelity-verification.js && node --check assets/ai-panel.js && node --check assets/external-ai-entrypoints.js && node --check assets/semantic-design-ui.js && node --check assets/skills.js && node --check assets/skills-accuracy.js",
