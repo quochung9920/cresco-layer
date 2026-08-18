@@ -2,9 +2,11 @@
 
 **Cầu nối file-based, lossless và runtime-aware giữa Elementor ↔ ChatGPT/AI bên ngoài.**
 
-Phiên bản hiện tại: **0.24.4 — External AI Only**.
+Phiên bản hiện tại: **0.24.5 — External AI Only + Editor Rehydrate**.
 
 Từ 0.24.4, Cresco Layer **không còn Local AI runtime, provider, model endpoint hay suy luận AI bên trong WordPress/Elementor**. Mọi phần tạo/chỉnh thiết kế bằng AI diễn ra ở ChatGPT hoặc AI bên ngoài thông qua file Cresco export/import. Điều này làm plugin nhẹ hơn, giảm surface lỗi và giữ ranh giới sản phẩm rõ ràng.
+
+Từ 0.24.5, Import AI Result đồng bộ Elementor client trước Preview/Apply và reload toàn bộ Elementor Editor sau khi Apply thành công để browser model rehydrate từ working document/autosave vừa lưu. Điều này tránh trường hợp server đã thêm giao diện nhưng editor canvas vẫn giữ model cũ hoặc autosave cũ ghi đè kết quả Cresco.
 
 ## Workflow chính
 
@@ -16,9 +18,12 @@ Elementor
 → mô tả giao diện muốn tạo hoặc chỉnh
 → AI trả JSON theo contract của package
 → Cresco Import AI Result
+→ synchronize Elementor working document
 → Preview + Validation
+→ synchronize again before Apply
 → Apply vào Elementor working document
 → Read-back verification
+→ full Elementor Editor reload/rehydrate
 → Rendered/Fidelity verification
 → người dùng Update/Publish trong Elementor
 ```
@@ -83,6 +88,14 @@ cresco-layer-ai-result/v1
 
 Import luôn đi qua normalize/compile, runtime validation, scope enforcement, preview và verification. AI không được ghi trực tiếp database.
 
+Trước **Preview Changes** và **Apply to Elementor**, Cresco gọi Elementor Commands API:
+
+```js
+$e.run('document/save/auto', { force: true })
+```
+
+để server làm việc trên trạng thái editor mới nhất. Sau server Apply/read-back, Cresco reload toàn bộ Elementor Editor thay vì chỉ reload preview iframe, vì preview iframe không cập nhật Backbone/model state đang giữ trong editor shell.
+
 ## External package và bundle
 
 Single JSON package:
@@ -121,6 +134,8 @@ AI quyết định design intent
 ## Target Sync và Safe Bootstrap
 
 Trước export, Cresco có thể force Elementor autosave bằng Commands API rồi kiểm tra target ở working/autosave document. Nếu client đi trước server, Cresco chờ có giới hạn hoặc dừng an toàn thay vì export dữ liệu stale.
+
+Import dùng cùng nguyên tắc source-of-truth: đồng bộ client trước Preview/Apply, sau đó full editor reload sau Apply để loại bỏ stale browser model.
 
 Elementor startup chỉ giữ code tối thiểu. Heavy exchange/runtime work được lazy-load sau user action. Rescue mode:
 
@@ -174,3 +189,4 @@ Bắt đầu tại `docs/README.md`. Các file quan trọng: `PROJECT_RULES.md`,
 8. `save()` thành công chưa đủ; workflow chính xác cần read-back verify.
 9. Không có rendered evidence không được Fidelity PASS.
 10. Người dùng giữ quyền Update/Publish cuối cùng.
+11. Import server-side thành công phải được full editor rehydrate trước khi người dùng tiếp tục chỉnh sửa.
