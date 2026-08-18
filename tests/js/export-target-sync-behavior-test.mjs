@@ -22,6 +22,9 @@ const document = {
 const window = {
   crescoLayerEditor: { postId: 22, restRoot: 'https://example.test/wp-json/cresco-layer/v1', nonce: 'nonce' },
   CrescoLayerEditorBridge: { getDiagnostics: () => ({ selectedElementId: 'f82af75' }) },
+  elementor: {
+    getContainer(id) { return id === 'f82af75' ? { id } : null; },
+  },
   $e: {
     run(command, args) {
       calls.autosave.push({ command, args });
@@ -32,8 +35,8 @@ const window = {
     calls.fetch.push(url);
     statusCall += 1;
     const body = statusCall === 1
-      ? { schema: 'cresco-export-target-status/v1', state: 'sync-required', ready: false }
-      : { schema: 'cresco-export-target-status/v1', state: 'ready', ready: true };
+      ? { schema: 'cresco-export-target-status/v1', state: 'sync-pending', ready: false, retryable: true, clientPresent: true }
+      : { schema: 'cresco-export-target-status/v1', state: 'ready', ready: true, retryable: false, clientPresent: true };
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   },
 };
@@ -56,6 +59,7 @@ assert.ok(window.CrescoLayerExportTargetSync, 'Target sync API must be exposed.'
 assert.equal(calls.listeners.length, 1, 'Only one passive startup listener should be registered.');
 assert.equal(calls.listeners[0].type, 'click');
 assert.equal(calls.listeners[0].capture, true, 'Export guard must run in capture phase.');
+assert.equal(window.CrescoLayerExportTargetSync.getClientTargetPresent('f82af75'), true, 'Live target helper should resolve the current Elementor container.');
 
 const result = await window.CrescoLayerExportTargetSync.preflight();
 assert.equal(result.ready, true, 'Preflight must wait until server-side target state becomes ready.');
@@ -66,6 +70,7 @@ assert.equal(calls.fetch.length, 2, 'A lagging target should be rechecked, but w
 assert.match(calls.fetch[0], /documents\/22\/export-target-status/);
 assert.match(calls.fetch[0], /scope=subtree/);
 assert.match(calls.fetch[0], /selected=f82af75/);
+assert.match(calls.fetch[0], /client_present=1/);
 assert.equal(window.CrescoLayerExportTargetSync.getState().lastAutosave, 'completed');
 assert.equal(window.CrescoLayerExportTargetSync.getState().lastTarget, 'f82af75');
 assert.match(qualitySmall.textContent, /Elementor synchronized/);
