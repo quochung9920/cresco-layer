@@ -18,6 +18,8 @@ cresco_diag_expect( false !== strpos( $source, "RESERVE_BYTES" ), 'Fatal recover
 cresco_diag_expect( false !== strpos( $source, "rest-response-serialization" ), 'Diagnostics must remain active through REST JSON serialization.' );
 cresco_diag_expect( false !== strpos( $source, "X-Cresco-Request-Id" ), 'Correlation request header is missing.' );
 cresco_diag_expect( false !== strpos( $source, "cresco_export_fatal" ), 'Fatal response code is missing.' );
+cresco_diag_expect( false !== strpos( $source, "get_url_params()" ), 'Early diagnostics must resolve REST URL parameters when available.' );
+cresco_diag_expect( false !== strpos( $source, "#/documents/(\\d+)/export$#" ), 'Early diagnostics need a concrete route fallback so /documents/3/export cannot report postId 0.' );
 cresco_diag_expect( false !== strpos( $source, "error_log" ), 'Server-side diagnostic logging is missing.' );
 cresco_diag_expect( false !== strpos( $plugin, 'new ExportDiagnostics()' ), 'Plugin does not register the export diagnostics monitor.' );
 
