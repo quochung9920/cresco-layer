@@ -12,6 +12,19 @@
 		var url = urlOf(input);
 		return !!url && url.indexOf(root() + '/documents/') === 0 && /\/export(?:\?|$)/.test(url) && url.indexOf('/export-target-status') === -1;
 	}
+	function withClientPresence(input) {
+		if (typeof input !== 'string' || !isExport(input) || /[?&]client_present=/.test(input)) return input;
+		var match = input.match(/[?&]selected=([^&]*)/);
+		if (!match || !match[1]) return input;
+		var targetId = '';
+		try { targetId = decodeURIComponent(match[1]); } catch (e) { targetId = match[1]; }
+		if (!targetId) return input;
+		var sync = window.CrescoLayerExportTargetSync;
+		if (!sync || typeof sync.getClientTargetPresent !== 'function') return input;
+		var present = sync.getClientTargetPresent(targetId);
+		if (present === null || typeof present === 'undefined') return input;
+		return input + (input.indexOf('?') === -1 ? '?' : '&') + 'client_present=' + (present ? '1' : '0');
+	}
 	function makeId() {
 		try {
 			if (window.crypto && typeof window.crypto.randomUUID === 'function') return 'CX-' + window.crypto.randomUUID().replace(/-/g, '').slice(0, 20);
@@ -179,23 +192,24 @@
 
 	if (previousFetch) {
 		window.fetch = function (input, init) {
-			if (!isExport(input)) return previousFetch(input, init);
+			var effectiveInput = withClientPresence(input);
+			if (!isExport(effectiveInput)) return previousFetch(effectiveInput, init);
 
 			var requestId = makeId();
 			var startedAt = Date.now();
 			var nextInit = Object.assign({}, init || {});
-			nextInit.headers = headersFor(input, init, requestId);
+			nextInit.headers = headersFor(effectiveInput, init, requestId);
 
-			return previousFetch(input, nextInit).then(function (response) {
+			return previousFetch(effectiveInput, nextInit).then(function (response) {
 				return parseResponse(response).then(function (first) {
 					var firstFailed = !response.ok || isServerFailurePayload(first.parsed);
 					if (!firstFailed) return response;
 					var firstEntry = errorEntry(response, first.parsed, first.text, requestId, startedAt);
 
-					if (canRecover(input, nextInit, firstEntry)) {
-						var retryUrl = recoveryUrl(input);
+					if (canRecover(effectiveInput, nextInit, firstEntry)) {
+						var retryUrl = recoveryUrl(effectiveInput);
 						var recoveryId = requestId + '-R1';
-						var recoveryInit = Object.assign({}, nextInit, { headers: headersFor(input, nextInit, recoveryId) });
+						var recoveryInit = Object.assign({}, nextInit, { headers: headersFor(effectiveInput, nextInit, recoveryId) });
 						return previousFetch(retryUrl, recoveryInit).then(function (retryResponse) {
 							return parseResponse(retryResponse).then(function (second) {
 								var secondFailed = !retryResponse.ok || isServerFailurePayload(second.parsed);
@@ -243,7 +257,7 @@
 	}
 
 	window.CrescoLayerExportDiagnostics = {
-		version: '1.3.0',
+		version: '1.4.0',
 		schema: 'cresco-export-client-diagnostic/v1',
 		getLastError: function () { return history.length ? history[0] : null; },
 		getHistory: function () { return history.slice(); },
