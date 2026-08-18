@@ -37,9 +37,15 @@ final class ExportTargetGate {
 		try {
 			$status = $this->resolver->status( $post_id, $scope, $selected, $this->client_present( $request ) );
 		} catch ( \InvalidArgumentException $error ) {
-			return new WP_Error( 'cresco_export_target_invalid', $error->getMessage(), [ 'status' => 400 ] );
+			return new WP_Error( 'cresco_export_target_invalid', $error->getMessage(), [
+				'status' => 400,
+				'crescoDiagnostic' => ExportDiagnostics::snapshot(),
+			] );
 		} catch ( \Throwable $error ) {
-			return new WP_Error( 'cresco_export_target_gate_error', $error->getMessage(), [ 'status' => 500 ] );
+			return new WP_Error( 'cresco_export_target_gate_error', $error->getMessage(), [
+				'status' => 500,
+				'crescoDiagnostic' => ExportDiagnostics::snapshot(),
+			] );
 		}
 
 		ExportDiagnostics::stage( 'target-sync-gate', [
@@ -60,6 +66,7 @@ final class ExportTargetGate {
 			[
 				'status' => $http_status,
 				'targetStatus' => $status,
+				'crescoDiagnostic' => ExportDiagnostics::snapshot(),
 			]
 		);
 	}
