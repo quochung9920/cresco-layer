@@ -38,15 +38,18 @@ assert.match(controller, /export-target-status/, 'Target status REST endpoint is
 assert.match(controller, /client_present/, 'Target status REST endpoint must accept live-editor presence evidence.');
 assert.match(controller, /current_user_can\( 'edit_post'/, 'Target status endpoint must require edit permission.');
 
-assert.match(gate, /rest_pre_dispatch/, 'Scoped export must have a server-side hard gate before PackageBuilder runs.');
+assert.match(gate, /rest_request_before_callbacks/, 'Scoped export must have a server-side hard gate after REST permission checks and before PackageBuilder runs.');
+assert.doesNotMatch(gate, /add_filter\( 'rest_pre_dispatch'/, 'Target hard gate must not inspect document state before REST permission checks.');
 assert.match(gate, /target-sync-gate/, 'Hard-gate failures must expose a dedicated diagnostic stage.');
 assert.match(gate, /cresco_export_target_not_ready/, 'Hard gate must return a specific target-not-ready error.');
 assert.match(gate, /'stale-target' === \$state \? 410 : 409/, 'Stale target and synchronization conflicts must not surface as generic 500 errors.');
 assert.match(gate, /targetStatus/, 'Hard-gate responses must include the complete target status payload.');
+assert.match(gate, /crescoDiagnostic/, 'Pre-callback target failures must carry their own diagnostics payload.');
 
-assert.match(diagnostics, /get_url_params\(\)/, 'Export diagnostics must resolve route parameters at rest_pre_dispatch time.');
-assert.match(diagnostics, /\/documents\/\(\\d\+\)\/export\$/, 'Export diagnostics must have a route fallback for the document post ID.');
+assert.match(diagnostics, /get_url_params\(\)/, 'Export diagnostics must resolve route parameters when they are already available.');
+assert.match(diagnostics, /\/documents\/\(\\d\+\)\/export\$/, 'Export diagnostics must have a route fallback for the document post ID at rest_pre_dispatch time.');
 assert.match(diagnosticsClient, /targetStatusFrom/, 'Client diagnostics must preserve server target-state diagnostics.');
+assert.match(diagnosticsClient, /withClientPresence/, 'Direct export requests must carry live target evidence when target-sync can provide it.');
 assert.match(diagnosticsClient, /entry\.stage === 'target-sync-gate'/, 'Target-sync failures must never trigger Full-to-Smart context recovery.');
 
 assert.match(assets, /assets\/export-target-sync\.js/, 'Passive target sync guard must be available in the Elementor editor.');
