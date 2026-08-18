@@ -36,18 +36,23 @@
 	}
 	function clientTargetPresent(targetId) {
 		if (!targetId) return null;
+		var inspected = false;
 		try {
 			if (window.elementor && typeof window.elementor.getContainer === 'function') {
-				return !!window.elementor.getContainer(String(targetId));
+				inspected = true;
+				if (window.elementor.getContainer(String(targetId))) return true;
 			}
 		} catch (e) {}
 		try {
 			var components = window.$e && window.$e.components;
 			var component = components && typeof components.get === 'function' ? components.get('document/elements') : null;
 			var finder = component && component.utils && component.utils.findContainerById;
-			if (typeof finder === 'function') return !!finder(String(targetId));
+			if (typeof finder === 'function') {
+				inspected = true;
+				if (finder(String(targetId))) return true;
+			}
 		} catch (e2) {}
-		return null;
+		return inspected ? false : null;
 	}
 	function currentScope() {
 		var checked = document.querySelector('#cresco-ai-panel input[name="cresco-export-scope"]:checked');
@@ -101,7 +106,6 @@
 		setStatus('Synchronizing the latest Elementor changes...');
 		var result;
 		try {
-			// Elementor's Commands API replacement for the removed legacy saveAutoSave() method.
 			result = window.$e.run('document/save/auto', { force: true });
 		} catch (error) {
 			state.lastAutosave = 'failed';
@@ -134,21 +138,11 @@
 		return check();
 	}
 	function diagnosticMessage(status, autosave) {
-		if (!autosave.available) {
-			return 'Cresco could not access Elementor autosave. Your element was not changed. Save/Update the page once, then export again.';
-		}
-		if (autosave.ok === false) {
-			return 'Elementor could not finish its autosave before export. Your element was not changed. Try Save/Update once, then export again.';
-		}
-		if (status && status.state === 'stale-target') {
-			return 'The selected Elementor target no longer exists in the live editor. Select the current element again before exporting.';
-		}
-		if (status && status.state === 'sync-required') {
-			return 'Elementor autosave is still behind the selected element. Cresco stopped the export rather than sending stale data to ChatGPT.';
-		}
-		if (status && status.state === 'sync-pending') {
-			return 'The selected element exists in Elementor, but its ID has not reached the server working document yet. Cresco stopped safely; wait a moment or Save/Update once, then export again.';
-		}
+		if (!autosave.available) return 'Cresco could not access Elementor autosave. Your element was not changed. Save/Update the page once, then export again.';
+		if (autosave.ok === false) return 'Elementor could not finish its autosave before export. Your element was not changed. Try Save/Update once, then export again.';
+		if (status && status.state === 'stale-target') return 'The selected Elementor target no longer exists in the live editor. Select the current element again before exporting.';
+		if (status && status.state === 'sync-required') return 'Elementor autosave is still behind the selected element. Cresco stopped the export rather than sending stale data to ChatGPT.';
+		if (status && status.state === 'sync-pending') return 'The selected element exists in Elementor, but its ID has not reached the server working document yet. Cresco stopped safely; wait a moment or Save/Update once, then export again.';
 		return 'Cresco could not confirm the selected target in server-side Elementor data. Re-select the element, then export again.';
 	}
 	function preflight() {
@@ -226,11 +220,10 @@
 		});
 	}
 
-	// One passive delegated click guard only: no MutationObserver, polling interval or fetch monkey-patch.
 	document.addEventListener('click', guardExport, true);
 
 	window.CrescoLayerExportTargetSync = {
-		version: '1.1.0',
+		version: '1.1.1',
 		schema: 'cresco-export-target-sync/v1',
 		preflight: preflight,
 		getClientTargetPresent: clientTargetPresent,
