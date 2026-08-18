@@ -33,12 +33,12 @@ User selects Elementor target
 → READY
 → release original Export click
 → /documents/{postId}/export
-→ REST permission check
-→ server ExportTargetGate kiểm tra lại một lần nữa
+→ WordPress REST permission_callback
+→ rest_dispatch_request / ExportTargetGate
 → PackageBuilder chỉ chạy khi target READY
 ```
 
-Browser preflight là lớp UX đầu tiên. `ExportTargetGate` chạy ở `rest_request_before_callbacks`, tức là **sau route permission check nhưng trước callback `/export`**, và là lớp fail-closed cuối cùng. Vì vậy direct/programmatic request cũng không thể bypass target synchronization mà gate vẫn không đọc document state của request chưa được phép.
+Browser preflight là lớp UX đầu tiên. `ExportTargetGate` chạy ở `rest_dispatch_request`, tức là **sau route permission check nhưng ngay trước callback `/export`**, và là lớp fail-closed cuối cùng. Vì vậy direct/programmatic request cũng không thể bypass target synchronization mà gate vẫn không đọc document state của request chưa được phép.
 
 ## Endpoint trạng thái
 
