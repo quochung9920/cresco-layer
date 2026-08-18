@@ -34,6 +34,21 @@
 		} catch (e2) {}
 		return '';
 	}
+	function clientTargetPresent(targetId) {
+		if (!targetId) return null;
+		try {
+			if (window.elementor && typeof window.elementor.getContainer === 'function') {
+				return !!window.elementor.getContainer(String(targetId));
+			}
+		} catch (e) {}
+		try {
+			var components = window.$e && window.$e.components;
+			var component = components && typeof components.get === 'function' ? components.get('document/elements') : null;
+			var finder = component && component.utils && component.utils.findContainerById;
+			if (typeof finder === 'function') return !!finder(String(targetId));
+		} catch (e2) {}
+		return null;
+	}
 	function currentScope() {
 		var checked = document.querySelector('#cresco-ai-panel input[name="cresco-export-scope"]:checked');
 		return checked ? String(checked.value || 'subtree') : 'subtree';
@@ -63,7 +78,11 @@
 	}
 	function targetStatus(pid, scope, targetId) {
 		var url = root() + '/documents/' + encodeURIComponent(pid) + '/export-target-status?scope=' + encodeURIComponent(scope);
-		if (scope !== 'document') url += '&selected=' + encodeURIComponent(targetId);
+		if (scope !== 'document') {
+			url += '&selected=' + encodeURIComponent(targetId);
+			var present = clientTargetPresent(targetId);
+			if (present !== null) url += '&client_present=' + (present ? '1' : '0');
+		}
 		return window.fetch(url, {
 			method: 'GET',
 			headers: { 'X-WP-Nonce': cfg.nonce || '', 'Content-Type': 'application/json' }
@@ -104,6 +123,7 @@
 			return targetStatus(pid, scope, targetId).then(function (status) {
 				state.lastStatus = status;
 				if (status && status.ready) return status;
+				if (status && status.retryable === false) return status;
 				if (attempt >= MAX_STATUS_ATTEMPTS - 1) return status;
 				var delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
 				attempt += 1;
@@ -120,10 +140,16 @@
 		if (autosave.ok === false) {
 			return 'Elementor could not finish its autosave before export. Your element was not changed. Try Save/Update once, then export again.';
 		}
+		if (status && status.state === 'stale-target') {
+			return 'The selected Elementor target no longer exists in the live editor. Select the current element again before exporting.';
+		}
 		if (status && status.state === 'sync-required') {
 			return 'Elementor autosave is still behind the selected element. Cresco stopped the export rather than sending stale data to ChatGPT.';
 		}
-		return 'Cresco can see the selected element in the editor, but Elementor has not synchronized it to the server yet. The export was safely stopped.';
+		if (status && status.state === 'sync-pending') {
+			return 'The selected element exists in Elementor, but its ID has not reached the server working document yet. Cresco stopped safely; wait a moment or Save/Update once, then export again.';
+		}
+		return 'Cresco could not confirm the selected target in server-side Elementor data. Re-select the element, then export again.';
 	}
 	function preflight() {
 		var pid = postId();
@@ -134,6 +160,21 @@
 		state.lastError = '';
 		if (!pid) return Promise.reject(new Error('Cannot determine the current Elementor document.'));
 		if (scope !== 'document' && !targetId) return Promise.reject(new Error('Select the Elementor element you want to export, or choose Entire page.'));
+
+		if (scope !== 'document' && clientTargetPresent(targetId) === false) {
+			state.lastStatus = {
+				schema: 'cresco-export-target-status/v1',
+				postId: pid,
+				scope: scope,
+				selectedIds: [targetId],
+				clientPresent: false,
+				state: 'stale-target',
+				ready: false,
+				retryable: false,
+				recommendedAction: 'reselect-target'
+			};
+			return Promise.reject(new Error('The selected Elementor target no longer exists in the live editor. Select the current element again before exporting.'));
+		}
 
 		return forceAutosave().then(function (autosave) {
 			return waitForServerTarget(pid, scope, targetId).then(function (status) {
@@ -189,9 +230,10 @@
 	document.addEventListener('click', guardExport, true);
 
 	window.CrescoLayerExportTargetSync = {
-		version: '1.0.0',
+		version: '1.1.0',
 		schema: 'cresco-export-target-sync/v1',
 		preflight: preflight,
+		getClientTargetPresent: clientTargetPresent,
 		getState: function () {
 			return {
 				inFlight: state.inFlight,
