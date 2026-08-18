@@ -17,6 +17,7 @@ final class ExportTargetSyncController {
 			'args' => [
 				'scope' => [ 'default' => 'document', 'sanitize_callback' => 'sanitize_key' ],
 				'selected' => [ 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
+				'client_present' => [ 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ],
 			],
 		] );
 	}
@@ -32,7 +33,8 @@ final class ExportTargetSyncController {
 				$this->resolver->status(
 					absint( $request['id'] ),
 					(string) $request->get_param( 'scope' ),
-					$selected
+					$selected,
+					$this->client_present( $request )
 				),
 				200
 			);
@@ -40,5 +42,13 @@ final class ExportTargetSyncController {
 			$status = $error instanceof \InvalidArgumentException ? 400 : 500;
 			return new WP_Error( 'cresco_export_target_status_error', $error->getMessage(), [ 'status' => $status ] );
 		}
+	}
+
+	private function client_present( WP_REST_Request $request ): ?bool {
+		$value = strtolower( trim( (string) $request->get_param( 'client_present' ) ) );
+		if ( '' === $value ) { return null; }
+		if ( in_array( $value, [ '1', 'true', 'yes', 'on' ], true ) ) { return true; }
+		if ( in_array( $value, [ '0', 'false', 'no', 'off' ], true ) ) { return false; }
+		return null;
 	}
 }
