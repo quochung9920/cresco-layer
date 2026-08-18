@@ -31,6 +31,7 @@ assert.match(resolver, /\$manager->get\( \$post_id \)/, 'Resolver must also insp
 assert.match(resolver, /sync-required/, 'Resolver must distinguish a lagging working autosave.');
 assert.match(resolver, /sync-pending/, 'Resolver must distinguish a live editor target that has not reached server data.');
 assert.match(resolver, /stale-target/, 'Resolver must distinguish a target that the live editor says is gone.');
+assert.match(resolver, /target-missing/, 'Resolver must preserve an explicit unknown/missing server state when client evidence is unavailable.');
 assert.match(resolver, /clientPresent/, 'Resolver response must preserve the client-presence evidence used for classification.');
 assert.doesNotMatch(resolver, /update_post_meta|->save\s*\(/, 'Resolver must remain read-only and never persist Elementor data itself.');
 
@@ -38,8 +39,10 @@ assert.match(controller, /export-target-status/, 'Target status REST endpoint is
 assert.match(controller, /client_present/, 'Target status REST endpoint must accept live-editor presence evidence.');
 assert.match(controller, /current_user_can\( 'edit_post'/, 'Target status endpoint must require edit permission.');
 
-assert.match(gate, /rest_request_before_callbacks/, 'Scoped export must have a server-side hard gate after REST permission checks and before PackageBuilder runs.');
-assert.doesNotMatch(gate, /add_filter\( 'rest_pre_dispatch'/, 'Target hard gate must not inspect document state before REST permission checks.');
+assert.match(gate, /rest_dispatch_request/, 'Scoped export must have a server-side hard gate after REST permission checks and before PackageBuilder runs.');
+assert.match(gate, /-100,\s*4/, 'REST dispatch gate must register all four rest_dispatch_request arguments.');
+assert.doesNotMatch(gate, /add_filter\(\s*'rest_pre_dispatch'/, 'Target hard gate must not inspect document state at rest_pre_dispatch.');
+assert.doesNotMatch(gate, /add_filter\(\s*'rest_request_before_callbacks'/, 'Target hard gate must not inspect document state before the route permission callback.');
 assert.match(gate, /target-sync-gate/, 'Hard-gate failures must expose a dedicated diagnostic stage.');
 assert.match(gate, /cresco_export_target_not_ready/, 'Hard gate must return a specific target-not-ready error.');
 assert.match(gate, /'stale-target' === \$state \? 410 : 409/, 'Stale target and synchronization conflicts must not surface as generic 500 errors.');
