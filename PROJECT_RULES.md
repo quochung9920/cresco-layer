@@ -1,7 +1,7 @@
 # Quy tắc dự án Cresco Layer
 
 > Repository: `quochung9920/cresco-layer` — plugin WordPress Cresco Layer.  
-> Baseline hiện hành: **0.24.4 — External AI Only**.  
+> Baseline hiện hành: **0.24.5 — External AI Only + Editor Rehydrate**.  
 > Khi tài liệu mâu thuẫn với code/runtime và current tests, code/runtime + tests là source of truth.
 
 ## 1. Vai trò sản phẩm
@@ -18,6 +18,7 @@ Elementor
 → Preview + Validation
 → Apply qua Elementor APIs
 → read-back verification
+→ full editor rehydrate
 → rendered/Fidelity verification
 ```
 
@@ -64,6 +65,7 @@ Không tạo lại `includes/LocalAI/`, local-model assets, provider settings ho
 12. Người dùng giữ quyết định Update/Publish cuối cùng.
 13. Safety/validation uncertainty phải fail-closed; chỉ optional enrichment mới fail-soft.
 14. Cresco hiện là **external-AI-only**; không chạy model/provider inference trong plugin.
+15. Import AI phải đồng bộ Elementor client bằng Commands API trước Preview/Apply. Sau khi server Apply thành công, phải reload **toàn bộ Elementor editor** để browser model rehydrate từ working document/autosave mới; reload riêng preview iframe là không đủ.
 
 ## 4. External AI Exchange
 
@@ -87,14 +89,17 @@ Pipeline import bắt buộc:
 
 ```text
 AI output
+→ synchronize current Elementor working document
 → normalize/compile
 → schema/security validation
 → runtime capability validation
 → semantic guard
 → scope enforcement
 → Preview/Diff
+→ synchronize again before Apply
 → Apply qua Elementor API
 → read-back verify
+→ full Elementor editor reload/rehydrate
 → rendered/Fidelity verify
 ```
 
@@ -115,6 +120,14 @@ Rescue mode:
 ```
 
 Target Sync dùng Elementor autosave/Commands API và bounded status checks. Không copy client JSON trực tiếp vào Elementor persistence để chữa mismatch.
+
+Import Sync cũng phải dùng:
+
+```js
+$e.run('document/save/auto', { force: true })
+```
+
+trước Preview và Apply. Sau server Apply/read-back, dùng full editor reload để loại bỏ stale browser model và tránh autosave cũ ghi đè dữ liệu Cresco vừa lưu.
 
 ## 7. Export diagnostics
 
@@ -176,10 +189,11 @@ npm run check
 php scripts/check-architecture.php
 ```
 
-0.24.4 có regression gate:
+Regression gates quan trọng:
 
 ```text
 tests/php/no-local-ai-remnants-test.php
+tests/js/ai-panel-contract-test.mjs
 ```
 
 CI unavailable do billing/runner **không phải test pass**.
@@ -193,6 +207,8 @@ Checklist cuối:
 [ ] External AI Exchange vẫn giữ nguyên
 [ ] Deterministic Skills vẫn giữ nguyên
 [ ] Safe Bootstrap/Target Sync không regression
+[ ] Import Preview/Apply sync current Elementor autosave
+[ ] Apply thành công reload full editor, không chỉ iframe
 [ ] Scope/runtime validation không yếu đi
 [ ] Site Settings vẫn dùng Kit API
 [ ] Version/docs/tests đồng bộ
