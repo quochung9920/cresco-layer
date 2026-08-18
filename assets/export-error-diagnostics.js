@@ -59,6 +59,7 @@
 		if (entry && entry.stage) bits.push('Stage: ' + entry.stage);
 		if (entry && entry.errorId) bits.push('Error ID: ' + entry.errorId);
 		if (entry && entry.status != null) bits.push('HTTP: ' + entry.status);
+		if (entry && entry.targetStatus && entry.targetStatus.state) bits.push('Target: ' + entry.targetStatus.state);
 		var memory = entry && entry.server && entry.server.memory ? entry.server.memory : null;
 		if (memory && memory.peakBytes) bits.push('Peak memory: ' + Math.round(Number(memory.peakBytes) / 1048576) + ' MB / ' + String(memory.limit || '?'));
 		var fatal = entry && entry.server && entry.server.fatal ? entry.server.fatal : null;
@@ -89,6 +90,9 @@
 	}
 	function diagnosticFrom(parsed) {
 		return parsed && parsed.data && parsed.data.crescoDiagnostic ? parsed.data.crescoDiagnostic : (parsed && parsed.crescoDiagnostic ? parsed.crescoDiagnostic : null);
+	}
+	function targetStatusFrom(parsed) {
+		return parsed && parsed.data && parsed.data.targetStatus && typeof parsed.data.targetStatus === 'object' ? parsed.data.targetStatus : null;
 	}
 	function responseWithJson(response, payload, id, stage, statusOverride) {
 		var headers = new Headers(response.headers || {});
@@ -123,7 +127,7 @@
 		if (!stage && parsed && parsed.code === 'cresco_exact_runtime_export_failed') stage = 'exact-runtime-enrich';
 		if (!stage) stage = response.ok ? 'response' : 'http-response';
 		var effectiveStatus = response.ok && isServerFailurePayload(parsed) ? Number(parsed.data && parsed.data.status || 500) : response.status;
-		return {
+		var entry = {
 			schema: 'cresco-export-client-diagnostic/v1',
 			errorId: serverId,
 			stage: stage,
@@ -133,6 +137,9 @@
 			server: serverDiagnostic,
 			responseExcerpt: excerpt(text)
 		};
+		var targetStatus = targetStatusFrom(parsed);
+		if (targetStatus) entry.targetStatus = targetStatus;
+		return entry;
 	}
 	function recoveryUrl(input) {
 		var url = urlOf(input);
@@ -144,7 +151,8 @@
 	function canRecover(input, init, entry) {
 		var method = String(init && init.method || 'GET').toUpperCase();
 		if (method !== 'GET' || !entry || Number(entry.status || 0) < 500) return false;
-		if (entry.stage === 'exact-runtime-enrich' || entry.stage === 'network') return false;
+		if (entry.stage === 'exact-runtime-enrich' || entry.stage === 'network' || entry.stage === 'target-sync-gate') return false;
+		if (entry.targetStatus) return false;
 		return !!recoveryUrl(input);
 	}
 	function normalizeFailure(response, parsed, text, entry) {
@@ -235,7 +243,7 @@
 	}
 
 	window.CrescoLayerExportDiagnostics = {
-		version: '1.2.0',
+		version: '1.3.0',
 		schema: 'cresco-export-client-diagnostic/v1',
 		getLastError: function () { return history.length ? history[0] : null; },
 		getHistory: function () { return history.slice(); },
