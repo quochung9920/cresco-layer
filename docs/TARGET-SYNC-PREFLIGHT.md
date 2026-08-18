@@ -33,11 +33,12 @@ User selects Elementor target
 → READY
 → release original Export click
 → /documents/{postId}/export
+→ REST permission check
 → server ExportTargetGate kiểm tra lại một lần nữa
 → PackageBuilder chỉ chạy khi target READY
 ```
 
-Browser preflight là lớp UX đầu tiên. `ExportTargetGate` ở `rest_pre_dispatch` là lớp fail-closed cuối cùng. Vì vậy direct/programmatic request cũng không thể bypass target synchronization.
+Browser preflight là lớp UX đầu tiên. `ExportTargetGate` chạy ở `rest_request_before_callbacks`, tức là **sau route permission check nhưng trước callback `/export`**, và là lớp fail-closed cuối cùng. Vì vậy direct/programmatic request cũng không thể bypass target synchronization mà gate vẫn không đọc document state của request chưa được phép.
 
 ## Endpoint trạng thái
 
@@ -73,7 +74,7 @@ Resolver chỉ đọc dữ liệu. Nó không ghi `_elementor_data`, không gọ
 
 ## Server hard gate
 
-`includes/AI/ExportTargetGate.php` chạy trước callback `/export`.
+`includes/AI/ExportTargetGate.php` chạy sau permission check và ngay trước callback `/export`.
 
 Nếu target chưa ready:
 
@@ -149,7 +150,7 @@ HTTP: 410
 Target: stale-target
 ```
 
-`crescoDiagnostic.postId` được resolve từ URL route parameter ngay ở `rest_pre_dispatch`, vì vậy route `/documents/3/export` phải ghi `postId: 3`, không còn `postId: 0` như diagnostic cũ.
+`ExportDiagnostics` bắt đầu từ `rest_pre_dispatch`, khi WordPress có thể chưa populate URL params. Vì vậy Cresco resolve `postId` từ URL params khi có, rồi fallback trực tiếp từ route `/documents/{id}/export`. Route `/documents/3/export` phải ghi `postId: 3`, không còn `postId: 0` như diagnostic cũ.
 
 Các trường hữu ích:
 
