@@ -69,7 +69,7 @@ Không tạo lại `includes/LocalAI/`, local-model assets, provider settings ho
 14. Cresco hiện là **external-AI-only**; không chạy model/provider inference trong plugin.
 15. Import AI phải đồng bộ Elementor client bằng Commands API trước Preview/Apply. Sau khi server Apply thành công, phải reload **toàn bộ Elementor editor** để browser model rehydrate từ working document/autosave mới; reload riêng preview iframe là không đủ.
 16. Scoped Export chỉ được vào `PackageBuilder` khi `ExportTargetGate` xác nhận target `ready`. Target mismatch phải dừng bằng trạng thái sync cụ thể, không được rơi thành generic 500.
-17. Target hard gate phải chạy **sau REST permission check và trước route callback**. Không đọc document state của user chưa được phép chỉ để làm preflight.
+17. Target hard gate phải chạy **sau REST permission check và trước route callback**. Hook hiện hành là `rest_dispatch_request`; không dùng `rest_pre_dispatch` hoặc `rest_request_before_callbacks` để đọc document state cho gate này.
 
 ## 4. External AI Exchange
 
@@ -131,7 +131,6 @@ Scoped export target states:
 ready          → working document có target, export được phép tiếp tục
 sync-required  → main có target, working/autosave chưa theo kịp
 sync-pending   → live editor có target, server chưa nhận ID
-tale-target    → KHÔNG dùng; tên đúng là stale-target
 stale-target   → live editor xác nhận target đã biến mất
 target-missing → server thiếu target và client evidence chưa đủ
 ```
@@ -141,8 +140,8 @@ target-missing → server thiếu target và client evidence chưa đủ
 Server hard gate:
 
 ```text
-rest permission check
-→ rest_request_before_callbacks
+REST permission_callback
+→ rest_dispatch_request
 → ExportTargetGate
 → ready ? PackageBuilder : HTTP 409/410
 ```
@@ -169,7 +168,7 @@ target-sync-gate
 
 Diagnostic route `/documents/{postId}/export` phải resolve đúng `postId` ngay cả khi WordPress chưa populate URL params ở `rest_pre_dispatch`; route regex fallback là bắt buộc.
 
-Target gate response nên giữ `targetStatus` để client/UI có thể hiển thị chính xác `sync-pending`, `stale-target`, v.v.
+Target gate response phải giữ `targetStatus` để client/UI có thể hiển thị chính xác `sync-pending`, `stale-target`, v.v.
 
 ## 8. Cresco Skills
 
