@@ -38,7 +38,7 @@ final class ExportDiagnostics {
 			'id' => $request_id,
 			'route' => (string) $request->get_route(),
 			'method' => (string) $request->get_method(),
-			'postId' => absint( $request['id'] ?? 0 ),
+			'postId' => $this->post_id( $request ),
 			'scope' => sanitize_key( (string) $request->get_param( 'scope' ) ),
 			'selected' => sanitize_text_field( (string) $request->get_param( 'selected' ) ),
 			'contextProfile' => sanitize_key( (string) $request->get_param( 'context' ) ),
@@ -185,6 +185,20 @@ final class ExportDiagnostics {
 			],
 		], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 		self::$active = null;
+	}
+
+	private function post_id( WP_REST_Request $request ): int {
+		$params = $request->get_url_params();
+		if ( isset( $params['id'] ) ) {
+			$post_id = absint( $params['id'] );
+			if ( $post_id ) { return $post_id; }
+		}
+		$post_id = absint( $request->get_param( 'id' ) );
+		if ( $post_id ) { return $post_id; }
+		if ( preg_match( '#/documents/(\d+)/export$#', (string) $request->get_route(), $match ) ) {
+			return absint( $match[1] );
+		}
+		return 0;
 	}
 
 	private function is_export_route( string $route ): bool {
