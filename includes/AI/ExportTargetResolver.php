@@ -20,7 +20,7 @@ final class ExportTargetResolver {
 		$this->locator = $locator ?? new ElementLocator();
 	}
 
-	public function status( int $post_id, string $scope = 'document', array $selected_ids = [] ): array {
+	public function status( int $post_id, string $scope = 'document', array $selected_ids = [], ?bool $client_present = null ): array {
 		$scope = in_array( $scope, ElementLocator::SCOPES, true ) ? $scope : 'document';
 		$selected_ids = $this->locator->normalize_ids( $selected_ids );
 		if ( 'widget' === $scope && $selected_ids ) { $selected_ids = [ $selected_ids[0] ]; }
@@ -43,26 +43,43 @@ final class ExportTargetResolver {
 		if ( 'document' === $scope ) {
 			$state = 'ready';
 			$message = 'The current Elementor working document is ready for export.';
+		} elseif ( false === $client_present ) {
+			// A stale browser selection must never be rescued from older server data. If the live
+			// Elementor model says the target is gone, require a fresh selection even when a previous
+			// autosave/main revision still contains the same ID.
+			$state = 'stale-target';
+			$message = 'The selected Elementor target no longer exists in the live editor. Select the current element again before exporting.';
 		} elseif ( $working_status['complete'] ) {
 			$state = 'ready';
 			$message = 'The selected Elementor target is present in the current working document.';
 		} elseif ( $main_status['complete'] ) {
 			$state = 'sync-required';
 			$message = 'The target exists in the main Elementor document but the current working autosave has not caught up yet.';
+		} elseif ( true === $client_present ) {
+			$state = 'sync-pending';
+			$message = 'The selected target exists in the live Elementor editor but has not reached server-side working data yet.';
 		} else {
-			$state = 'client-ahead';
-			$message = 'The selected target is not present in server-side Elementor data yet. The editor client is likely ahead of its autosave.';
+			$state = 'target-missing';
+			$message = 'The selected target is missing from server-side Elementor data and its live-editor presence could not be confirmed.';
 		}
+
+		$retryable = in_array( $state, [ 'sync-required', 'sync-pending', 'target-missing' ], true );
+		$recommended_action = match ( $state ) {
+			'ready' => 'export',
+			'stale-target' => 'reselect-target',
+			default => 'force-autosave',
+		};
 
 		return [
 			'schema' => self::SCHEMA,
 			'postId' => $post_id,
 			'scope' => $scope,
 			'selectedIds' => $selected_ids,
+			'clientPresent' => $client_present,
 			'state' => $state,
 			'ready' => 'ready' === $state,
-			'retryable' => 'ready' !== $state,
-			'recommendedAction' => 'ready' === $state ? 'export' : 'force-autosave',
+			'retryable' => $retryable,
+			'recommendedAction' => $recommended_action,
 			'message' => $message,
 			'working' => $working_status,
 			'main' => $main_status,
