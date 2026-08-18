@@ -1,7 +1,7 @@
 # Quy tắc dự án Cresco Layer
 
 > Repository: `quochung9920/cresco-layer` — plugin WordPress Cresco Layer.  
-> Baseline hiện hành: **0.24.5 — External AI Only + Editor Rehydrate**.  
+> Baseline hiện hành: **0.24.6 — External AI Only + Target Sync Hard Gate**.  
 > Khi tài liệu mâu thuẫn với code/runtime và current tests, code/runtime + tests là source of truth.
 
 ## 1. Vai trò sản phẩm
@@ -10,6 +10,8 @@ Cresco Layer là cầu nối **file-based, lossless, runtime-aware giữa Elemen
 
 ```text
 Elementor
+→ Target Sync Preflight
+→ server Target Hard Gate
 → Export for ChatGPT
 → ZIP/JSON package
 → ChatGPT / AI bên ngoài
@@ -31,7 +33,7 @@ Từ 0.24.4, Cresco **không có Local AI runtime, provider, model endpoint ho�
 ```text
 cresco-layer.php                 bootstrap/version/autoloader
 includes/Plugin.php              service wiring
-includes/AI/                     export/import, capability, mutation/patch, fidelity
+includes/AI/                     export/import, target gate, capability, mutation/patch, fidelity
 includes/Elementor/              runtime discovery/snapshot/widgets
 includes/SiteSettings/           Elementor Kit / Global Settings
 includes/DesignSystem/           design standards
@@ -66,6 +68,8 @@ Không tạo lại `includes/LocalAI/`, local-model assets, provider settings ho
 13. Safety/validation uncertainty phải fail-closed; chỉ optional enrichment mới fail-soft.
 14. Cresco hiện là **external-AI-only**; không chạy model/provider inference trong plugin.
 15. Import AI phải đồng bộ Elementor client bằng Commands API trước Preview/Apply. Sau khi server Apply thành công, phải reload **toàn bộ Elementor editor** để browser model rehydrate từ working document/autosave mới; reload riêng preview iframe là không đủ.
+16. Scoped Export chỉ được vào `PackageBuilder` khi `ExportTargetGate` xác nhận target `ready`. Target mismatch phải dừng bằng trạng thái sync cụ thể, không được rơi thành generic 500.
+17. Target hard gate phải chạy **sau REST permission check và trước route callback**. Không đọc document state của user chưa được phép chỉ để làm preflight.
 
 ## 4. External AI Exchange
 
@@ -121,6 +125,30 @@ Rescue mode:
 
 Target Sync dùng Elementor autosave/Commands API và bounded status checks. Không copy client JSON trực tiếp vào Elementor persistence để chữa mismatch.
 
+Scoped export target states:
+
+```text
+ready          → working document có target, export được phép tiếp tục
+sync-required  → main có target, working/autosave chưa theo kịp
+sync-pending   → live editor có target, server chưa nhận ID
+tale-target    → KHÔNG dùng; tên đúng là stale-target
+stale-target   → live editor xác nhận target đã biến mất
+target-missing → server thiếu target và client evidence chưa đủ
+```
+
+`sync-required`, `sync-pending`, `target-missing` có thể retry bounded; `stale-target` không retry và yêu cầu re-select target.
+
+Server hard gate:
+
+```text
+rest permission check
+→ rest_request_before_callbacks
+→ ExportTargetGate
+→ ready ? PackageBuilder : HTTP 409/410
+```
+
+Target sync conflict không được kích hoạt Full → Smart recovery vì context profile không thể sửa target mismatch.
+
 Import Sync cũng phải dùng:
 
 ```js
@@ -131,7 +159,17 @@ trước Preview và Apply. Sau server Apply/read-back, dùng full editor reload
 
 ## 7. Export diagnostics
 
-HTTP 500 cần giữ `errorId`, stage, elapsed time, memory/runtime context và fatal file/line khi có thể. Phải phân biệt lỗi package build với response serialization/fatal sau REST callback.
+Export failure cần giữ `errorId`, stage, HTTP status, elapsed time, memory/runtime context và fatal file/line khi có thể. Phải phân biệt lỗi package build với response serialization/fatal sau REST callback.
+
+Target synchronization dùng stage:
+
+```text
+target-sync-gate
+```
+
+Diagnostic route `/documents/{postId}/export` phải resolve đúng `postId` ngay cả khi WordPress chưa populate URL params ở `rest_pre_dispatch`; route regex fallback là bắt buộc.
+
+Target gate response nên giữ `targetStatus` để client/UI có thể hiển thị chính xác `sync-pending`, `stale-target`, v.v.
 
 ## 8. Cresco Skills
 
@@ -194,6 +232,9 @@ Regression gates quan trọng:
 ```text
 tests/php/no-local-ai-remnants-test.php
 tests/js/ai-panel-contract-test.mjs
+tests/js/export-target-sync-contract-test.mjs
+tests/js/export-target-sync-behavior-test.mjs
+tests/js/export-target-sync-stale-target-test.mjs
 ```
 
 CI unavailable do billing/runner **không phải test pass**.
@@ -207,6 +248,10 @@ Checklist cuối:
 [ ] External AI Exchange vẫn giữ nguyên
 [ ] Deterministic Skills vẫn giữ nguyên
 [ ] Safe Bootstrap/Target Sync không regression
+[ ] Scoped Export bị server hard-gate trước PackageBuilder
+[ ] Target mismatch trả 409/410, không generic 500
+[ ] Target sync failure không kích hoạt Full → Smart recovery
+[ ] Diagnostic postId khớp route thật
 [ ] Import Preview/Apply sync current Elementor autosave
 [ ] Apply thành công reload full editor, không chỉ iframe
 [ ] Scope/runtime validation không yếu đi
