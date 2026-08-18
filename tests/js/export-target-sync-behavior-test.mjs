@@ -30,6 +30,15 @@ const window = {
       calls.autosave.push({ command, args });
       return Promise.resolve(true);
     },
+    components: {
+      get() {
+        return {
+          utils: {
+            findContainerById(id) { return id === 'atomic1' ? { id } : null; },
+          },
+        };
+      },
+    },
   },
   fetch(url) {
     calls.fetch.push(url);
@@ -60,6 +69,8 @@ assert.equal(calls.listeners.length, 1, 'Only one passive startup listener shoul
 assert.equal(calls.listeners[0].type, 'click');
 assert.equal(calls.listeners[0].capture, true, 'Export guard must run in capture phase.');
 assert.equal(window.CrescoLayerExportTargetSync.getClientTargetPresent('f82af75'), true, 'Live target helper should resolve the current Elementor container.');
+assert.equal(window.CrescoLayerExportTargetSync.getClientTargetPresent('atomic1'), true, 'A null legacy getContainer lookup must fall through to the current $e component lookup before declaring a target stale.');
+assert.equal(window.CrescoLayerExportTargetSync.getClientTargetPresent('gone1'), false, 'A target may be declared stale only after all available live lookup strategies miss it.');
 
 const result = await window.CrescoLayerExportTargetSync.preflight();
 assert.equal(result.ready, true, 'Preflight must wait until server-side target state becomes ready.');
