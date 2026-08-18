@@ -96,6 +96,7 @@
 				if (!response.ok) throw new Error(body.message || ('Export target preflight failed (' + response.status + ').'));
 				return body;
 			});
+		});
 	}
 	function forceAutosave() {
 		if (!window.$e || typeof window.$e.run !== 'function') {
